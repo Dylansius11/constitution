@@ -245,7 +245,7 @@ Stages in order: `queued`, `unsealing`, `compiling`, `r1_layout`, `r2_solvency`,
 | `constitution relay <id> [--change] [--watch <s>]` | Recovers sender, broadcasts the gate's `signed` raw transaction (details below) |
 | `constitution receipt <id> [--json]` | Canonical receipt |
 | `constitution audit [--deployment deployments/testnet.json] [--manifest rules/manifest.json]` | F7 checks, non-zero exit on any failure (details below) |
-| `constitution govern schedule <kind> ... / apply <id> / cancel <id>` | Governance |
+| `constitution govern [--account <id>] [--key-file <path>] schedule --kind <ChangeKind JSON> / apply <id> / cancel <id>` | Governance; signs with a near-cli legacy key file (default `.secrets/near-credentials/<network>/<account>.json`) through near-api 0.8.6; a gate panic prints its code (for example `E53_TIMELOCK_NOT_ELAPSED`) and the next step |
 | `constitution rules hash <manifest>` | Prints rule-set hash |
 | `constitution verifier appraise <url>` | Off-chain quote appraisal (D5) |
 

@@ -19,11 +19,14 @@ bs58.workspace = true
 clap.workspace = true
 hex.workspace = true
 k256.workspace = true
+near-api.workspace = true
 reqwest.workspace = true
 rlp.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha3.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
+near-workspaces.workspace = true
 tempfile.workspace = true
