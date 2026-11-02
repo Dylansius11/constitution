@@ -4,8 +4,9 @@
 
 - [V] Founder chose stack **Option C (Phala TDX CVM verifier + Rust-first operations + Astro static page)** on 2026-10-26 in this planning session (D1). ARCHITECTURE is written against it.
 - [V] Founder resolved on 2026-10-26: attestation appraisal off-chain first, on-chain DCAP as P1 (D5); spam control by refundable deposit plus one active proposal per account (D3); verifier host Phala with the USD 20 verified-account credit, OutLayer only as a separately decided fallback (D2); archive RPC Validation Cloud free tier (D10); public repo on GitHub `Dylansius11`, X post from the founder's own account (D9).
+- [V] Founder answers on 2026-11-02 (UTC): the founder creates the GitHub repo personally and the lead commits locally only until told to push (D9); the lead creates NEAR testnet accounts via the faucet with keys in the repo-local gitignored `.secrets/` (B1, done); D7 waits for the founder's logo and references; D8 deferred between Cloudflare Pages and Vercel.
 - Open founder rows: D4 Act 2 (decide at core gate 2026-11-10), D7 visual direction, D8 hosting, D14 funding amounts, D18 verifier uptime budget (after spike P1.6). Open organizer questions: D16.
-- Nothing here authorizes work before 2026-11-01T00:00:00Z. Every BLOCKER below is a founder-owned manual prerequisite for build phase 1.
+- Build opened 2026-11-01T00:00:00Z; build work started 2026-11-02. Remaining BLOCKERS below are founder-owned manual prerequisites.
 
 Founder-owned rows are never silently decided by agents. Status: open, blocked or resolved. Lead-owned rows record the reasoning so the founder can overrule. Each row has its explanation below.
 
@@ -19,9 +20,9 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D4 | Ship Act 2 self-repair | founder | open | core gate 2026-11-10 | Decide after core gate |
 | D5 | Verifier key registration appraisal | founder | resolved 2026-10-26 | P2.4 | Off-chain appraisal + 7-day timelock; on-chain DCAP is P1 |
 | D6 | Gate code mutability | lead | resolved 2026-10-26 | P2.1 | Immutable gate; authority migration only via timelocked change |
-| D7 | Visual direction for the public page | founder | open | P3.4 | Candidates in `docs/DESIGN.md` |
-| D8 | Hosting for the public page | founder | open | P3.6 | Deferred by founder |
-| D9 | Public repo and X accounts | founder | resolved 2026-10-26 | P4 | GitHub `Dylansius11`, founder's X |
+| D7 | Visual direction for the public page | founder | open, founder collecting logo and references (2026-11-02) | P3.4 | Candidates in `docs/DESIGN.md`; page work waits |
+| D8 | Hosting for the public page | founder | open, Cloudflare Pages or Vercel (2026-11-02) | P3.6 | Deferred by founder |
+| D9 | Public repo and X accounts | founder | resolved 2026-10-26, refined 2026-11-02 | P4 | GitHub `Dylansius11`, founder creates the repo; lead commits locally until asked to push; founder's X |
 | D10 | Archive / debug RPC for replay | founder | resolved 2026-10-26, confirm in spike | P1.7 | Validation Cloud free tier |
 | D11 | NEAR AI Cloud inference access | founder | in progress | P2.6 | Founder applied for hackathon credits |
 | D12 | EVM authority shape | lead | resolved 2026-10-26 | P1.3 | `ConstitutionExecutor` owns ProxyAdmin |
@@ -138,18 +139,26 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 
 | Id | Missing prerequisite | Owner | Status | Blocks plan ids | Next action / proof |
 | --- | --- | --- | --- | --- | --- |
-| B1 | NEAR testnet accounts (deployer, gate, guardian, demo governor, verifier relay) funded from faucet | founder | open, not before 2026-11-01 | P1.2, P1.5, P2.x | Follow INTEGRATIONS "NEAR testnet accounts"; record account ids (not keys) in SMART-CONTRACT |
-| B2 | Base Sepolia ETH for the derived EOA and a deployer EOA | founder | open | P1.4, P1.5 | Faucet claim after the derived address is computed in P1.2 |
-| B3 | Phala Cloud account, card verification, USD 20 credit | founder | open | P1.6 | INTEGRATIONS "Phala Cloud"; confirm credit visible in workspace |
-| B4 | NEAR AI Cloud credits and API key in local `.env` | founder | requested 2026-10-26 | P2.6 | Grant email or console balance; key never shared in chat |
-| B5 | Validation Cloud account and Base Sepolia endpoint | founder | open | P1.7, P2.5 | Endpoint URL in local `.env` |
-| B6 | Public GitHub repo `Dylansius11/constitution` | founder | open, not before 2026-11-01 | P0 commit, P4 | Founder creates repo; lead pushes only when asked |
+| B1 | NEAR testnet accounts (spike, gate, guardian, demo governor, verifier relay) funded from faucet | lead (founder-authorized 2026-11-02) | resolved 2026-11-02 | P1.2, P1.5, P2.x | Accounts and creation txs below; keys only in gitignored `.secrets/` |
+| B2 | Base Sepolia ETH for the derived EOA and a deployer EOA | founder | open; founder can claim (2026-11-02) | P1.4, P1.5 | Faucet claim after the derived address is computed in P1.2 |
+| B3 | Phala Cloud account, card verification, USD 20 credit | founder | open; steps sent to founder 2026-11-02 | P1.6 | INTEGRATIONS "Phala Cloud"; confirm credit visible in workspace |
+| B4 | NEAR AI Cloud credits and API key in local `.env` | founder | founder reports key available (2026-11-02); not yet in `.env` | P2.6 | Founder writes `NEARAI_API_KEY` into local `.env`; key never shared in chat |
+| B5 | Validation Cloud account and Base Sepolia endpoint | founder | open; steps sent to founder 2026-11-02 | P1.7, P2.5 | Endpoint URL in local `.env` |
+| B6 | Public GitHub repo `Dylansius11/constitution` | founder | open; founder creates it (2026-11-02) | P4 | Local repo has commits since 2026-11-02; lead pushes only when asked |
 | B7 | Hosting choice | founder | open | P3.6 | Resolve D8 |
 | B8 | Visual direction | founder | open | P3.4 | Resolve D7 |
 
 ### B1. NEAR testnet accounts
 
-Attempts: none; account creation is a founder action and forbidden before opening. Exact input: account ids chosen by the founder; keys stay in the founder's keychain. Unblock evidence: `near account view-account-summary <id> network-config testnet now` shows a balance (planned command, not run).
+[V, exercised on testnet 2026-11-02] The lead created five accounts with `near account create-account sponsor-by-faucet-service <id> autogenerate-new-keypair save-to-legacy-keychain network-config testnet create` (near-cli-rs 0.30.1, binary sha256 `996e9f390d1cc446d17ea24e39c48f6ff906507f2d1dba96fc41f596a7e5de14`, installed to the gitignored `.tools/bin/`). Each `view_account` at finalized blocks 275928118 to 275928122 shows 10 NEAR.
+
+| Account | Role | Creation tx |
+| --- | --- | --- |
+| `constitution-spike.testnet` | spikes only; never the activated gate | `EBDxdUCQTVmX7WCrzhLjmBo3gLCk5WDnHKDJQUcTpQW1` |
+| `constitution-gate.testnet` | production gate; untouched until activation, keys deleted at activation | `Ehjsjb6HGLcWmg5v2ehGHUgMcSK27LTfN5FFR3G4eErf` |
+| `constitution-guardian.testnet` | guardian; key moves to the founder before activation | `GEz3zughGNZEzk1hLeaLfrgQqowyS5TkmzDBKyQV7ZsD` |
+| `constitution-governor.testnet` | demo governor (D17) | `7WbiBThCadD5A1zm7fDRdxYpwGukZ4uehpBXWZtpEqww` |
+| `constitution-relay.testnet` | verifier relay for `submit_verdict` | `7dZJwbTi5afhmRTcRVS68n6ZeoJr4kwPjseQg3Sqgbhc` |
 
 ### B2. Base Sepolia ETH
 

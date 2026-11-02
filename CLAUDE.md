@@ -18,7 +18,7 @@ Technical specs define interfaces, PRD defines scope, BUILD-PLAN defines progres
 | Milestone | UTC | Source |
 | --- | --- | --- |
 | Build opens; first code allowed | 2026-11-01T00:00:00Z | https://nearhackathon.com/HACKATHON.md (re-read 2026-10-26) |
-| Spikes proven | 2026-11-03T23:59 | BUILD-PLAN (internal) |
+| Spikes proven | 2026-11-04T23:59 | BUILD-PLAN (internal, moved after the 2026-11-02 start) |
 | Activation ceremony | 2026-11-07T12:00 | BUILD-PLAN (internal, enables a real 7-day timelock before cutoff) |
 | Core gate, Act 2 decision | 2026-11-10T23:59 | BUILD-PLAN (internal) |
 | Submission target | 2026-11-14T18:00 | BUILD-PLAN (internal buffer) |
@@ -37,7 +37,7 @@ Documents in English; founder chat in Indonesian. Labels: [V] verified with a da
 
 ## Delegation
 
-Lead (Opus 5.5) owns architecture, founder gates, `crates/constitution-types` interfaces, integration, review and final evidence. At most 3 workers at once, at most 1 Sonnet worker.
+Lead (Opus 5.5) owns architecture, founder gates, `crates/constitution-types` interfaces, integration, review and final evidence. At most 3 Sol workers plus 1 Sonnet worker at once (founder raised the cap on 2026-11-02; three concurrent Codex workers is the observed rate-limit-safe ceiling).
 
 | Work | Agent | Required resolved model |
 | --- | --- | --- |

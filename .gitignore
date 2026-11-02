@@ -5,6 +5,9 @@ scratch/
 .env
 .env.*
 !.env.example
+# Repo-local tool binaries and testnet key files (never committed).
+.tools/
+.secrets/
 # Build output.
 target/
 contracts/out/

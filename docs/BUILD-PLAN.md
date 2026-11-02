@@ -4,23 +4,23 @@
 
 - Goal: the three proofs in PRD TL;DR as real testnet receipts, reproducible from the README.
 - [V] Build window opens **2026-11-01T00:00:00Z**; final immutable submission cutoff **2026-11-14T23:59:00Z**; judging 2026-11-16 to 2026-11-18 (https://nearhackathon.com/HACKATHON.md, re-read 2026-10-26). No application work before opening, by founder rule.
-- [I] Internal milestones (UTC): spikes proven 2026-11-03T23:59; activation ceremony 2026-11-07T12:00 (needed for a real 7-day maturation before the cutoff); core gate and D4 decision 2026-11-10T23:59; core freeze 2026-11-13T12:00; submission target 2026-11-14T18:00 (about 6 hours of buffer).
+- [I] Internal milestones (UTC): spikes proven 2026-11-04T23:59 (moved from 2026-11-03T23:59 because build work started 2026-11-02); activation ceremony 2026-11-07T12:00 (needed for a real 7-day maturation before the cutoff); core gate and D4 decision 2026-11-10T23:59; core freeze 2026-11-13T12:00; submission target 2026-11-14T18:00 (about 6 hours of buffer).
 - First authorized work: P0 commit, then the two critical spikes P1.4 (NEAR gate to Chain Signatures to Base Sepolia `upgradeAndCall`) and P1.6 (attested verifier on Phala).
 
 Work top to bottom by dependency. Check a box only with observed acceptance evidence, in the same authorized commit. Every command below is **planned, not run**. Feature ids refer to PRD; interfaces to SMART-CONTRACT and ARCHITECTURE. Do not delete unchecked work without a recorded decision in OPEN-DECISIONS.
 
 ## Phase 0: documentation and prerequisites
 
-- [x] **P0.1 Founder stack choice recorded.** Done in planning (D1, 2026-10-26); ticked in the first commits after opening (2026-11-03).
+- [x] **P0.1 Founder stack choice recorded.** Done in planning (D1, 2026-10-26); ticked in the first commits after opening (2026-11-02 UTC).
 - [x] **P0.2 Docs complete and consistent.** CLAUDE.md, PRD, BUILD-PLAN, OPEN-DECISIONS, LESSONS, ARCHITECTURE, INTEGRATIONS, SMART-CONTRACT, DESIGN exist and agree (lead consistency review and method lint, 2026-10-26).
 - [x] **P0.3 Repo and scaffold** (after 2026-11-01). Owned: `Cargo.toml`, `rust-toolchain.toml`, `crates/*/Cargo.toml` with empty `lib.rs`/`main.rs`, `contracts/foundry.toml`, `.env.example`, `Makefile` with targets that print "not implemented" exit 1, `.gitignore` additions (`target/`, `contracts/out/`, `contracts/cache/`, `web/dist/`, `node_modules/`).
   - Acceptance: `cargo metadata` succeeds; `forge config` prints solc 0.8.38 and `ffi = false`; no secrets; commit `chore(repo): scaffold workspace and docs foundation`.
-  - Evidence (2026-11-03, local): WSL2 Ubuntu, rustup resolved 1.99.1 from `rust-toolchain.toml`; `cargo metadata` ok; `cargo check --workspace` ok; `forge config` (Windows forge 1.8.3, pin 1.8.6 installed by P1.3) prints `solc = "0.8.38"`, `evm_version = "prague"`, `ffi = false`. Local git repo only; B6 (GitHub remote) still open.
+  - Evidence (2026-11-02 UTC, local): WSL2 Ubuntu, rustup resolved 1.99.1 from `rust-toolchain.toml`; `cargo metadata` ok; `cargo check --workspace` ok; `forge config` (Windows forge 1.8.3, pin 1.8.6 installed by P1.3) prints `solc = "0.8.38"`, `evm_version = "prague"`, `ffi = false`. Local git repo only; B6 (GitHub remote) still open.
 - [ ] **P0.4 Founder prerequisites started**: B1, B3, B5, B6 actions begun (INTEGRATIONS "Manual actions").
 
 Acceptance: a zero-context engineer can start P1.1 from these docs alone.
 
-## Phase 1: riskiest integrations (2026-11-01 to 2026-11-03)
+## Phase 1: riskiest integrations (2026-11-02 to 2026-11-04)
 
 Spikes live in `spikes/` and are deleted (or reduced to tests) by P2; spike contracts are never the activated gate.
 
@@ -34,7 +34,7 @@ Spikes live in `spikes/` and are deleted (or reduced to tests) by P2; spike cont
   - Acceptance: T-EXE-1 to T-EXE-5 pass locally (`forge test`); deploy with `signer = spike derived EOA` records executor, proxy, ProxyAdmin addresses; `ProxyAdmin.owner() == executor` read on chain; computed admin equals `AdminChanged` event; `evm_version` pinned and justified with a Base doc reference.
 - [ ] **P1.4 Spike (a) end to end.** Owned: `spikes/gate-min/`, `vectors/`. Spike gate builds the exact `execute(...)` EIP-1559 transaction for VaultV1 to VaultV2Honest (no verifier yet; certId = test constant), MPC signs, relay sends to `sepolia-sequencer.base.org`.
   - Acceptance: Base Sepolia receipt success; proxy implementation slot equals VaultV2Honest; `UpgradeExecuted` emitted; observed base fee and priority fee recorded (D14); a second relay of the same raw tx is rejected (nonce used); an expired-deadline variant reverts `DeadlinePassed` and consumes its nonce.
-  - Cut rule: if not green by 2026-11-03T23:59, stop feature work and escalate to the founder with the failing step and evidence.
+  - Cut rule: if not green by 2026-11-04T23:59, stop feature work and escalate to the founder with the failing step and evidence.
 - [ ] **P1.5 Encoding oracle.** Owned: `vectors/evm-tx.json`, `tools/vectors-viem/`. 6 vectors (T-ENC-1).
   - Acceptance: `pnpm --dir tools/vectors-viem vectors` byte-identical to Rust output.
 - [ ] **P1.6 Spike (b) attested verifier** (needs B3; deploy approval). Owned: `verifier-image/`, `crates/verifier/src/identity.rs`, `spikes/verifier-min/`.
