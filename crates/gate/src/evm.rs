@@ -29,6 +29,20 @@ pub(crate) fn proposal_transaction(
     .abi_encode();
     Ok(transaction(config, evm, calldata))
 }
+pub(crate) fn rotate_transaction(
+    config: &Config,
+    evm: &EvmTx,
+    new_signer: [u8; 20],
+    change_id: [u8; 32],
+) -> EVMTransaction {
+    let calldata = rotateSignerCall {
+        newSigner: new_signer.into(),
+        changeId: change_id.into(),
+        deadline: evm.deadline_s,
+    }
+    .abi_encode();
+    transaction(config, evm, calldata)
+}
 fn transaction(config: &Config, evm: &EvmTx, calldata: Vec<u8>) -> EVMTransaction {
     TransactionBuilder::new::<EVM>()
         .chain_id(config.chain_id)
@@ -62,13 +76,12 @@ impl Gate {
                 let ChangeKind::MigrateAuthority { new_signer } = change.kind else {
                     return Err("not a migration");
                 };
-                let calldata = rotateSignerCall {
-                    newSigner: new_signer.into(),
-                    changeId: change_id_hash(&env::current_account_id(), *id).into(),
-                    deadline: evm.deadline_s,
-                }
-                .abi_encode();
-                Ok(transaction(&self.config, evm, calldata))
+                Ok(rotate_transaction(
+                    &self.config,
+                    evm,
+                    new_signer,
+                    change_id_hash(&env::current_account_id(), *id),
+                ))
             }
         }
     }
@@ -154,3 +167,7 @@ pub(crate) fn assemble_signed(
         }),
     )
 }
+
+#[cfg(test)]
+#[path = "enc_vectors.rs"]
+mod enc_vectors;
