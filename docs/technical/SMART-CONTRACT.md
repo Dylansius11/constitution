@@ -50,6 +50,8 @@ pub struct Gate {
     changes: IterableMap<u64, PendingChange>,
     proposals: LookupMap<u64, Proposal>,
     active_by_account: LookupMap<AccountId, u64>,
+    active_by_key: LookupMap<[u8; 32], u64>,         // sha256(new_impl_codehash || init_calldata) of active proposals, for E24
+    outstanding_signatures: IterableSet<u64>,         // proposals in SignRequested or Signed; the only set D13 iterates
     credit: LookupMap<AccountId, u128>,               // unreserved yoctoNEAR
     next_proposal_id: u64,
     next_change_id: u64,
