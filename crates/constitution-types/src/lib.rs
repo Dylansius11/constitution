@@ -16,8 +16,14 @@
 //! The SDK's ^2.3.0 dependency admits this crate's exact 2.6.0 pin.
 
 pub mod bytes;
+pub mod certificate;
+pub mod reasons;
 pub mod time;
 
 pub use bytes::{Base64, Base64Bytes, Hex20, Hex32, HexBytes, U128Str};
+#[cfg(not(target_arch = "wasm32"))]
+pub use certificate::certificate_hash;
+pub use certificate::{AiReview, Certificate, DOMAIN, Verdict};
 pub use near_account_id::AccountId;
+pub use reasons::{GateError, ReasonCode, RuleId};
 pub use time::{ns_to_s, s_to_ns};
