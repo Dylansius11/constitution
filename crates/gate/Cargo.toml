@@ -13,3 +13,12 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 constitution-types.workspace = true
+borsh.workspace = true
+near-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }
+near-workspaces.workspace = true
+tokio.workspace = true
