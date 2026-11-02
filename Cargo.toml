@@ -38,7 +38,9 @@ alloy-sol-types = { version = "=1.7.3", default-features = false }
 hex = "=0.4.3"
 rlp = "=0.6.1"
 k256 = { version = "=0.13.4", features = ["arithmetic"] }
-clap = { version = "=4.6.7", features = ["derive"] }
+clap = { version = "=4.6.7", features = ["derive", "env"] }
+reqwest = { version = "=0.13.5", features = ["blocking", "json"] }
+bs58 = "=0.5.1"
 
 [profile.release]
 codegen-units = 1

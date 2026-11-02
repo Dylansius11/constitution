@@ -30,7 +30,8 @@ mod tests {
     use serde_json::{Value, json};
 
     fn resolved() -> Value {
-        let mut m: Value = serde_json::from_str(include_str!("../../../rules/manifest.json")).unwrap();
+        let mut m: Value =
+            serde_json::from_str(include_str!("../../../rules/manifest.json")).unwrap();
         m["r2"] = json!({
             "harness_sha256": format!("0x{}", "11".repeat(32)),
             "invariant_depth": 4,
