@@ -1,0 +1,11 @@
+{
+  "label": "local laptop Docker Desktop build, not CVM or testnet evidence",
+  "observed_date": "2026-11-03",
+  "command": "powershell -NoProfile -ExecutionPolicy Bypass -File verifier-image/build-local.ps1",
+  "build_seconds": 329.6596043,
+  "cache_note": "Resumed after disk-pressure cancellation; base, Debian time, and checksum-verified binary installation layers were cached. Not a cold-build timing.",
+  "image_id": "sha256:1b2a2c17ba038dfb1047e5089faadeb92a5ea713eddb438e34c9ee7263b7e038",
+  "docker_inspect_size_bytes": 318502955,
+  "exported_platform_manifest": "sha256:d67cc84ba3c466585f50c907dd4f5bc0775b1e93e19c564945cb802f06797f8a",
+  "warning": "FromPlatformFlagConstDisallowed: constant linux/amd64 is intentional; all downloaded binaries are x86_64."
+}

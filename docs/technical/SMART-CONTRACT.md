@@ -427,7 +427,7 @@ Bypass analysis (each item has a test or audit check in "Test matrix"):
 | near-workspaces | 0.23.0 (Linux/WSL2 sandbox) | crates.io sparse index; docs.rs manifest |
 | Foundry | v1.8.6 | GitHub latest release |
 | solc | 0.8.38 | GitHub latest release (argotorg/solidity) |
-| EVM version | pinned explicitly in `foundry.toml` to the newest hardfork that both Base Sepolia and Halmos 0.3.3 support [U, P1.3] | Base docs and Halmos release notes at spike |
+| EVM version | `prague` (D19): Base Sepolia runs Osaka, which executes prague bytecode; Halmos 0.3.3 fails on Osaka CLZ `0x1e` | docs.base.org/upgrades/overview and local Halmos probe, 2026-11-02 |
 | OpenZeppelin Contracts / Upgradeable | 5.6.1 / 5.6.1 | `npm view` |
 | OZ Upgrades Core | 1.47.0 | `npm view` |
 | Halmos | 0.3.3, Python >= 3.11 (3.12 selected), z3-solver 4.12.6.0, yices 2.6.4.x | PyPI JSON; GitHub release |
@@ -472,9 +472,9 @@ NOT DEPLOYED. Fill only with observed values:
 
 | Item | Network | Value | Tx / evidence | Date |
 | --- | --- | --- | --- | --- |
-| Gate account id | NEAR testnet | not created | | |
+| Gate account id | NEAR testnet | `constitution-gate.testnet` (created, no code; keys deleted at activation) | `Ehjsjb6HGLcWmg5v2ehGHUgMcSK27LTfN5FFR3G4eErf` | 2026-11-02 |
 | Gate wasm code hash | NEAR testnet | not built | | |
-| Derived EOA | Base Sepolia | not computed | | |
+| Derived EOA | Base Sepolia | `0x3b20f46860d27d81917a45221c594fc051af7e94` for (`constitution-gate.testnet`, `constitution/base-sepolia/v1`), live `derived_public_key` view at block 275927720 equals the offline derivation (`vectors/mpc-derivation.json`) | view call | 2026-11-02 |
 | Executor | Base Sepolia | not deployed | | |
 | Proxy / ProxyAdmin | Base Sepolia | not deployed | | |
 | Rule-set hash | n/a | not committed | | |
