@@ -1,37 +1,78 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {VaultV1} from "./VaultV1.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @notice V1-compatible upgrade with a cap on total recorded deposits.
-contract VaultV2Honest is VaultV1 {
+/// @dev Standalone (does not inherit VaultV1) so the ERC-7201 namespace is defined exactly once;
+/// OpenZeppelin upgrades-core rejects two struct definitions for one namespace in one contract.
+contract VaultV2Honest is Initializable {
+    using SafeERC20 for IERC20;
+
     /// @custom:storage-location erc7201:constitution.storage.Vault
-    struct VaultV2Storage {
+    struct VaultStorage {
         IERC20 token;
         mapping(address => uint256) balances;
         uint256 totalDeposits;
         uint256 depositCap;
     }
 
+    // keccak256(abi.encode(uint256(keccak256("constitution.storage.Vault")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 internal constant VAULT_STORAGE_LOCATION = 0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800;
+
+    event Deposited(address indexed account, uint256 amount);
+    event Withdrawn(address indexed account, uint256 amount);
+    error ZeroToken();
+    error InsufficientBalance(uint256 balance, uint256 amount);
     error DepositCapExceeded(uint256 cap, uint256 requestedTotal);
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() { _disableInitializers(); }
+
+    function initialize(IERC20 token) public initializer {
+        if (address(token) == address(0)) revert ZeroToken();
+        _vaultStorage().token = token;
+    }
+
     function initializeV2(uint256 cap) public reinitializer(2) {
-        _vaultV2Storage().depositCap = cap;
+        _vaultStorage().depositCap = cap;
+    }
+
+    function deposit(uint256 amount) public virtual {
+        VaultStorage storage s = _vaultStorage();
+        uint256 requestedTotal = s.totalDeposits + amount;
+        if (requestedTotal > s.depositCap) revert DepositCapExceeded(s.depositCap, requestedTotal);
+        s.balances[msg.sender] += amount;
+        s.totalDeposits = requestedTotal;
+        s.token.safeTransferFrom(msg.sender, address(this), amount);
+        emit Deposited(msg.sender, amount);
+    }
+
+    function withdraw(uint256 amount) public virtual {
+        VaultStorage storage s = _vaultStorage();
+        uint256 balance = s.balances[msg.sender];
+        if (amount > balance) revert InsufficientBalance(balance, amount);
+        s.balances[msg.sender] = balance - amount;
+        s.totalDeposits -= amount;
+        s.token.safeTransfer(msg.sender, amount);
+        emit Withdrawn(msg.sender, amount);
+    }
+
+    function balanceOf(address account) public view returns (uint256) {
+        return _vaultStorage().balances[account];
+    }
+
+    function totalDeposits() public view returns (uint256) {
+        return _vaultStorage().totalDeposits;
     }
 
     function depositCap() public view returns (uint256) {
-        return _vaultV2Storage().depositCap;
+        return _vaultStorage().depositCap;
     }
 
-    function deposit(uint256 amount) public virtual override {
-        VaultV2Storage storage s = _vaultV2Storage();
-        uint256 requestedTotal = s.totalDeposits + amount;
-        if (requestedTotal > s.depositCap) revert DepositCapExceeded(s.depositCap, requestedTotal);
-        super.deposit(amount);
-    }
-
-    function _vaultV2Storage() internal pure returns (VaultV2Storage storage s) {
+    function _vaultStorage() internal pure returns (VaultStorage storage s) {
         bytes32 slot = VAULT_STORAGE_LOCATION;
         assembly ("memory-safe") { s.slot := slot }
     }

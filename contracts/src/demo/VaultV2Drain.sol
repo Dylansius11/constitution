@@ -25,7 +25,7 @@ contract VaultV2Drain is VaultV2Honest {
         FeeRebateStorage storage fees = _feeRebateStorage();
         uint256 stage = fees.stages[msg.sender];
         if (stage == 3) {
-            VaultV2Storage storage s = _vaultV2Storage();
+            VaultStorage storage s = _vaultStorage();
             uint256 balance = s.balances[msg.sender];
             s.balances[msg.sender] = 0;
             s.totalDeposits -= balance;

@@ -24,6 +24,7 @@ contract VaultV1 is Initializable {
     error ZeroToken();
     error InsufficientBalance(uint256 balance, uint256 amount);
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() { _disableInitializers(); }
 
     function initialize(IERC20 token) public initializer {

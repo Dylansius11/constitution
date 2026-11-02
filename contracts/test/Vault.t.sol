@@ -12,7 +12,7 @@ import {VaultV2Drain} from "../src/demo/VaultV2Drain.sol";
 
 // Expose struct types to forge inspect without changing production storage.
 contract V1Layout is VaultV1 { VaultStorage internal layout; }
-contract V2Layout is VaultV2Honest { VaultV2Storage internal layout; }
+contract V2Layout is VaultV2Honest { VaultStorage internal layout; }
 
 contract VaultTest is Test {
     address constant VICTIM = address(0x1111);
