@@ -1,0 +1,39 @@
+# Project settings, not global changes. Arrays replace inherited values.
+# Project modelRoles: omp://config-usage.md, Settings resolution model.
+modelRoles:
+  default: anthropic/claude-opus-5-5:high
+  plan: anthropic/claude-opus-5-5:high
+  task: openai-codex/gpt-6.1-sol:high
+  secondary: anthropic/claude-sonnet-5-5:high
+task:
+  maxConcurrency: 4
+skills:
+  customDirectories:
+    - C:/Users/HP Victus/Documents/personal-projects/hackathon/near-hackathon/constitution/.claude/skills
+  includeSkills:
+    - hackathon-winning
+    - near-smart-contracts
+    - near-api-js
+    - near-ai-cloud
+    - secure-workflow-guide
+    - property-based-testing
+    - upgrade-solidity-contracts
+    - brainstorming
+    - writing-plans
+    - executing-plans
+    - subagent-driven-development
+    - test-driven-development
+    - systematic-debugging
+    - verification-before-completion
+    - requesting-code-review
+    - codebase-design
+    - improve-codebase-architecture
+    - code-review
+    - impeccable
+    - emil-design-eng
+    - design-taste-frontend
+    - motion
+    - gsap-core
+    - ponytail
+    - find-docs
+    - orca-cli

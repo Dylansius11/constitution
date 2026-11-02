@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "skills": {
+    "brainstorming": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/brainstorming/SKILL.md",
+      "computedHash": "da48054155b36bfe3fc2ad24f97087af4a495e1b6a4e352233cc1a77550838e5"
+    },
+    "code-review": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/code-review/SKILL.md",
+      "computedHash": "1846141c77eaada59e449d831720ac1fd3f99e5cb22c30ed42ea5e4d14bd3cda"
+    },
+    "codebase-design": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/codebase-design/SKILL.md",
+      "computedHash": "fb1d8ab98ad151551eeade003e3ae55a46578a380fd9fc3ed4dbf9c2fbce0a9f"
+    },
+    "design-taste-frontend": {
+      "source": "../../../../../.agents/skills",
+      "sourceType": "local",
+      "computedHash": "899b84384f74f540ea5284d9b2e9234e050998b42eacc805410b518d4226c0b3"
+    },
+    "emil-design-eng": {
+      "source": "../../../../../.agents/skills",
+      "sourceType": "local",
+      "computedHash": "87067d79205fdedc6d682891027dd9c7335486c4b4dc2e785638941a9d2e6061"
+    },
+    "executing-plans": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/executing-plans/SKILL.md",
+      "computedHash": "8e1b5cfea8dc1660d4d7c86cf028f1f84bbcddd5d33ef0ff26a219de9d7f60d0"
+    },
+    "find-docs": {
+      "source": "../../../../../.agents/skills",
+      "sourceType": "local",
+      "computedHash": "0210767e57873317edc8b91783a2f1b74eb9bbdd2139bd14e9129e9a0bbc2dd6"
+    },
+    "gsap-core": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-core/SKILL.md",
+      "computedHash": "b891c9ed42d9319685250231085ebe21538f2c844613b277b9dd2b3ff529a542"
+    },
+    "impeccable": {
+      "source": "../../../../../.agents/skills",
+      "sourceType": "local",
+      "computedHash": "638225c0ddaff06181c4315e0caf15b68d7901556345fbd20c9b7a721a2d36e0"
+    },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "computedHash": "f74b0bf1be26220dd615523fc1c0562567f9c463d9e9b255d4031345ffb37cd3"
+    },
+    "motion": {
+      "source": "../../../../../.agents/skills",
+      "sourceType": "local",
+      "computedHash": "3c8f6f40f83820e8d0366e9187444365680e169d9394a03b7cd2ec2e6b711f19"
+    },
+    "near-ai-cloud": {
+      "source": "near/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/near-ai-cloud/SKILL.md",
+      "computedHash": "00c15c64c1a5245a16b192c17fe5e61475b69d27355d5d310075101942f72e80"
+    },
+    "near-api-js": {
+      "source": "near/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/near-api-js/SKILL.md",
+      "computedHash": "479324685943b82645f325ee81f66ea3a10ba9eb5a9f33d618e9550b4061b1d0"
+    },
+    "near-smart-contracts": {
+      "source": "near/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/near-smart-contracts/SKILL.md",
+      "computedHash": "0615674e279d5a509a648ff0e4e03a9cedfb2fb1dda7901ddeaa737903e68eb1"
+    },
+    "orca-cli": {
+      "source": "../../../../../.agents/skills",
+      "sourceType": "local",
+      "computedHash": "83ece910d035d0684195095bb9df5911a028002b2efba1ebbeb4ae66de5e0903"
+    },
+    "ponytail": {
+      "source": "../../../../../.agents/skills",
+      "sourceType": "local",
+      "computedHash": "9e8d05cbbaf6dc38f0cffc924c09b3cbe76d94ba4ba0d09bde803da2f8c6b5a0"
+    },
+    "property-based-testing": {
+      "source": "trailofbits/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/property-based-testing/skills/property-based-testing/SKILL.md",
+      "computedHash": "47a3aa897f836b327698a900d4bc38bed802406b902db1301f64a3e76c6e87d2"
+    },
+    "requesting-code-review": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/requesting-code-review/SKILL.md",
+      "computedHash": "b095ac8c980339436b41de9989328f3f288f2e2a70452df28452bbeb6531d604"
+    },
+    "secure-workflow-guide": {
+      "source": "trailofbits/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/building-secure-contracts/skills/secure-workflow-guide/SKILL.md",
+      "computedHash": "b833e68c734f4c2152a69470ddbb936ecf93a50c91de277141a15d65fb4cd5bc"
+    },
+    "subagent-driven-development": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/subagent-driven-development/SKILL.md",
+      "computedHash": "eb19d7078aeabe22efa59d74b1141d40a4e3d8be4f5c7a3a4f8d7998abf50f5b"
+    },
+    "systematic-debugging": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/systematic-debugging/SKILL.md",
+      "computedHash": "276fb0aadb002ab930cc2a56de89e16995a2e3e70b33587652bf0a5fb123148d"
+    },
+    "test-driven-development": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/test-driven-development/SKILL.md",
+      "computedHash": "3cfe4ebb6fa7288f668d87880d279c8e48f7a92b63415e296857060f5ce22e05"
+    },
+    "upgrade-solidity-contracts": {
+      "source": "OpenZeppelin/openzeppelin-skills",
+      "sourceType": "github",
+      "skillPath": "skills/upgrade-solidity-contracts/SKILL.md",
+      "computedHash": "d7ff4d0f6a8c840c69c6695fcbb9f185dd13cfe5c1cbcb301c2a99f1d4cd2bda"
+    },
+    "verification-before-completion": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/verification-before-completion/SKILL.md",
+      "computedHash": "b529822bdac4b197b180fe12225cff86b930b65910435103c10622df7f041651"
+    },
+    "writing-plans": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/writing-plans/SKILL.md",
+      "computedHash": "c2647b5bf067be353a893e5a39a632cbbeb7ad81e61fa5ae227ece5490029073"
+    }
+  }
+}

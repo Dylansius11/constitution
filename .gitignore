@@ -1,0 +1,7 @@
+# Local agent skills are restored from skills-lock.json, not published.
+.claude/skills/
+# One-time local handoff and private working notes.
+scratch/
+.env
+.env.*
+!.env.example
