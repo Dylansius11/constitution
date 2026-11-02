@@ -5,8 +5,10 @@ script = "script"
 out = "out"
 libs = ["lib"]
 solc_version = "0.8.38"
-# [I] Pinned explicitly; P1.3 confirms against Base Sepolia's active fork with a cited Base doc.
-evm_version = "prague"
+# [V] 2026-11-02 UTC: Base Sepolia activated Azul 2026-04-20 (Osaka EIP-7939 CLZ) and Denim 2026-10-21.
+# https://docs.base.org/upgrades/overview
+# https://docs.base.org/upgrades/azul/exec-engine
+evm_version = "osaka"
 optimizer = true
 optimizer_runs = 200
 bytecode_hash = "none"
