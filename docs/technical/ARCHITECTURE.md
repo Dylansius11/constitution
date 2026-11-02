@@ -118,7 +118,7 @@ All rows observed 2026-10-26. "Index" = official crates.io sparse index (`https:
 | Gate tx builder | omni-transaction | 0.5.0, `evm` only | index; docs.rs | `build_for_signing`, `build_with_signature` [V] |
 | Gate tests | near-workspaces | 0.23.0 (near-sandbox ^0.3.12) | index; docs.rs | Linux or WSL2 only |
 | Serialization | borsh | 1.8.1 | index | Canonical certificate and manifest bytes |
-| ABI encoding | alloy-sol-types | 1.7.3 | index | If it builds for the gate wasm (P1.1); else hand encoder with T-ENC vectors |
+| ABI encoding | alloy-sol-types | 1.7.3 | index | Builds for the gate wasm (spike P1.1, 2026-11-02); hand encoder kept only as a test oracle |
 | MPC | Chain Signatures | `v1.signer-prod.testnet`, domain 0 | live views; near/mpc source | External dependency |
 | CLI NEAR client | near-api | 0.8.6 | index | Rust NEAR RPC and signing |
 | CLI/verifier EVM client | alloy | 2.5.0 (MSRV 1.94.1) | docs.rs manifest | Base reads, prestate fetch, broadcast |

@@ -213,7 +213,7 @@ Check order (first failure panics, nothing is written):
 | `retry_sign(proposal_id: u64)` | anyone | `SignFailed` to `SignRequested`; signs the identical stored transaction | `E31_WRONG_STATE`, `E20_SIGNING_PAUSED` |
 | `bump_fee(proposal_id: u64)` | anyone | `Signed` only; both fee fields `* 5 / 4` rounded up, `max_fee_per_gas <= fee_cap`; same nonce, deadline, calldata; re-signs; at most 8 bumps | `E31_WRONG_STATE`, `E48_FEE_CAP`, `E49_TOO_MANY_BUMPS` |
 
-`SignTarget` is `Proposal(u64)` or `Change(u64)`. `SignatureResponse` accepts exactly the shape observed in spike P1.2. Candidate shape from current near/mpc source [V]: `{"scheme":"Secp256k1","big_r":{"affine_point":"<33-byte hex>"},"s":{"scalar":"<32-byte hex>"},"recovery_id":<u8>}`. The installed `near-smart-contracts` skill shows a different shape and is wrong for current source. Conversion: `r = affine_point[1..33]`, `s = scalar`, `y_parity = recovery_id`.
+`SignTarget` is `Proposal(u64)` or `Change(u64)`. `SignatureResponse` accepts exactly the shape observed in spike P1.2 [V, NEAR testnet 2026-11-02, sign tx `FNd6BUDznLA3wwmdtiCE2F8auBaJmfQMTCDS4g4ro6Rz`, captured in `vectors/mpc-response.json`]: `{"scheme":"Secp256k1","big_r":{"affine_point":"<33-byte hex>"},"s":{"scalar":"<32-byte hex>"},"recovery_id":<u8>}`, identical to near/mpc source at commit `b78f4f5b`. The installed `near-smart-contracts` skill shows a different shape and is wrong. Conversion: `r = affine_point[1..33]`, `s = scalar`, `y_parity = recovery_id`; the captured signature recovers to the derived EOA in Rust and Python.
 
 The gate does not re-run `ecrecover` on-chain: [V] `env::ecrecover` in near-sdk 5.29.1 is available only under the `unstable` feature. Safety does not depend on it: the EVM derives the sender from the signature, and the executor rejects any sender other than the derived EOA (`NotSigner`). The relay and `constitution audit` recover the sender off-chain and refuse to broadcast a mismatch.
 
@@ -323,7 +323,7 @@ execute(
 
 Calldata for `MigrateAuthority` (`0xfa2e9b8f` = `rotateSigner(address,bytes32,uint64)`): `rotateSigner(new_signer, changeId = sha256("constitution.v1/change" || borsh(gate account) || change_id_le), deadline)`.
 
-ABI encoding is standard Solidity head/tail encoding; implementation via `alloy-sol-types` if it builds for the gate wasm in P1.1, otherwise a hand-written encoder in `constitution-types` with the T-ENC vectors as the oracle.
+ABI encoding is standard Solidity head/tail encoding via `alloy-sol-types` 1.7.3, which builds for the gate wasm (spike P1.1, 2026-11-02: 137,861-byte spike wasm, no size blocker); a hand encoder exists only as a test oracle and the T-ENC vectors cross-check it against viem.
 
 ### Nonce discipline
 
@@ -479,7 +479,7 @@ NOT DEPLOYED. Fill only with observed values:
 | Proxy / ProxyAdmin | Base Sepolia | not deployed | | |
 | Rule-set hash | n/a | not committed | | |
 | Verifier public key and release hash | n/a | not generated | | |
-| MPC sign gas consumed | NEAR testnet | not measured | | |
+| MPC sign gas consumed | NEAR testnet | one spike observation: MPC sign receipt 4.28 Tgas, MPC completion 3.47 Tgas, spike callback 1.36 Tgas burnt, with 15 Tgas + 1 yoctoNEAR attached to `sign` and 20 Tgas to the callback (`spikes/gate-min/online-evidence.json`) | `FNd6BUDznLA3wwmdtiCE2F8auBaJmfQMTCDS4g4ro6Rz` | 2026-11-02 |
 | Upgrade gas used | Base Sepolia | not measured | | |
 
 ## Sources (all opened 2026-10-26)
