@@ -36,7 +36,7 @@ impl Service {
         repo: PathBuf,
         proposals: Box<dyn ProposalSource>,
     ) -> Result<Arc<Self>, String> {
-        crate::manifest::validate(&manifest)?;
+        constitution_types::manifest::validate_rule_set(&manifest)?;
         Ok(Arc::new(Self {
             identity,
             manifest,

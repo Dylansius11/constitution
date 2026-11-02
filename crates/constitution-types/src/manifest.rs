@@ -66,6 +66,52 @@ record!(AiEvidence {
 record!(AiCandidate { pub sha256: Hex32, pub reproduced: bool });
 record!(EvidenceBlock { pub number: u64, pub hash: Hex32 });
 
+/// The rule-set schema both the verifier and the CLI accept. A manifest that fails here has
+/// no meaningful `rule_set_hash`: unresolved R2 commitments and unsupported tools are refused.
+pub fn validate_rule_set(m: &RuleSetManifest) -> Result<(), &'static str> {
+    let r = &m.r2;
+    if r.harness_sha256.is_none()
+        || r.invariant_depth.is_none()
+        || r.loop_bound.is_none()
+        || r.array_lengths.is_none()
+        || r.solver_timeout_assertion_s.is_none()
+        || r.fuzz_runs.is_none()
+        || r.fuzz_seed.is_none()
+    {
+        return Err("R2 commitment unresolved: null fields refuse startup");
+    }
+    if m.version != 1
+        || m.solc != "0.8.38"
+        || m.evm_version != "prague"
+        || m.tools.foundry != "1.8.6"
+        || m.tools.halmos != "0.3.3"
+        || m.tools.upgrades_core != "1.47.0"
+        || r.solver_timeout_assertion_s == Some(0)
+        || r.fuzz_runs == Some(0)
+        || m.max_cert_ttl_s == 0
+    {
+        return Err("unsupported compiler, tool version or zero safety bound");
+    }
+    for item in &m.r4.allowlist {
+        if item.selector.0.len() != 4
+            || item
+                .args
+                .iter()
+                .any(|a| a.kind != "uint256" || a.max != "2^128-1")
+        {
+            return Err("unsupported R4 schema");
+        }
+    }
+    if ![255, 242, 244]
+        .iter()
+        .all(|o| m.r3.forbidden_opcodes.contains(o))
+        || m.r3.forbidden_constants.len() != 2
+    {
+        return Err("missing mandatory R3 filters");
+    }
+    Ok(())
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn rule_set_hash(manifest: &RuleSetManifest) -> Result<[u8; 32], borsh::io::Error> {
     use sha2::{Digest, Sha256};
