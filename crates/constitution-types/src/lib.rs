@@ -17,6 +17,8 @@
 
 pub mod bytes;
 pub mod certificate;
+pub mod governance;
+pub mod proposal;
 pub mod reasons;
 pub mod time;
 
@@ -24,6 +26,11 @@ pub use bytes::{Base64, Base64Bytes, Hex20, Hex32, HexBytes, U128Str};
 #[cfg(not(target_arch = "wasm32"))]
 pub use certificate::certificate_hash;
 pub use certificate::{AiReview, Certificate, DOMAIN, Verdict};
+pub use governance::{
+    ChangeKind, ChangeStatus, Config, Constitution, Params, PendingChange, Roles, SignTarget,
+    TIMELOCK_NS, VerifierRecord, change_id_hash,
+};
 pub use near_account_id::AccountId;
+pub use proposal::{EvmTx, MAX_INIT_CALLDATA, Proposal, ProposalState, ProposeArgs, Rejection};
 pub use reasons::{GateError, ReasonCode, RuleId};
 pub use time::{ns_to_s, s_to_ns};
