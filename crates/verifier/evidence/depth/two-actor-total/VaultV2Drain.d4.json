@@ -1,0 +1,126 @@
+{
+    "exitcode": 1,
+    "test_results": {
+        "test/Solvency.t.sol:Solvency": [
+            {
+                "name": "invariant_solvency()",
+                "exitcode": 1,
+                "num_models": 1,
+                "models": [
+                    {
+                        "model": {
+                            "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_2b1a6a0_03": {
+                                "full_name": "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_2b1a6a0_03",
+                                "variable_name": "msg",
+                                "solidity_type": "value",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 0
+                            },
+                            "p_amount_uint96_62d6d9f_04": {
+                                "full_name": "p_amount_uint96_62d6d9f_04",
+                                "variable_name": "amount",
+                                "solidity_type": "uint96",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 1
+                            },
+                            "halmos_block_timestamp_depth1_f43e15c": {
+                                "full_name": "halmos_block_timestamp_depth1_f43e15c",
+                                "variable_name": "block",
+                                "solidity_type": "timestamp",
+                                "smt_type": "BitVec 64",
+                                "size_bits": 64,
+                                "value": 9223372036854775808
+                            },
+                            "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_8a8fa5d_11": {
+                                "full_name": "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_8a8fa5d_11",
+                                "variable_name": "msg",
+                                "solidity_type": "value",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 0
+                            },
+                            "p_amount_uint96_d6f5a5e_12": {
+                                "full_name": "p_amount_uint96_d6f5a5e_12",
+                                "variable_name": "amount",
+                                "solidity_type": "uint96",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 1
+                            },
+                            "halmos_block_timestamp_depth2_9957c3c": {
+                                "full_name": "halmos_block_timestamp_depth2_9957c3c",
+                                "variable_name": "block",
+                                "solidity_type": "timestamp",
+                                "smt_type": "BitVec 64",
+                                "size_bits": 64,
+                                "value": 9223372036854775808
+                            },
+                            "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_e40315a_15": {
+                                "full_name": "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_e40315a_15",
+                                "variable_name": "msg",
+                                "solidity_type": "value",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 0
+                            },
+                            "p_amount_uint96_9c4634a_16": {
+                                "full_name": "p_amount_uint96_9c4634a_16",
+                                "variable_name": "amount",
+                                "solidity_type": "uint96",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 1
+                            },
+                            "halmos_block_timestamp_depth3_dbf6cb8": {
+                                "full_name": "halmos_block_timestamp_depth3_dbf6cb8",
+                                "variable_name": "block",
+                                "solidity_type": "timestamp",
+                                "smt_type": "BitVec 64",
+                                "size_bits": 64,
+                                "value": 9223372036854775808
+                            },
+                            "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_13f3587_23": {
+                                "full_name": "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_13f3587_23",
+                                "variable_name": "msg",
+                                "solidity_type": "value",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 0
+                            },
+                            "p_amount_uint96_297bf6a_24": {
+                                "full_name": "p_amount_uint96_297bf6a_24",
+                                "variable_name": "amount",
+                                "solidity_type": "uint96",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 73786976294838206464
+                            },
+                            "halmos_block_timestamp_depth4_31bcc8b": {
+                                "full_name": "halmos_block_timestamp_depth4_31bcc8b",
+                                "variable_name": "block",
+                                "solidity_type": "timestamp",
+                                "smt_type": "BitVec 64",
+                                "size_bits": 64,
+                                "value": 9223372036854775808
+                            }
+                        },
+                        "is_valid": true
+                    }
+                ],
+                "num_paths": [
+                    398,
+                    396,
+                    0
+                ],
+                "time": [
+                    61.88988985099968,
+                    61.88963436699851,
+                    0.0002476399986335309
+                ],
+                "num_bounded_loops": 0
+            }
+        ]
+    }
+}

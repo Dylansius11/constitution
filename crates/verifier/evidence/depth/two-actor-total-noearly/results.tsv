@@ -1,0 +1,2 @@
+marker	candidate	depth	halmos_exit	wall_s	max_rss_kb	cgroup_peak_bytes	class	solver	assertion_timeout	branching_timeout	loop	extra
+RESULT	VaultV2Drain	4	124	335.9	340752	334430208	Incomplete	yices	10s	1ms	2	

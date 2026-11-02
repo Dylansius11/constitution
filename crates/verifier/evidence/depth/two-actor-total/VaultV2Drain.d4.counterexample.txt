@@ -1,0 +1,20 @@
+# VaultV2Drain, depth 4, two actors: Halmos 0.3.3 counterexample (model and top-level calls only)
+# source: two-actor-total/VaultV2Drain.d4.log
+    halmos_block_timestamp_depth1_f43e15c = 0x8000000000000000
+    halmos_block_timestamp_depth2_9957c3c = 0x8000000000000000
+    halmos_block_timestamp_depth3_dbf6cb8 = 0x8000000000000000
+    halmos_block_timestamp_depth4_31bcc8b = 0x8000000000000000
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_13f3587_23 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_2b1a6a0_03 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_8a8fa5d_11 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_e40315a_15 = 0x00
+    p_amount_uint96_297bf6a_24 = 0x40000000000000000
+    p_amount_uint96_62d6d9f_04 = 0x01
+    p_amount_uint96_9c4634a_16 = 0x01
+    p_amount_uint96_d6f5a5e_12 = 0x01
+Sequence:
+    CALL 0xaaaa0006::deposit(p_amount_uint96_62d6d9f_04)
+    CALL 0xaaaa0006::withdraw(p_amount_uint96_d6f5a5e_12)
+    CALL 0xaaaa0006::deposit(p_amount_uint96_9c4634a_16)
+    CALL 0xaaaa0006::withdraw(p_amount_uint96_297bf6a_24)
+[FAIL] invariant_solvency() (paths: 398, time: 61.89s (paths: 61.89s, models: 0.00s), bounds: [])

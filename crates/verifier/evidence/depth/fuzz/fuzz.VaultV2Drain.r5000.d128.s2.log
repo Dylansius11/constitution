@@ -1,0 +1,50 @@
+Compiling 27 files with Solc 0.8.38
+Solc 0.8.38 finished in 858.81ms
+Compiler run successful with warnings:
+Warning (3420): Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.38;"
+--> candidate.sol
+
+Warning (8506): Experimental pragma ABIEncoderV2 is deprecated and will be removed in a future release.
+ --> lib/forge-std/StdInvariant.sol:4:1:
+  |
+4 | pragma experimental ABIEncoderV2;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+{"timestamp":1793649723,"event":"failure","invariant":"invariant_solvency","target":"test/Solvency.t.sol:Solvency","reason":"panic: assertion failed (0x01)"}
+
+Ran 1 test for test/Solvency.t.sol:Solvency
+[FAIL: panic: assertion failed (0x01)]
+	[Sequence] (original: 70, shrunk: 4)
+		sender=0x0000000000000000000000000000000000000664 addr=[test/Solvency.t.sol:Actor]0xA4AD4f68d0b91CFD19687c881e50f3A00242828c calldata=deposit(uint96) args=[1]
+		sender=0x0000000000000000000000000000000000000200 addr=[test/Solvency.t.sol:Actor]0xA4AD4f68d0b91CFD19687c881e50f3A00242828c calldata=withdraw(uint96) args=[1]
+		sender=0x0000000000000000000000000000824cA02ccAC1 addr=[test/Solvency.t.sol:Actor]0xA4AD4f68d0b91CFD19687c881e50f3A00242828c calldata=deposit(uint96) args=[1]
+		sender=0x000000000000000000000000000000001D1554d0 addr=[test/Solvency.t.sol:Actor]0xA4AD4f68d0b91CFD19687c881e50f3A00242828c calldata=withdraw(uint96) args=[31121896660035278450 [3.112e19]]
+ invariant_solvency() (runs: 3276, calls: 419295, reverts: 121605)
+
+╭----------+----------+--------+---------+----------╮
+| Contract | Selector | Calls  | Reverts | Discards |
++===================================================+
+| Actor    | deposit  | 209346 | 48169   | 0        |
+|----------+----------+--------+---------+----------|
+| Actor    | withdraw | 209949 | 73436   | 0        |
+╰----------+----------+--------+---------+----------╯
+
+Suite result: FAILED. 0 passed; 1 failed; 0 skipped; finished in 68.59s (68.59s CPU time)
+
+Ran 1 test suite in 68.60s (68.59s CPU time): 0 tests passed, 1 failed, 0 skipped (1 total tests)
+
+Failing tests:
+Encountered 1 failing test in test/Solvency.t.sol:Solvency
+[FAIL: panic: assertion failed (0x01)]
+	[Sequence] (original: 70, shrunk: 4)
+		sender=0x0000000000000000000000000000000000000664 addr=[test/Solvency.t.sol:Actor]0xA4AD4f68d0b91CFD19687c881e50f3A00242828c calldata=deposit(uint96) args=[1]
+		sender=0x0000000000000000000000000000000000000200 addr=[test/Solvency.t.sol:Actor]0xA4AD4f68d0b91CFD19687c881e50f3A00242828c calldata=withdraw(uint96) args=[1]
+		sender=0x0000000000000000000000000000824cA02ccAC1 addr=[test/Solvency.t.sol:Actor]0xA4AD4f68d0b91CFD19687c881e50f3A00242828c calldata=deposit(uint96) args=[1]
+		sender=0x000000000000000000000000000000001D1554d0 addr=[test/Solvency.t.sol:Actor]0xA4AD4f68d0b91CFD19687c881e50f3A00242828c calldata=withdraw(uint96) args=[31121896660035278450 [3.112e19]]
+ invariant_solvency() (runs: 3276, calls: 419295, reverts: 121605)
+
+Encountered a total of 1 failing tests, 0 tests succeeded
+
+Tip: Run `forge test --rerun` to retry only the 1 failed test
+
+Fuzz seed: 0x2 (use `--fuzz-seed` to reproduce)

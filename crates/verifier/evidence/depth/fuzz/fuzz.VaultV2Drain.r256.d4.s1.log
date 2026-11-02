@@ -1,0 +1,27 @@
+Compiling 27 files with Solc 0.8.38
+Solc 0.8.38 finished in 604.99ms
+Compiler run successful with warnings:
+Warning (3420): Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.38;"
+--> candidate.sol
+
+Warning (8506): Experimental pragma ABIEncoderV2 is deprecated and will be removed in a future release.
+ --> lib/forge-std/StdInvariant.sol:4:1:
+  |
+4 | pragma experimental ABIEncoderV2;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+Ran 1 test for test/Solvency.t.sol:Solvency
+[PASS] invariant_solvency() (runs: 256, calls: 1024, reverts: 499)
+
+╭----------+----------+-------+---------+----------╮
+| Contract | Selector | Calls | Reverts | Discards |
++==================================================+
+| Actor    | deposit  | 497   | 53      | 0        |
+|----------+----------+-------+---------+----------|
+| Actor    | withdraw | 527   | 446     | 0        |
+╰----------+----------+-------+---------+----------╯
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 338.25ms (302.96ms CPU time)
+
+Ran 1 test suite in 651.21ms (338.25ms CPU time): 1 tests passed, 0 failed, 0 skipped (1 total tests)

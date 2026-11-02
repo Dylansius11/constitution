@@ -1,0 +1,24 @@
+{
+    "exitcode": 0,
+    "test_results": {
+        "test/Solvency.t.sol:Solvency": [
+            {
+                "name": "invariant_solvency()",
+                "exitcode": 0,
+                "num_models": 0,
+                "models": [],
+                "num_paths": [
+                    341,
+                    341,
+                    0
+                ],
+                "time": [
+                    65.67137826900034,
+                    65.67135638600121,
+                    1.6248999600065872e-05
+                ],
+                "num_bounded_loops": 0
+            }
+        ]
+    }
+}

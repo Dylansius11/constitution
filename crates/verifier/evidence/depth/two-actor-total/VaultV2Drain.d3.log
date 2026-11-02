@@ -1,0 +1,72 @@
+Compiling 27 files with Solc 0.8.38
+Solc 0.8.38 finished in 583.00ms
+Compiler run successful with warnings:
+Warning (3420): Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.38;"
+--> candidate.sol
+
+Warning (8506): Experimental pragma ABIEncoderV2 is deprecated and will be removed in a future release.
+ --> lib/forge-std/StdInvariant.sol:4:1:
+  |
+4 | pragma experimental ABIEncoderV2;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Honest.sol:50:9
+   │
+50 │         emit Deposited(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Honest.sol:60:9
+   │
+60 │         emit Withdrawn(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Drain.sol:34:13
+   │
+34 │             emit Withdrawn(msg.sender, amount);
+   │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV1.sol:40:9
+   │
+40 │         emit Deposited(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV1.sol:50:9
+   │
+50 │         emit Withdrawn(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+
+Running 1 tests for test/Solvency.t.sol:Solvency
+setup: 0.29s (decode: 0.01s, run: 0.28s)
+
+
+╭─ Initial Invariant Target Functions ─╮
+│ Solvency.t.sol:Actor @ 0xaaaa0006    │
+│ ├── deposit(uint96)                  │
+│ └── withdraw(uint96)                 │
+│                                      │
+│ Solvency.t.sol:Actor @ 0xaaaa0005    │
+│ ├── deposit(uint96)                  │
+│ └── withdraw(uint96)                 │
+╰──────────────────────────────────────╯
+
+
+[32m[PASS][0m invariant_solvency() (paths: 295, time: 46.52s (paths: 46.52s, models: 0.00s), bounds: [])
+Symbolic test result: 1 passed; 0 failed; time: 46.87s
+
+[time] total: 47.64s (build: 0.74s, load: 0.04s, tests: 46.87s)

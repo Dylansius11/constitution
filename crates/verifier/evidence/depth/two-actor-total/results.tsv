@@ -1,0 +1,7 @@
+marker	candidate	depth	halmos_exit	wall_s	max_rss_kb	cgroup_peak_bytes	class	solver	assertion_timeout	branching_timeout	loop	extra
+RESULT	VaultV2Honest	2	0	4.8	96228	94457856	Pass	yices	10s	1ms	2	--early-exit
+RESULT	VaultV2Honest	3	0	16.6	101600	93544448	Pass	yices	10s	1ms	2	--early-exit
+RESULT	VaultV2Honest	4	0	75.9	139936	127238144	Pass	yices	10s	1ms	2	--early-exit
+RESULT	VaultV2Drain	2	0	8.7	96148	97234944	Pass	yices	10s	1ms	2	--early-exit
+RESULT	VaultV2Drain	3	0	55.5	128508	115048448	Pass	yices	10s	1ms	2	--early-exit
+RESULT	VaultV2Drain	4	1	71.7	163944	152489984	Fail	yices	10s	1ms	2	--early-exit

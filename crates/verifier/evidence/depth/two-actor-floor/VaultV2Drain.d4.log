@@ -1,0 +1,179 @@
+Compiling 27 files with Solc 0.8.38
+Solc 0.8.38 finished in 651.67ms
+Compiler run successful with warnings:
+Warning (3420): Source file does not specify required compiler version! Consider adding "pragma solidity ^0.8.38;"
+--> candidate.sol
+
+Warning (8506): Experimental pragma ABIEncoderV2 is deprecated and will be removed in a future release.
+ --> lib/forge-std/StdInvariant.sol:4:1:
+  |
+4 | pragma experimental ABIEncoderV2;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Honest.sol:50:9
+   │
+50 │         emit Deposited(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Honest.sol:60:9
+   │
+60 │         emit Withdrawn(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Drain.sol:34:13
+   │
+34 │             emit Withdrawn(msg.sender, amount);
+   │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV1.sol:40:9
+   │
+40 │         emit Deposited(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV1.sol:50:9
+   │
+50 │         emit Withdrawn(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+
+Running 1 tests for test/Solvency.t.sol:Solvency
+setup: 0.29s (decode: 0.01s, run: 0.28s)
+
+
+╭─ Initial Invariant Target Functions ─╮
+│ Solvency.t.sol:Actor @ 0xaaaa0006    │
+│ ├── deposit(uint96)                  │
+│ └── withdraw(uint96)                 │
+│                                      │
+│ Solvency.t.sol:Actor @ 0xaaaa0005    │
+│ ├── deposit(uint96)                  │
+│ └── withdraw(uint96)                 │
+╰──────────────────────────────────────╯
+
+
+[31mCounterexample: 
+    halmos_block_timestamp_depth1_4924e1a = 0x8000000000000000
+    halmos_block_timestamp_depth2_1a01127 = 0x8000000000000000
+    halmos_block_timestamp_depth3_c73b7e7 = 0x8000000000000000
+    halmos_block_timestamp_depth4_d04e714 = 0x8000000000000000
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_7192b8b_15 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_8b3e457_11 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_8f252f0_23 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_b7ff183_03 = 0x00
+    p_amount_uint96_3116a14_04 = 0x01
+    p_amount_uint96_6c60bd2_12 = 0x01
+    p_amount_uint96_7288046_16 = 0x01
+    p_amount_uint96_923dbe7_24 = 0x40000000000000000[0m
+Sequence:
+    [36mCALL[0m 0xaaaa0006::deposit(p_amount_uint96_3116a14_04) (value: halmos_msg_value_0x00000000000000000000000000000000aaaa0006_b7ff183_03) (caller: halmos_msg_sender_0x00000000000000000000000000000000aaaa0006_d686263_02)
+        [36mCALL[0m 0xaaaa0004::deposit(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))) (caller: 0xaaaa0006)
+            [36mSLOAD[0m  @[95m0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0003
+            [36mDELEGATECALL[0m 0xaaaa0004::deposit(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))) (caller: 0xaaaa0006)
+                [36mSLOAD[0m  @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m → 0x00
+                [36mSSTORE[0m @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m ← 0x0000000000000000000000000000000000000000000000000000000000000001
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m → 0x0000000000000000000000000000000000000000000000056bc75e2d63100000
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416803[0m → 0x00000000000000000000000000000000000000000000003635c9adc5dea00000
+                [36mSLOAD[0m  @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m → 0x00
+                [36mSSTORE[0m @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m ← Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))
+                [36mSSTORE[0m @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0002
+                [36mCALL[0m 0xaaaa0002::transferFrom(Concat(0x00000000000000000000000000000000000000000000000000000000aaaa000600000000000000000000000000000000000000000000000000000000aaaa00040000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))) (caller: 0xaaaa0004)
+                    [36mSLOAD[0m  @[95m0xf5f0e89d9b5820b4e9805ee8c2dfbffd2088ec019c46e0df87d99e7c13aa4a6c[0m → 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+                    [36mSLOAD[0m  @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m → 0x0000000000000000000000000000000000000000000000008ac7230489e80000
+                    [36mSSTORE[0m @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m ← +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))))
+                    [36mSLOAD[0m  @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m → 0x0000000000000000000000000000000000000000000000056bc75e2d63100000
+                    [36mSSTORE[0m @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)))
+                    LOG3([36mtopic0[0m=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef, [36mtopic1[0m=0xaaaa0006, [36mtopic2[0m=0xaaaa0004, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)))
+                [32m↩ [0m[36mRETURN[0m [32m0x0000000000000000000000000000000000000000000000000000000000000001[0m[32m[0m
+                LOG2([36mtopic0[0m=0x2da466a7b24304f47e87fa2e1e5a81b9831ce54fec19055ce277ca2f39ba42c4, [36mtopic1[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)))
+            [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+        [32m↩ [0m[36mRETURN[0m [32m0x[0m[32m[0m
+    [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+    [36mCALL[0m 0xaaaa0006::withdraw(p_amount_uint96_6c60bd2_12) (value: halmos_msg_value_0x00000000000000000000000000000000aaaa0006_8b3e457_11) (caller: halmos_msg_sender_0x00000000000000000000000000000000aaaa0006_a45d618_10)
+        [36mCALL[0m 0xaaaa0004::withdraw(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))) (caller: 0xaaaa0006)
+            [36mSLOAD[0m  @[95m0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0003
+            [36mDELEGATECALL[0m 0xaaaa0004::withdraw(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))) (caller: 0xaaaa0006)
+                [36mSLOAD[0m  @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m → 0x0000000000000000000000000000000000000000000000000000000000000001
+                [36mSSTORE[0m @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m ← 0x0000000000000000000000000000000000000000000000000000000000000002
+                [36mSLOAD[0m  @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m → Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))
+                [36mSSTORE[0m @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m ← +(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)))
+                [36mSSTORE[0m @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0002
+                [36mCALL[0m 0xaaaa0002::transfer(Concat(0x00000000000000000000000000000000000000000000000000000000aaaa00060000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))) (caller: 0xaaaa0004)
+                    [36mSLOAD[0m  @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)))
+                    [36mSSTORE[0m @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                    [36mSLOAD[0m  @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m → +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))))
+                    [36mSSTORE[0m @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m ← +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))))
+                    LOG3([36mtopic0[0m=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef, [36mtopic1[0m=0xaaaa0004, [36mtopic2[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12)))
+                [32m↩ [0m[36mRETURN[0m [32m0x0000000000000000000000000000000000000000000000000000000000000001[0m[32m[0m
+                LOG2([36mtopic0[0m=0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5, [36mtopic1[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12)))
+            [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+        [32m↩ [0m[36mRETURN[0m [32m0x[0m[32m[0m
+    [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+    [36mCALL[0m 0xaaaa0006::deposit(p_amount_uint96_7288046_16) (value: halmos_msg_value_0x00000000000000000000000000000000aaaa0006_7192b8b_15) (caller: halmos_msg_sender_0x00000000000000000000000000000000aaaa0006_a1e9fc9_14)
+        [36mCALL[0m 0xaaaa0004::deposit(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16))) (caller: 0xaaaa0006)
+            [36mSLOAD[0m  @[95m0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0003
+            [36mDELEGATECALL[0m 0xaaaa0004::deposit(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16))) (caller: 0xaaaa0006)
+                [36mSLOAD[0m  @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m → 0x0000000000000000000000000000000000000000000000000000000000000002
+                [36mSSTORE[0m @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m ← 0x0000000000000000000000000000000000000000000000000000000000000003
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416803[0m → 0x00000000000000000000000000000000000000000000003635c9adc5dea00000
+                [36mSLOAD[0m  @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m → +(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                [36mSSTORE[0m @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m ← +(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                [36mSSTORE[0m @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0002
+                [36mCALL[0m 0xaaaa0002::transferFrom(Concat(0x00000000000000000000000000000000000000000000000000000000aaaa000600000000000000000000000000000000000000000000000000000000aaaa00040000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16))) (caller: 0xaaaa0004)
+                    [36mSLOAD[0m  @[95m0xf5f0e89d9b5820b4e9805ee8c2dfbffd2088ec019c46e0df87d99e7c13aa4a6c[0m → 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+                    [36mSLOAD[0m  @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m → +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))))
+                    [36mSSTORE[0m @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m ← +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16))))
+                    [36mSLOAD[0m  @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                    [36mSSTORE[0m @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                    LOG3([36mtopic0[0m=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef, [36mtopic1[0m=0xaaaa0006, [36mtopic2[0m=0xaaaa0004, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)))
+                [32m↩ [0m[36mRETURN[0m [32m0x0000000000000000000000000000000000000000000000000000000000000001[0m[32m[0m
+                LOG2([36mtopic0[0m=0x2da466a7b24304f47e87fa2e1e5a81b9831ce54fec19055ce277ca2f39ba42c4, [36mtopic1[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)))
+            [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+        [32m↩ [0m[36mRETURN[0m [32m0x[0m[32m[0m
+    [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+    [36mCALL[0m 0xaaaa0006::withdraw(p_amount_uint96_923dbe7_24) (value: halmos_msg_value_0x00000000000000000000000000000000aaaa0006_8f252f0_23) (caller: halmos_msg_sender_0x00000000000000000000000000000000aaaa0006_9af9886_22)
+        [36mCALL[0m 0xaaaa0004::withdraw(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_923dbe7_24))) (caller: 0xaaaa0006)
+            [36mSLOAD[0m  @[95m0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0003
+            [36mDELEGATECALL[0m 0xaaaa0004::withdraw(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_923dbe7_24))) (caller: 0xaaaa0006)
+                [36mSLOAD[0m  @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m → 0x0000000000000000000000000000000000000000000000000000000000000003
+                [36mSLOAD[0m  @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m → +(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                [36mSSTORE[0m @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m ← 0x0000000000000000000000000000000000000000000000000000000000000000
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                [36mSSTORE[0m @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m ← 0x0000000000000000000000000000000000000000000000056bc75e2d63100000
+                [36mSSTORE[0m @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m ← 0x0000000000000000000000000000000000000000000000000000000000000000
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0002
+                [36mCALL[0m 0xaaaa0002::transfer(Concat(0x00000000000000000000000000000000000000000000000000000000aaaa00060000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_923dbe7_24))) (caller: 0xaaaa0004)
+                    [36mSLOAD[0m  @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))))
+                    [36mSSTORE[0m @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12))), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_923dbe7_24))))
+                    [36mSLOAD[0m  @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m → +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16))))
+                    [36mSSTORE[0m @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m ← +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_923dbe7_24)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6c60bd2_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_3116a14_04))), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_7288046_16))))
+                    LOG3([36mtopic0[0m=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef, [36mtopic1[0m=0xaaaa0004, [36mtopic2[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_923dbe7_24)))
+                [32m↩ [0m[36mRETURN[0m [32m0x0000000000000000000000000000000000000000000000000000000000000001[0m[32m[0m
+                LOG2([36mtopic0[0m=0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5, [36mtopic1[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_923dbe7_24)))
+            [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+        [32m↩ [0m[36mRETURN[0m [32m0x[0m[32m[0m
+    [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+
+[31m[FAIL][0m invariant_solvency() (paths: 792, time: 101.78s (paths: 101.78s, models: 0.00s), bounds: [])
+Symbolic test result: 0 passed; 1 failed; time: 102.13s
+
+[time] total: 102.94s (build: 0.78s, load: 0.03s, tests: 102.13s)
