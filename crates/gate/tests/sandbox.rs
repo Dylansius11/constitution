@@ -46,6 +46,11 @@ fn exported_abi_is_exactly_the_allowed_surface() {
         "list_changes",
         "get_credit",
         "get_active",
+        "submit_verdict",
+        "on_signed",
+        "retry_sign",
+        "bump_fee",
+        "signing_preimage",
     ];
     expected.sort_unstable();
     assert_eq!(

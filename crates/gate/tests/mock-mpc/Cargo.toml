@@ -1,0 +1,21 @@
+[package]
+name = "mock-mpc"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+near-sdk = "=5.29.1"
+serde_json = "=1.0.154"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+overflow-checks = true
+panic = "abort"
