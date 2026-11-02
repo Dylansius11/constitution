@@ -18,6 +18,7 @@
 pub mod bytes;
 pub mod certificate;
 pub mod governance;
+pub mod manifest;
 pub mod proposal;
 pub mod reasons;
 pub mod time;
@@ -33,4 +34,5 @@ pub use governance::{
 pub use near_account_id::AccountId;
 pub use proposal::{EvmTx, MAX_INIT_CALLDATA, Proposal, ProposalState, ProposeArgs, Rejection};
 pub use reasons::{GateError, ReasonCode, RuleId};
+pub use manifest::{EvidenceManifest, RuleSetManifest};
 pub use time::{ns_to_s, s_to_ns};

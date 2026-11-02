@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "name": "constitution.demo.local",
+  "solc": "0.8.38",
+  "evm_version": "prague",
+  "optimizer_runs": 200,
+  "tools": {
+    "foundry": "1.8.6",
+    "halmos": "0.3.3",
+    "upgrades_core": "1.47.0",
+    "z3": "4.12.6.0",
+    "yices": "2.6.4"
+  },
+  "reference": {
+    "contract_name": "src/demo/VaultV1.sol:VaultV1",
+    "source_sha256s": {
+      "src/demo/VaultV1.sol": "0x34c43de600beb580e3319c9887da4d1614b3e296832523aa10d89786bc98c1f9"
+    }
+  },
+  "r1": {
+    "unsafe_allow": ["constructor", "missing-initializer", "delegatecall", "selfdestruct"]
+  },
+  "r2": {
+    "harness_sha256": null,
+    "invariant_depth": null,
+    "loop_bound": null,
+    "array_lengths": null,
+    "solver_timeout_assertion_s": null,
+    "fuzz_runs": null,
+    "fuzz_seed": null
+  },
+  "r3": {
+    "forbidden_opcodes": [
+      255,
+      242,
+      244
+    ],
+    "forbidden_constants": [
+      "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103"
+    ]
+  },
+  "r4": {
+    "allowlist": [
+      {
+        "selector": "0x5b4e128c",
+        "args": [
+          {
+            "type": "uint256",
+            "max": "2^128-1"
+          }
+        ]
+      }
+    ],
+    "allow_empty": true
+  },
+  "r5": {
+    "corpus_sha256": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "max_txs": 0,
+    "confirmations": 0
+  },
+  "ai": {
+    "required": true,
+    "model": "z-ai/glm-5.3-flash",
+    "signature_kind": "provider_tee",
+    "max_candidates": 4,
+    "timeout_s": 120
+  },
+  "max_cert_ttl_s": 300
+}
