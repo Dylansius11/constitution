@@ -1,6 +1,5 @@
-use constitution_types::manifest::StageStatus;
+use constitution_types::{bundle::SourceBundle, manifest::StageStatus};
 use constitution_verifier::{
-    bundle::SourceBundle,
     manifest::load_manifest,
     rules::{classify_halmos, filter, initializer},
 };
@@ -106,8 +105,9 @@ fn unresolved_r2_manifest_refuses_startup() {
 
 #[test]
 fn sealed_plaintext_limit_duplicate_sources_and_symlinks_fail_closed() {
+    use constitution_types::bundle::MAX_BUNDLE;
     use constitution_verifier::{
-        bundle::{MAX_BUNDLE, open},
+        bundle::{materialize, open},
         identity::Identity,
     };
     let identity = Identity::new();
@@ -126,7 +126,7 @@ fn sealed_plaintext_limit_duplicate_sources_and_symlinks_fail_closed() {
         std::fs::create_dir(root.path().join("src")).unwrap();
         std::os::unix::fs::symlink(outside.path(), root.path().join("src/link")).unwrap();
         bundle.files = vec![("src/link/A.sol".into(), b"untrusted".to_vec())];
-        assert!(bundle.materialize(root.path()).is_err());
+        assert!(materialize(&bundle, root.path()).is_err());
         assert!(!outside.path().join("A.sol").exists());
     }
 }

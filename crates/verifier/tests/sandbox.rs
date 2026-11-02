@@ -1,7 +1,6 @@
-use constitution_types::{manifest::*, *};
+use constitution_types::{bundle::SourceBundle, manifest::*, *};
 use constitution_verifier::{
-    bundle::SourceBundle, identity::Identity, pipeline, proposals::LocalProposal, sha256,
-    tools::Sandbox,
+    identity::Identity, pipeline, proposals::LocalProposal, sha256, tools::Sandbox,
 };
 use std::path::{Path, PathBuf};
 fn repo() -> PathBuf {

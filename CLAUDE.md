@@ -75,7 +75,7 @@ Small modules, one responsibility, explicit interfaces; no speculative abstracti
 
 Stack-specific (Stack C, versions in ARCHITECTURE):
 
-- `crates/constitution-types` is the only definition of certificate, proposal, manifest and EVM encoding bytes. Gate, verifier and CLI import it; the page re-derives independently and is checked by vectors in `vectors/`.
+- `crates/constitution-types` is the only definition of certificate, proposal, manifest and source-bundle bytes; `crates/gate/src/evm.rs` is the only EVM transaction encoder, pinned by T-ENC-1 (`vectors/evm-tx.json`). Gate, verifier and CLI import them; the page re-derives independently and is checked by vectors in `vectors/`.
 - Gate: near-sdk 5.29.1, Borsh state, no code-upgrade, add-key, delete-account or arbitrary self-call method. No method accepts a hash to sign. Panic codes exactly as SMART-CONTRACT. `#[private]` callbacks never panic after recording failure.
 - Amounts: yoctoNEAR and wei are `u128` (JSON strings), NEAR time is nanoseconds, certificate and EVM time is seconds. Convert only through `constitution-types`.
 - Solidity: 0.8.38, explicit `evm_version`, `ffi = false`, OpenZeppelin 5.6.1 unmodified, custom errors, checks then effects then interaction.

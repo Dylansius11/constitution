@@ -1,7 +1,6 @@
-use constitution_types::{manifest::RuleSetManifest, *};
+use constitution_types::{bundle::SourceBundle, manifest::RuleSetManifest, *};
 use constitution_verifier::{
     api::{Service, router},
-    bundle::SourceBundle,
     identity::Identity,
     pipeline,
     proposals::{LocalProposal, LocalRegistry},

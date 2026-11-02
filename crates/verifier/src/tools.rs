@@ -1,6 +1,7 @@
 //! [I] Only staged source, trusted dependencies and output enter the no-network tool
 //! container. No service environment, keys, home, or dstack socket is mounted.
-use crate::{bundle::SourceBundle, sha256};
+use crate::sha256;
+use constitution_types::bundle::SourceBundle;
 use constitution_types::{
     Hex32,
     manifest::{RuleSetManifest, StageStatus},
@@ -22,7 +23,7 @@ impl Sandbox {
         manifest: &RuleSetManifest,
     ) -> Result<Self, String> {
         let root = tempfile::tempdir().map_err(|e| e.to_string())?;
-        bundle.materialize(root.path())?;
+        crate::bundle::materialize(bundle, root.path())?;
         let config = format!(
             "[profile.default]\nsrc='src'\ntest='test'\nout='out'\nlibs=['lib']\nsolc='/usr/local/bin/solc'\nevm_version='prague'\noptimizer=true\noptimizer_runs={}\nbytecode_hash='none'\ncbor_metadata=false\nffi=false\nast=true\ndynamic_test_linking=false\nbuild_info=true\nextra_output=['storageLayout']\nremappings=['@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/','forge-std/=lib/forge-std/src/']\n",
             manifest.optimizer_runs

@@ -15,6 +15,7 @@
 //! <https://docs.rs/near-sdk-core/4.2.3/src/near_sdk_core/types/mod.rs.html>.
 //! The SDK's ^2.3.0 dependency admits this crate's exact 2.6.0 pin.
 
+pub mod bundle;
 pub mod bytes;
 pub mod certificate;
 pub mod governance;
@@ -31,8 +32,8 @@ pub use governance::{
     ChangeKind, ChangeStatus, Config, Constitution, Params, PendingChange, Roles, SignTarget,
     TIMELOCK_NS, VerifierRecord, change_id_hash,
 };
+pub use manifest::{EvidenceManifest, RuleSetManifest};
 pub use near_account_id::AccountId;
 pub use proposal::{EvmTx, MAX_INIT_CALLDATA, Proposal, ProposalState, ProposeArgs, Rejection};
 pub use reasons::{GateError, ReasonCode, RuleId};
-pub use manifest::{EvidenceManifest, RuleSetManifest};
 pub use time::{ns_to_s, s_to_ns};
