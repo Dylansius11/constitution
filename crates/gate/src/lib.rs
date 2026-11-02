@@ -162,3 +162,5 @@ fn emit(event: &str, data: serde_json::Value) {
     ));
 }
 
+#[cfg(test)]
+mod tests;
