@@ -1,0 +1,16 @@
+[package]
+name = "constitution-cli"
+description = "Operator and judge CLI for CONSTITUTION"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "constitution"
+path = "src/main.rs"
+
+[dependencies]
+constitution-types.workspace = true

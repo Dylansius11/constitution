@@ -1,0 +1,12 @@
+[package]
+name = "constitution-verifier"
+description = "Attested verifier that certifies or rejects upgrade proposals"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+constitution-types.workspace = true

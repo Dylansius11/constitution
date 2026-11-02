@@ -5,3 +5,10 @@ scratch/
 .env
 .env.*
 !.env.example
+# Build output.
+target/
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+web/dist/
+node_modules/

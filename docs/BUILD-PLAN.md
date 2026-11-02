@@ -11,10 +11,11 @@ Work top to bottom by dependency. Check a box only with observed acceptance evid
 
 ## Phase 0: documentation and prerequisites
 
-- [ ] **P0.1 Founder stack choice recorded.** Done in planning (D1, 2026-10-26); tick in the first commit after opening.
-- [ ] **P0.2 Docs complete and consistent.** CLAUDE.md, PRD, BUILD-PLAN, OPEN-DECISIONS, LESSONS, ARCHITECTURE, INTEGRATIONS, SMART-CONTRACT, DESIGN exist and agree. Tick in the first commit.
-- [ ] **P0.3 Repo and scaffold** (after 2026-11-01, needs B6). Owned: `Cargo.toml`, `rust-toolchain.toml`, `crates/*/Cargo.toml` with empty `lib.rs`/`main.rs`, `contracts/foundry.toml`, `.env.example`, `Makefile` with targets that print "not implemented" exit 1, `.gitignore` additions (`target/`, `contracts/out/`, `contracts/cache/`, `web/dist/`, `node_modules/`).
+- [x] **P0.1 Founder stack choice recorded.** Done in planning (D1, 2026-10-26); ticked in the first commits after opening (2026-11-03).
+- [x] **P0.2 Docs complete and consistent.** CLAUDE.md, PRD, BUILD-PLAN, OPEN-DECISIONS, LESSONS, ARCHITECTURE, INTEGRATIONS, SMART-CONTRACT, DESIGN exist and agree (lead consistency review and method lint, 2026-10-26).
+- [x] **P0.3 Repo and scaffold** (after 2026-11-01). Owned: `Cargo.toml`, `rust-toolchain.toml`, `crates/*/Cargo.toml` with empty `lib.rs`/`main.rs`, `contracts/foundry.toml`, `.env.example`, `Makefile` with targets that print "not implemented" exit 1, `.gitignore` additions (`target/`, `contracts/out/`, `contracts/cache/`, `web/dist/`, `node_modules/`).
   - Acceptance: `cargo metadata` succeeds; `forge config` prints solc 0.8.38 and `ffi = false`; no secrets; commit `chore(repo): scaffold workspace and docs foundation`.
+  - Evidence (2026-11-03, local): WSL2 Ubuntu, rustup resolved 1.99.1 from `rust-toolchain.toml`; `cargo metadata` ok; `cargo check --workspace` ok; `forge config` (Windows forge 1.8.3, pin 1.8.6 installed by P1.3) prints `solc = "0.8.38"`, `evm_version = "prague"`, `ffi = false`. Local git repo only; B6 (GitHub remote) still open.
 - [ ] **P0.4 Founder prerequisites started**: B1, B3, B5, B6 actions begun (INTEGRATIONS "Manual actions").
 
 Acceptance: a zero-context engineer can start P1.1 from these docs alone.

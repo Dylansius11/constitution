@@ -1,0 +1,15 @@
+[package]
+name = "constitution-gate"
+description = "Keyless NEAR gate that holds the upgrade authority through Chain Signatures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+constitution-types.workspace = true

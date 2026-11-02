@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/constitution-types",
+    "crates/gate",
+    "crates/verifier",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "UNLICENSED"
+repository = "https://github.com/Dylansius11/constitution"
+publish = false
+
+[workspace.dependencies]
+constitution-types = { path = "crates/constitution-types" }
+
+[profile.release]
+codegen-units = 1
+lto = true
+overflow-checks = true
+
+# Gate wasm size matters; verifier and CLI keep speed (revm).
+[profile.release.package.constitution-gate]
+opt-level = "z"
