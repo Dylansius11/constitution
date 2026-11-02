@@ -89,8 +89,11 @@ fn fund(g: &mut Gate, who: &str, amount: u128) {
     g.deposit_credit(None);
     context(who, 1_000_000_000, 0);
 }
-fn fails(code: &str, f: impl FnOnce()) -> String {
-    let error = catch_unwind(AssertUnwindSafe(f)).expect_err("expected rejection");
+fn fails<T>(code: &str, f: impl FnOnce() -> T) -> String {
+    let error = match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(_) => panic!("expected rejection"),
+        Err(error) => error,
+    };
     let message = error
         .downcast_ref::<String>()
         .cloned()
@@ -122,7 +125,7 @@ fn schedule(g: &mut Gate, kind: ChangeKind) -> u64 {
 fn matured(g: &mut Gate, kind: ChangeKind) -> u64 {
     let id = schedule(g, kind);
     context("anyone.testnet", 1_000_000_000 + TIMELOCK_NS, 0);
-    g.apply_change(id);
+    drop(g.apply_change(id));
     id
 }
 
@@ -226,7 +229,7 @@ fn t_gate_6_timelock_before_eta_minus_one_and_at_eta() {
     context("anyone.testnet", 604_800_999_999_999, 0);
     fails("E53_TIMELOCK_NOT_ELAPSED", || g.apply_change(id));
     context("anyone.testnet", 604_801_000_000_000, 0);
-    g.apply_change(id);
+    drop(g.apply_change(id));
     assert_eq!(g.get_constitution().rule_set_hash, [12; 32]);
     assert!(!g.get_constitution().ai_required);
     assert_eq!(g.get_change(id).unwrap().status, ChangeStatus::Applied);
@@ -284,7 +287,7 @@ fn t_gate_8_rules_block_requested_and_unexpired_signed_but_allow_deadline_equali
         .as_mut()
         .unwrap()
         .deadline_s = 604801;
-    g.apply_change(id);
+    drop(g.apply_change(id));
     assert_eq!(g.get_constitution().rule_set_hash, [12; 32]);
     assert!(g.outstanding_signatures.is_empty());
 }
@@ -347,7 +350,7 @@ fn governance_applies_all_unsigned_changes_and_guards_last_verifier() {
     assert_eq!(g.get_roles().governor.as_str(), "next-governor.testnet");
 }
 #[test]
-fn invalid_changes_and_migration_sequencing() {
+fn invalid_changes_and_migration_can_be_cancelled() {
     let mut g = gate();
     context("governor.testnet", 1_000_000_000, 0);
     for uri in [String::new(), "x".repeat(257)] {
@@ -389,12 +392,6 @@ fn invalid_changes_and_migration_sequencing() {
     let id = g.schedule_change(ChangeKind::MigrateAuthority {
         new_signer: [1; 20],
     });
-    context("anyone.testnet", 604_801_000_000_000, 0);
-    assert!(
-        fails("E51_INVALID_CHANGE", || g.apply_change(id))
-            .ends_with("MigrateAuthority apply lands with signing")
-    );
-    assert_eq!(g.get_change(id).unwrap().status, ChangeStatus::Pending);
     context("guardian.testnet", 604_801_000_000_000, 0);
     g.cancel_change(id);
 }

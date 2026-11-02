@@ -17,8 +17,14 @@ borsh.workspace = true
 near-sdk.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+omni-transaction.workspace = true
+alloy-sol-types.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }
 near-workspaces.workspace = true
 tokio.workspace = true
+ed25519-dalek.workspace = true
+k256.workspace = true
+rlp.workspace = true

@@ -31,10 +31,22 @@ impl Gate {
 impl Gate {
     /// Shared terminal transition hook. Signing/verdict paths must call it exactly once.
     pub(crate) fn release_reservation(&mut self, proposal: &mut Proposal) {
+        check(
+            self.try_release_reservation(proposal),
+            GateError::InsufficientCredit,
+            "reservation release",
+        );
+    }
+
+    pub(crate) fn try_release_reservation(&mut self, proposal: &mut Proposal) -> bool {
+        // An old fee-bump callback must never clear a newer proposal's active slot.
+        if self.active_by_account.get(&proposal.proposer) != Some(&proposal.id) {
+            return proposal.reserved == 0;
+        }
         let balance = self.credit.get(&proposal.proposer).copied().unwrap_or(0);
-        let balance = balance
-            .checked_add(proposal.reserved)
-            .unwrap_or_else(|| env::panic_str(GateError::InsufficientCredit.code()));
+        let Some(balance) = balance.checked_add(proposal.reserved) else {
+            return false;
+        };
         self.credit.insert(proposal.proposer.clone(), balance);
         proposal.reserved = 0;
         self.active_by_account.remove(&proposal.proposer);
@@ -42,6 +54,7 @@ impl Gate {
             &proposal.new_impl_codehash,
             &proposal.init_calldata,
         ));
+        true
     }
 }
 

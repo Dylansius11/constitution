@@ -13,8 +13,11 @@ use near_sdk::{
 use serde_json::json;
 
 mod credit;
+mod evm;
 mod governance;
 mod proposal;
+mod signing;
+mod verdict;
 mod views;
 
 #[derive(borsh::BorshSerialize, BorshStorageKey)]
@@ -26,6 +29,8 @@ enum StorageKey {
     Credit,
     ActiveByKey,
     OutstandingSignatures,
+    FeeBumps,
+    MigrationSigning,
 }
 
 #[near(contract_state)]
@@ -46,6 +51,8 @@ pub struct Gate {
     // Indexes avoid scans over historical proposals. P2.3 maintains signing membership.
     active_by_key: LookupMap<[u8; 32], u64>,
     outstanding_signatures: IterableSet<u64>,
+    fee_bumps: LookupMap<u64, u8>,
+    migration_signing: LookupMap<u64, signing::MigrationSigning>,
 }
 
 use constitution_types::Roles;
@@ -118,6 +125,8 @@ impl Gate {
             signing_paused: false,
             active_by_key: LookupMap::new(StorageKey::ActiveByKey),
             outstanding_signatures: IterableSet::new(StorageKey::OutstandingSignatures),
+            fee_bumps: LookupMap::new(StorageKey::FeeBumps),
+            migration_signing: LookupMap::new(StorageKey::MigrationSigning),
         };
         for (key, record) in verifiers {
             gate.verifiers.insert(key.0, record);

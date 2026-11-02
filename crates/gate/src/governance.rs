@@ -1,5 +1,6 @@
 use super::*;
 use crate::GateExt;
+use near_sdk::PromiseOrValue;
 
 #[near]
 impl Gate {
@@ -36,11 +37,16 @@ impl Gate {
         id
     }
 
-    pub fn apply_change(&mut self, change_id: u64) {
+    pub fn apply_change(&mut self, change_id: u64) -> PromiseOrValue<()> {
         let change = self
             .changes
             .get(&change_id)
             .unwrap_or_else(|| env::panic_str(GateError::ChangeNotFound.code()));
+        if change.status == ChangeStatus::Applied
+            && matches!(change.kind, ChangeKind::MigrateAuthority { .. })
+        {
+            return self.apply_migration(change_id);
+        }
         check(
             change.status == ChangeStatus::Pending,
             GateError::NotPending,
@@ -56,10 +62,7 @@ impl Gate {
         }
         self.validate_change(&change.kind);
         if matches!(change.kind, ChangeKind::MigrateAuthority { .. }) {
-            env::panic_str(&format!(
-                "{}: MigrateAuthority apply lands with signing",
-                GateError::InvalidChange.code()
-            ));
+            return self.apply_migration(change_id);
         }
         if let ChangeKind::RemoveVerifier { .. } = change.kind {
             check(
@@ -80,7 +83,7 @@ impl Gate {
                     ProposalState::SignRequested => {
                         env::panic_str(GateError::SignaturesOutstanding.code())
                     }
-                    ProposalState::Signed => {
+                    ProposalState::SignFailed | ProposalState::Signed => {
                         let evm = proposal.evm.as_ref().unwrap_or_else(|| {
                             env::panic_str(GateError::SignaturesOutstanding.code())
                         });
@@ -136,6 +139,7 @@ impl Gate {
         change.status = ChangeStatus::Applied;
         self.changes.insert(change_id, change);
         emit("change_applied", json!({"change_id":change_id}));
+        PromiseOrValue::Value(())
     }
 
     pub fn cancel_change(&mut self, change_id: u64) {
