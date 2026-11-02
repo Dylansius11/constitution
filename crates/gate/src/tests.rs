@@ -549,3 +549,6 @@ fn queued_verifier_changes_revalidate_after_guardian_removal() {
     fails("E51_INVALID_CHANGE", || g.apply_change(id));
     assert_eq!(g.get_change(id).unwrap().status, ChangeStatus::Pending);
 }
+
+#[path = "signing_tests.rs"]
+mod signing_tests;
