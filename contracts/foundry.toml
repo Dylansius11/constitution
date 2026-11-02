@@ -5,10 +5,10 @@ script = "script"
 out = "out"
 libs = ["lib"]
 solc_version = "0.8.38"
-# [V] 2026-11-02 UTC: Base Sepolia activated Azul 2026-04-20 (Osaka EIP-7939 CLZ) and Denim 2026-10-21.
-# https://docs.base.org/upgrades/overview
-# https://docs.base.org/upgrades/azul/exec-engine
-evm_version = "osaka"
+# [V] 2026-11-02 UTC: Base Sepolia runs Osaka (Azul 2026-04-20, Denim 2026-10-21; https://docs.base.org/upgrades/overview),
+# so prague bytecode executes there unchanged. Prague is chosen because Halmos 0.3.3 fails on the Osaka CLZ opcode 0x1e
+# (spikes/verifier-min osaka probe, "Unsupported opcode 0x1e"); the verifier manifest uses the same target (D19).
+evm_version = "prague"
 optimizer = true
 optimizer_runs = 200
 bytecode_hash = "none"

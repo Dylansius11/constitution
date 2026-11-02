@@ -32,6 +32,7 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D16 | Organizer questions | founder | open | before submission | Draft below, not sent |
 | D17 | Demo key exposure model | lead | resolved 2026-10-26 | P3.3 | QR key = governor (schedule-only) function-call key |
 | D18 | Verifier key lifetime vs CVM budget | founder (budget), lead (design) | open | P1.6 | Ephemeral key; CVM runs continuously from activation to 2026-11-18T23:59:00Z |
+| D19 | EVM target for contracts and the rule-set manifest | lead | resolved 2026-11-02 | P1.3, P2.5 | `prague` everywhere; Halmos 0.3.3 cannot execute Osaka CLZ |
 
 ### D1. Technology stack
 
@@ -134,6 +135,10 @@ Resolution [I]: the QR "take it" key is a NEAR **function-call access key** on a
 Budget arithmetic [I]: activation on 2026-11-07T12:00:00Z gives about 276 hours of runtime. At USD 0.232/h (`tdx.large`) that is about USD 64, above the USD 20 credit; at the advertised USD 0.06/h entry tier about USD 17, inside it, if that tier can run solc, Halmos and revm for the demo (unknown until P1.6).
 
 Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve a top-up for a larger tier; (c) activate later and drop F11 (real 7-day maturation proof); (d) after P1 on-chain DCAP lands, permit restarts because a new key for an approved `release_hash` can be registered without the delay. Lead recommendation will follow the P1.6 measurements.
+
+### D19. EVM target (lead)
+
+[V, 2026-11-02] Base Sepolia runs Osaka: Azul (Osaka CLZ, EIP-7939) activated 2026-04-20 and Denim 2026-10-21 (https://docs.base.org/upgrades/overview). [V, local 2026-11-02] Halmos 0.3.3 in the verifier image fails on solc 0.8.38 Osaka output that contains CLZ: `Unsupported opcode 0x1e`, exit code 3, which the runner maps to Incomplete (fails closed); ordinary vault bytecode passes on both targets (`spikes/verifier-min` osaka probe). Resolution [I]: compile the demo contracts and pin the rule-set manifest to `evm_version = "prague"`. Prague bytecode runs unchanged on Osaka, every opcode it can contain is supported by Halmos, and the pre-check that recompiles a proposal must use the same target as its deployment. Cost: no CLZ gas savings. A proposal compiled for Osaka fails the runtime-hash pre-check (`rule_id 0`, reason 2), never passes.
 
 ## BLOCKERS
 
