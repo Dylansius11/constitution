@@ -159,6 +159,42 @@ impl Evm {
         )?;
         word_address(&word, &what)
     }
+
+    /// Broadcasts raw signed bytes; returns the hash the node reports.
+    pub fn send_raw(&self, raw: &[u8]) -> Result<String, String> {
+        let result = post(
+            &self.client,
+            &self.url,
+            "eth_sendRawTransaction",
+            json!([format!("0x{}", hex::encode(raw))]),
+        )?;
+        result
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| "eth_sendRawTransaction: result is not a hash".into())
+    }
+
+    /// `None` until the transaction is mined.
+    pub fn receipt(&self, tx_hash: &[u8; 32]) -> Result<Option<Value>, String> {
+        let result = post(
+            &self.client,
+            &self.url,
+            "eth_getTransactionReceipt",
+            json!([format!("0x{}", hex::encode(tx_hash))]),
+        )?;
+        Ok((!result.is_null()).then_some(result))
+    }
+
+    /// Whether the node knows the transaction at all (pending or mined).
+    pub fn knows(&self, tx_hash: &[u8; 32]) -> Result<bool, String> {
+        let result = post(
+            &self.client,
+            &self.url,
+            "eth_getTransactionByHash",
+            json!([format!("0x{}", hex::encode(tx_hash))]),
+        )?;
+        Ok(!result.is_null())
+    }
 }
 
 #[cfg(test)]

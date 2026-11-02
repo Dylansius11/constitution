@@ -242,7 +242,7 @@ Stages in order: `queued`, `unsealing`, `compiling`, `r1_layout`, `r2_solvency`,
 | --- | --- |
 | `constitution propose --bundle <dir> --impl <addr> [--init <hex>]` | Builds and seals the bundle, calls `propose`, posts the run to the verifier, prints proposal id |
 | `constitution status <id> [--watch]` | Gate state + verifier stages |
-| `constitution relay [<id>] [--watch]` | Recovers sender, broadcasts `signed` raw transactions |
+| `constitution relay <id> [--change] [--watch <s>]` | Recovers sender, broadcasts the gate's `signed` raw transaction (details below) |
 | `constitution receipt <id> [--json]` | Canonical receipt |
 | `constitution audit [--deployment deployments/testnet.json] [--manifest rules/manifest.json]` | F7 checks, non-zero exit on any failure (details below) |
 | `constitution govern schedule <kind> ... / apply <id> / cancel <id>` | Governance |
@@ -252,6 +252,8 @@ Stages in order: `queued`, `unsealing`, `compiling`, `r1_layout`, `r2_solvency`,
 `make attack` = propose the drain fixture with the demo key and watch; `make upgrade` = propose the honest fixture, watch, relay. Both print receipt paths.
 
 `constitution audit` [I, implemented 2026-11-02, local evidence only] reads public state at NEAR `final` and EVM `latest` and prints one PASS or FAIL line per precondition: `gate_has_no_access_keys`, `gate_code_is_committed_build`, `gate_binds_this_deployment` (gate config chain, executor, proxy and MPC account equal the deployment record and the EVM RPC chain id), `derived_eoa_is_executor_signer` (MPC `derived_public_key(gate, mpc_path)` maps to the gate's recorded EOA and to `executor.signer()`), `executor_controls_this_proxy`, `executor_owns_proxy_admin`, `proxy_admin_is_erc1967_admin`, `implementation_tracker_matches_slot`, `active_rule_set_is_committed_manifest` (`rules hash` of the manifest), `verifier_allowlist_is_committed`. Any unreadable value aborts with exit 1; it is never a pass. Expected values come from `deployments/<network>.json` (`chain_id`, `gate`, `gate_code_hash` as NEAR base58, `mpc_account`, `executor`, `proxy`, `verifiers[{pubkey, release_hash}]`), written at activation (P2.8). Read paths use plain JSON-RPC over reqwest 0.13.5; near-api is used only where the CLI signs NEAR transactions.
+
+`constitution relay` [I, implemented 2026-11-02, local evidence only] reads the proposal (or, with `--change`, an applied `MigrateAuthority` change) and the gate config, decodes the raw EIP-1559 bytes, recovers the sender with k256 and refuses to broadcast unless sender = `derived_eoa`, signing hash = the gate's recorded `signing_hash`, and chain, `to` and nonce match. It sends to `BASE_SEPOLIA_SEND_URL` only if `BASE_SEPOLIA_RPC_URL` does not already know the transaction, so relaying twice is harmless; `--watch` reports inclusion, and a revert (for example `DeadlinePassed`) exits 1 with the next step.
 
 ### Receipt JSON
 

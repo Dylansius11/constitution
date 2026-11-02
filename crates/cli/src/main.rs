@@ -1,8 +1,10 @@
 //! `constitution` CLI. Interface: docs/technical/ARCHITECTURE.md "CLI".
 mod audit;
 mod failure;
+mod relay;
 mod rpc;
 mod rules;
+mod signed_tx;
 
 use clap::{Parser, Subcommand};
 use failure::Failure;
@@ -48,6 +50,37 @@ enum Command {
         )]
         evm_rpc: String,
     },
+    /// Broadcast the raw transaction the gate signed, after recovering its sender off-chain.
+    Relay {
+        /// Proposal id (or change id with --change).
+        id: u64,
+        /// Relay an applied MigrateAuthority change instead of a proposal.
+        #[arg(long)]
+        change: bool,
+        /// Wait up to this many seconds for inclusion and report the receipt.
+        #[arg(long, value_name = "SECONDS")]
+        watch: Option<u64>,
+        #[arg(long, env = "GATE_ACCOUNT_ID")]
+        gate: String,
+        #[arg(
+            long,
+            env = "NEAR_RPC_URL",
+            default_value = "https://test.rpc.fastnear.com"
+        )]
+        near_rpc: String,
+        #[arg(
+            long,
+            env = "BASE_SEPOLIA_RPC_URL",
+            default_value = "https://sepolia.base.org"
+        )]
+        evm_rpc: String,
+        #[arg(
+            long,
+            env = "BASE_SEPOLIA_SEND_URL",
+            default_value = "https://sepolia-sequencer.base.org"
+        )]
+        send_rpc: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -79,6 +112,26 @@ fn run(cli: Cli) -> Result<(), Failure> {
             )?;
             audit::report(&audit::evaluate(&deployment, manifest_hash, &observed))
         }
+        Command::Relay {
+            id,
+            change,
+            watch,
+            gate,
+            near_rpc,
+            evm_rpc,
+            send_rpc,
+        } => relay::relay(
+            &rpc::Near::new(&near_rpc),
+            &gate,
+            if change {
+                relay::Target::Change(id)
+            } else {
+                relay::Target::Proposal(id)
+            },
+            &rpc::Evm::new(&send_rpc),
+            &rpc::Evm::new(&evm_rpc),
+            watch.map(std::time::Duration::from_secs),
+        ),
     }
 }
 
