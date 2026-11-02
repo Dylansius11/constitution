@@ -17,10 +17,10 @@ publish = false
 
 [workspace.dependencies]
 constitution-types = { path = "crates/constitution-types" }
-borsh = { version = "=1.8.1", features = ["derive"] }
+borsh = { version = "=1.8.1", features = ["derive", "unstable__schema"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 schemars = "=0.8.22"
-near-account-id = { version = "=2.6.0", features = ["serde", "borsh", "schemars-v0_8"] }
+near-account-id = { version = "=2.6.0", features = ["serde", "borsh", "schemars-v0_8", "abi"] }
 sha2 = { version = "=0.11.1", default-features = false }
 base64 = { version = "=0.23.1", default-features = false, features = ["alloc"] }
 serde_json = "=1.0.154"

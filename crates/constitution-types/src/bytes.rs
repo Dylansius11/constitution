@@ -30,6 +30,45 @@ pub struct Base64<const N: usize>(pub [u8; N]);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct Base64Bytes(pub Vec<u8>);
 
+// The Borsh schema describes bytes, not the JSON-facing wrapper name or shape.
+macro_rules! transparent_borsh_schema {
+    ($wrapper:ty, $raw:ty) => {
+        impl borsh::BorshSchema for $wrapper {
+            fn declaration() -> borsh::schema::Declaration {
+                <$raw as borsh::BorshSchema>::declaration()
+            }
+            fn add_definitions_recursively(
+                definitions: &mut std::collections::BTreeMap<
+                    borsh::schema::Declaration,
+                    borsh::schema::Definition,
+                >,
+            ) {
+                <$raw as borsh::BorshSchema>::add_definitions_recursively(definitions);
+            }
+        }
+    };
+}
+
+transparent_borsh_schema!(Hex20, [u8; 20]);
+transparent_borsh_schema!(Hex32, [u8; 32]);
+transparent_borsh_schema!(HexBytes, Vec<u8>);
+transparent_borsh_schema!(U128Str, u128);
+transparent_borsh_schema!(Base64Bytes, Vec<u8>);
+
+impl<const N: usize> borsh::BorshSchema for Base64<N> {
+    fn declaration() -> borsh::schema::Declaration {
+        <[u8; N] as borsh::BorshSchema>::declaration()
+    }
+    fn add_definitions_recursively(
+        definitions: &mut std::collections::BTreeMap<
+            borsh::schema::Declaration,
+            borsh::schema::Definition,
+        >,
+    ) {
+        <[u8; N] as borsh::BorshSchema>::add_definitions_recursively(definitions);
+    }
+}
+
 fn serialize_hex<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
     struct HexDisplay<'a>(&'a [u8]);
     impl std::fmt::Display for HexDisplay<'_> {
