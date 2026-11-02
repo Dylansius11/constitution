@@ -54,12 +54,13 @@ Phase acceptance: P1.4 and P1.6 evidence recorded in SMART-CONTRACT "Deployment"
 
 - [ ] **P2.1 Shared types** (F1, F3, F5). Owned: `crates/constitution-types/`. Certificate, Proposal, ChangeKind, Params, manifests, reason codes, EVM encoder, derivation helper.
   - Acceptance: T-ENC-1, T-ENC-2 vectors pass; Borsh round-trip property test; `constitution rules hash rules/manifest.json` deterministic across runs.
-- [ ] **P2.2 Gate: credit and proposals** (F1, D3). Owned: `crates/gate/src/{lib,credit,proposal}.rs`, tests.
+- [x] **P2.2 Gate: credit and proposals** (F1, D3). Owned: `crates/gate/src/{lib,credit,proposal}.rs`, tests.
   - Acceptance: T-GATE-1, T-GATE-11 (partial), expire path, duplicate active rejection, init calldata length limit.
-- [ ] **P2.3 Gate: verdicts, signing, nonces, fee bump** (F3, D12, D13). Owned: `crates/gate/src/{verdict,signing,evm}.rs`.
+- [x] **P2.3 Gate: verdicts, signing, nonces, fee bump** (F3, D12, D13). Owned: `crates/gate/src/{verdict,signing,evm}.rs`.
   - Acceptance: T-GATE-2 to T-GATE-5, T-GATE-9 to T-GATE-11 pass in unit and near-workspaces sandbox (sandbox uses a mock MPC contract that returns the captured `vectors/mpc-response.json` shape, labeled mock); no method takes a payload hash (code review check).
-- [ ] **P2.4 Gate: governance** (F2, D5, D17). Owned: `crates/gate/src/governance.rs`.
+- [x] **P2.4 Gate: governance** (F2, D5, D17). Owned: `crates/gate/src/governance.rs`.
   - Acceptance: T-GATE-6 to T-GATE-8; guardian immediate actions only reduce authority; delay constant not settable.
+  - Evidence for P2.2 to P2.4 (2026-11-02 UTC, local WSL, lead re-run): `cargo test -p constitution-gate` unit 40/40, sandbox 2/2, mock-MPC signing sandbox 3/3 (mock returns the bytes captured on testnet, labeled mock); clippy `-D warnings` clean; `cargo near build non-reproducible-wasm` 385,478 bytes, sha256 `61df8be7a339997a56bcbcc813b09b2b007170f48d9e723be390fe012e0e9581`; ABI test pins 26 methods, none takes a hash to sign. Design decisions taken while building are recorded in SMART-CONTRACT (bounded indexes, `fee_bumps`, `migration_signing`, SignFailed in D13, raw callback parsing, Vetoed never with Pass). Reproducible build of the production gate happens at activation (P2.8).
 - [ ] **P2.5 Verifier deterministic pipeline** (F5). Owned: `crates/verifier/src/{api,pipeline,rules/*,replay,submit}.rs`, `rules/`.
   - Acceptance: T-RULE-1 to T-RULE-5 each with pass and fail fixtures; pre-check rejects a tampered bundle and a codehash mismatch; R5 replays the committed corpus against VaultV1 and VaultV2Honest from a pinned block with complete witness; incomplete stages fail closed.
 - [ ] **P2.6 AI review** (F6, needs B4). Owned: `verifier-image/ai-sidecar/`, `crates/verifier/src/ai.rs`.

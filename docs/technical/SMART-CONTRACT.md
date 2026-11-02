@@ -51,7 +51,9 @@ pub struct Gate {
     proposals: LookupMap<u64, Proposal>,
     active_by_account: LookupMap<AccountId, u64>,
     active_by_key: LookupMap<[u8; 32], u64>,         // sha256(new_impl_codehash || init_calldata) of active proposals, for E24
-    outstanding_signatures: IterableSet<u64>,         // proposals in SignRequested or Signed; the only set D13 iterates
+    outstanding_signatures: IterableSet<u64>,         // proposals in SignRequested, SignFailed or Signed; the only set D13 iterates
+    fee_bumps: LookupMap<u64, u8>,                    // per-proposal bump count, independent of retries (cap 8)
+    migration_signing: LookupMap<u64, MigrationSigning>, // InFlight | Failed | Signed for applied MigrateAuthority changes
     credit: LookupMap<AccountId, u128>,               // unreserved yoctoNEAR
     next_proposal_id: u64,
     next_change_id: u64,
@@ -205,15 +207,15 @@ Check order (first failure panics, nothing is written):
 7. Time: `issued_at_s <= now_s + 60`, `now_s <= expires_at_s`, `expires_at_s - issued_at_s <= max_cert_ttl_s`. `E46_CERT_TIME`.
 8. Verdict:
    - `Reject { rule_id, reason_code }`: store `rejection`, `certificate_hash = message`, state `Rejected`, release reservation, emit `verdict_rejected`. Return. The MPC contract is never called.
-   - `Pass`: requires `ai == Clean { .. }` when `constitution.ai_required` (`E47_AI_REVIEW_REQUIRED`), and `!signing_paused` (`E20_SIGNING_PAUSED`). Continue.
+   - `Pass`: requires `ai != Vetoed` always, and `ai == Clean { .. }` when `constitution.ai_required` (`E47_AI_REVIEW_REQUIRED`), and `!signing_paused` (`E20_SIGNING_PAUSED`). Continue.
 9. Assign `nonce = next_evm_nonce; next_evm_nonce += 1`. Build `EvmTx` from params with `deadline_s = min(certificate.expires_at_s, now_s + sign_validity_s)`. Compute `signing_hash` (next section). Store, set `SignRequested`, `certificate_hash = message`, emit `sign_requested`.
 10. Return `Promise` to `mpc_account.sign({"request":{"payload_v2":{"Ecdsa":"<hex signing_hash, no 0x>"},"path":"constitution/base-sepolia/v1","domain_id":0}})` with 1 yoctoNEAR from the gate's own balance and `sign_gas_tgas`, `.then(on_signed(proposal_id, attempts))` with `callback_gas_tgas`.
 
 | Method | Caller | Effects | Rejections |
 | --- | --- | --- | --- |
-| `#[private] on_signed(kind: SignTarget, attempt: u32, #[callback_result] r: Result<SignatureResponse, PromiseError>)` | gate only | Ok: build signed raw tx with the stored fields, store, state `Signed`, release reservation on first success, emit `signed { proposal_id, nonce, tx_hash, raw_tx }`. Err: state `SignFailed`, emit `sign_failed`. Stale `attempt` is ignored with a log | never panics after logging; a panic here would lose the failure record |
-| `retry_sign(proposal_id: u64)` | anyone | `SignFailed` to `SignRequested`; signs the identical stored transaction | `E31_WRONG_STATE`, `E20_SIGNING_PAUSED` |
-| `bump_fee(proposal_id: u64)` | anyone | `Signed` only; both fee fields `* 5 / 4` rounded up, `max_fee_per_gas <= fee_cap`; same nonce, deadline, calldata; re-signs; at most 8 bumps | `E31_WRONG_STATE`, `E48_FEE_CAP`, `E49_TOO_MANY_BUMPS` |
+| `#[private] on_signed(target: SignTarget, attempt: u32)` | gate only | Reads the raw MPC result with `env::promise_result` (max 4096 bytes) and parses it strictly inside the callback, so malformed or wrong-shape results become a recorded failure instead of a generated-deserializer panic. Ok: build the signed raw tx from the stored fields, state `Signed`, release the reservation only if `active_by_account[proposer]` is still this proposal, emit `signed { proposal_id, nonce, tx_hash, raw_tx }`. Err: state `SignFailed`, emit `sign_failed`. Stale `attempt` is ignored with a log | never panics after logging |
+| `retry_sign(proposal_id: u64)` | anyone | `SignFailed` to `SignRequested`; signs the identical stored transaction | `E31_WRONG_STATE`, `E20_SIGNING_PAUSED`, `E45_BINDING_MISMATCH rule_set_hash` when the proposal's rule set was superseded and its deadline has not passed (after the deadline the bytes only fill the nonce: the executor reverts `DeadlinePassed`) |
+| `bump_fee(proposal_id: u64)` | anyone | `Signed` only; both fee fields `* 5 / 4` rounded up, `max_fee_per_gas <= fee_cap`; same nonce, deadline, calldata; re-signs; at most 8 bumps counted in `fee_bumps`; a failed bump keeps the previous `signed_tx` | `E31_WRONG_STATE`, `E20_SIGNING_PAUSED`, `E45` as for `retry_sign`, `E48_FEE_CAP`, `E49_TOO_MANY_BUMPS` |
 
 `SignTarget` is `Proposal(u64)` or `Change(u64)`. `SignatureResponse` accepts exactly the shape observed in spike P1.2 [V, NEAR testnet 2026-11-02, sign tx `FNd6BUDznLA3wwmdtiCE2F8auBaJmfQMTCDS4g4ro6Rz`, captured in `vectors/mpc-response.json`]: `{"scheme":"Secp256k1","big_r":{"affine_point":"<33-byte hex>"},"s":{"scalar":"<32-byte hex>"},"recovery_id":<u8>}`, identical to near/mpc source at commit `b78f4f5b`. The installed `near-smart-contracts` skill shows a different shape and is wrong. Conversion: `r = affine_point[1..33]`, `s = scalar`, `y_parity = recovery_id`; the captured signature recovers to the derived EOA in Rust and Python.
 
@@ -224,7 +226,7 @@ The gate does not re-run `ecrecover` on-chain: [V] `env::ecrecover` in near-sdk 
 | Method | Caller | Effects | Rejections |
 | --- | --- | --- | --- |
 | `schedule_change(kind: ChangeKind) -> u64` | governor | Stores `Pending` change with `eta_ns = now_ns + 604_800 * 10^9`; emits `change_scheduled { id, kind, eta_ns }` | `E50_NOT_GOVERNOR`, `E51_INVALID_CHANGE` (e.g. empty URI over 256 bytes, zero address, params violating init rules) |
-| `apply_change(change_id: u64)` | anyone | If `now_ns >= eta_ns`: applies; `MigrateAuthority` builds and signs `rotateSigner` (same signing path, `SignTarget::Change`); emits `change_applied` | `E52_NOT_FOUND`, `E53_TIMELOCK_NOT_ELAPSED { eta_ns, now_ns }`, `E54_NOT_PENDING`, `E55_SIGNATURES_OUTSTANDING` for `SetRuleSet` while any proposal is `SignRequested`, or `Signed` with `deadline_s > now_s` (D13) |
+| `apply_change(change_id: u64)` | anyone | If `now_ns >= eta_ns`: applies; `MigrateAuthority` becomes `Applied`, assigns a nonce and signs `rotateSigner` (same signing path, `SignTarget::Change`); calling `apply_change` again on an applied `MigrateAuthority` whose signing failed retries the identical bytes; emits `change_applied` | `E52_NOT_FOUND`, `E53_TIMELOCK_NOT_ELAPSED { eta_ns, now_ns }`, `E54_NOT_PENDING`, `E55_SIGNATURES_OUTSTANDING` for `SetRuleSet` while any proposal is `SignRequested`, or `SignFailed`/`Signed` with `deadline_s > now_s` (D13) |
 | `cancel_change(change_id: u64)` | guardian | `Pending` to `Cancelled`; emits `change_cancelled` | `E56_NOT_GUARDIAN`, `E54_NOT_PENDING` |
 | `pause_signing()` | guardian | `signing_paused = true` immediately; only reduces authority | `E56_NOT_GUARDIAN` |
 | `remove_verifier_now(pubkey: Base64 [u8;32])` | guardian | Removes immediately; only reduces authority | `E56_NOT_GUARDIAN`, `E57_LAST_VERIFIER` |
