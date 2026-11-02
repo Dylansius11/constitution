@@ -978,6 +978,7 @@ dependencies = [
  "near-parameters",
  "near-sdk",
  "omni-transaction",
+ "rlp",
  "serde_json",
  "sha3 0.10.9",
 ]
