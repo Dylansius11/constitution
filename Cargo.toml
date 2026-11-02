@@ -28,6 +28,11 @@ proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
 near-sdk = "=5.29.1"
 near-workspaces = "=0.23.0"
 tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread"] }
+axum = "=0.8.9"
+crypto_box = { version = "=0.9.1", features = ["seal"] }
+ed25519-dalek = "=3.0.0"
+sha3 = "=0.12.0"
+tempfile = "=3.27.0"
 
 [profile.release]
 codegen-units = 1

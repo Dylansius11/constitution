@@ -1,0 +1,14 @@
+//! [I] Local deterministic verifier plumbing. No attestation or Pass issuance.
+pub mod bundle;
+pub mod identity;
+pub mod manifest;
+pub mod proposals;
+pub mod rules;
+pub fn sha256(bytes: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).into()
+}
+pub fn keccak(bytes: &[u8]) -> [u8; 32] {
+    use sha3::{Digest, Keccak256};
+    Keccak256::digest(bytes).into()
+}
