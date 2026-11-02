@@ -1,0 +1,15 @@
+**
+!verifier-image/
+!verifier-image/Dockerfile
+!verifier-image/install-tools.py
+!verifier-image/requirements.lock
+!verifier-image/package.json
+!verifier-image/package-lock.json
+!spikes/
+!spikes/verifier-min/
+!spikes/verifier-min/**
+spikes/verifier-min/__pycache__/
+spikes/verifier-min/evidence/
+spikes/verifier-min/out/
+spikes/verifier-min/cache/
+spikes/verifier-min/*observed.json

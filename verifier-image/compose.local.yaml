@@ -1,0 +1,19 @@
+# Local spike only. No attestation or production verifier is claimed.
+# dstack runs Docker Compose workloads. Only a future trusted service may mount
+# /var/run/dstack.sock. Never mount it or a Docker socket into this tool service.
+services:
+  tools:
+    image: constitution-verifier-spike:local
+    pull_policy: never
+    user: "10001:10001"
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 1536m
+    cpus: 1
+    tmpfs:
+      - /work:uid=10001,gid=10001,mode=0700,size=536870912
+      - /tmp:uid=10001,gid=10001,mode=0700,size=268435456
+    command: ["/bin/sh", "/opt/spike/run.sh", "PassVault"]

@@ -1,0 +1,6 @@
+{
+  "name": "constitution-verifier-tools",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": { "@openzeppelin/upgrades-core": "1.47.0" }
+}

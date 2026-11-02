@@ -1,0 +1,34 @@
+{
+  "observed_date": "2026-11-03",
+  "platform": "linux/amd64",
+  "base": {
+    "resolve_command": "docker buildx imagetools inspect python:3.12-slim-bookworm",
+    "index_digest": "sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337",
+    "amd64_digest": "sha256:623674a14ef93d052bb9b0de4dbf5f28eb578a35263838941cc8aa43213c1487"
+  },
+  "solc": {
+    "version": "0.8.38+commit.1835d247",
+    "checksum_source": "https://raw.githubusercontent.com/ethereum/solc-bin/gh-pages/linux-amd64/list.json",
+    "sha256": "65c3180a336eabb6bdc4bbd49cc405aeb233976964ae6c11fba2a6c8be8f3243",
+    "note": "binaries.soliditylang.org returned HTTP 403; the official ethereum/solc-bin mirror supplied list.json and binary."
+  },
+  "foundry": {
+    "version": "v1.8.6",
+    "checksum_source": "https://api.github.com/repos/foundry-rs/foundry/releases/tags/v1.8.6",
+    "sha256": "58850106984038f3a7200f38a4182c8cb423d3a4f4c7848eacbc2453e6bc35fc"
+  },
+  "node": {
+    "version": "24.22.1",
+    "checksum_source": "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt",
+    "sha256": "6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6"
+  },
+  "python": {
+    "resolve_command": "python -m pip install --dry-run --ignore-installed --report /locks/pip-report.json halmos==0.3.3 z3-solver==4.12.6.0 yices-solver==2.6.4.post23 --quiet",
+    "checksums": "requirements.lock uses SHA256 from PyPI wheel metadata for every transitive package; pip --require-hashes enforces them."
+  },
+  "npm": {
+    "resolve_command": "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+    "checksums": "npm ci verifies package-lock.json SHA512 integrity for every transitive tarball."
+  },
+  "debian": "apt checks package hashes against signed Debian Release metadata. Debian package versions are not frozen; this spike is digest-pinned at the base, not a fully reproducible build."
+}
