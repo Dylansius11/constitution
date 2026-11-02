@@ -140,7 +140,7 @@ All rows observed 2026-10-26. "Index" = official crates.io sparse index (`https:
 | Package manager | pnpm | 12.15.0 | `npm view` | Page and sidecar |
 | Page | Astro | 7.4.2 (Node >= 22.23.4) | `npm view` | Static output, islands for live status |
 | Page language | TypeScript | 7.0.2 | `npm view` | |
-| Page EVM reads | viem | 2.57.11 | `npm view` | Also the independent encoding oracle (T-ENC-1) |
+| Page EVM reads | viem | 2.57.14 (`npm view viem version`, 2026-11-02; 2.57.11 on 2026-10-26) | `npm view` | Also the independent encoding oracle (T-ENC-1, `tools/vectors-viem`) |
 | Page NEAR signing | near-api-js | 7.4.0 (Node >= 22.22.2) | `npm view` | Signs `propose`, preset `schedule_change` and `apply_change` with the demo function-call key |
 | Page bundle sealing | libsodium-wrappers | 0.8.4 | `npm view` | `crypto_box_seal`; interop with Rust `crypto_box` proven by T-ENC-3 before use |
 | Page QR | qrcode | 1.5.4 (Node >= 10.13.0) | `npm view` | Renders the public demo key; text alternative always shown |
