@@ -1,9 +1,10 @@
 # Gate integration spike
 
-Throwaway P1.1 and P1.2 experiment. This is not the production gate and
+Throwaway P1.1, P1.2 and P1.4 experiment. This is not the production gate and
 MUST NOT become the activated gate. `spike_sign` accepts arbitrary hashes and is
-intentionally unsafe for production. The authorized online target is
-`constitution-spike.testnet` only. No Base Sepolia transactions are authorized.
+intentionally unsafe for production. NEAR writes target `constitution-spike.testnet`
+only. P1.4 Stage A targets a local Base Sepolia fork; live Base writes require
+the lead's separate Stage B authorization and testnet funding.
 
 ## Scope
 
@@ -16,6 +17,12 @@ intentionally unsafe for production. The authorized online target is
   domain 0, fixed path `constitution/base-sepolia/v1`, 15 Tgas and 1 yoctoNEAR.
   The private callback preserves the exact MPC response bytes in the result and
   a log. Local receipt tests are not evidence of a real MPC response.
+- `sign_execute` builds and hashes the executor transaction inside the contract,
+  then its private `on_execute_signed` callback validates the observed MPC
+  response and reconstructs the raw signed type-2 transaction with
+  omni-transaction. ECDSA r/s are encoded as minimal RLP integers, y-parity is
+  restricted to 0 or 1 and s must be low. Callback failures return a recorded
+  failure result, not a signed transaction.
 - Host-only test code derives the child key with SHA3-256 (not Keccak), then
   `root + tweak * G`, rejecting a noncanonical scalar as upstream does. The EVM
   address is the last 20 bytes of Keccak-256 of the uncompressed x/y bytes.
@@ -182,3 +189,102 @@ deadline rejection and a reproducible release build remain unproven.
 - `spike_sign_emits_exact_v2_request_deposit_and_gas`
 - `callback_preserves_success_bytes_and_records_failure_without_panic`
 - `observed_mpc_signature_recovers_to_live_derived_spike_key`
+
+## P1.4 driver
+
+The Python standard-library driver uses pinned Foundry binaries on PATH and the
+repo-local NEAR CLI. It keeps Foundry compiler cache, artifacts and broadcasts
+under this spike's ignored `target/driver/`, never under the read-only
+`contracts/` paths. No private key or password is loaded or printed by Python.
+
+Stage A uses an Anvil unlocked development account and synthetic fork-only
+funding of the spike-derived EOA:
+
+```sh
+export PATH="$HOME/.foundry/bin:$PATH"
+anvil --fork-url https://sepolia.base.org --chain-id 84532 --port 18545 --host 0.0.0.0 --silent
+# In another terminal, from the repository root:
+CARGO_BUILD_JOBS=4 cargo near build non-reproducible-wasm --manifest-path spikes/gate-min/Cargo.toml
+.tools/bin/near contract deploy constitution-spike.testnet use-file spikes/gate-min/target/near/gate_min.wasm without-init-call network-config testnet sign-with-legacy-keychain send
+python3 spikes/gate-min/driver.py --mode fork --rpc-url http://127.0.0.1:18545
+```
+
+Each run deploys a fresh executor/proxy via `contracts/script/Deploy.s.sol` and
+a fresh VaultV2Honest. It requests real NEAR MPC signatures for the honest
+upgrade and expired-deadline cases, verifies each signing hash against an
+independent Python ABI/RLP computation, verifies the signer with cast, and
+relays the callback's exact raw transaction. The honest upgrade includes
+`initializeV2(1000e18)`. The driver requires success, exact ERC-1967
+implementation slot, exact UpgradeExecuted topics/data, initialized cap,
+duplicate-send rejection and nonce consumption. The expired transaction must
+be included with status zero, consume its nonce, leave the implementation
+unchanged and reproduce the DeadlinePassed selector at its inclusion block.
+
+Evidence is written to `../../vectors/evm-tx-spike.json`, labeled
+`local fork of Base Sepolia, real MPC signature`. Fork results are not live
+Base Sepolia evidence.
+
+Only after the lead explicitly authorizes Stage B and confirms testnet ETH:
+
+```sh
+python3 spikes/gate-min/driver.py --mode testnet --rpc-url https://sepolia.base.org --relay-url https://sepolia-sequencer.base.org --output spikes/gate-min/base-sepolia-evidence.json
+```
+
+Stage B never calls `anvil_setBalance`; Foundry signs deployment transactions
+through `.secrets/evm/deployer` and its password file. The RPC chain id must be
+84532 in both modes. Keep the fork vector intact when recording live evidence.
+
+[V] The sequencer endpoint rejects read methods: `cast rpc --rpc-url
+https://sepolia-sequencer.base.org eth_chainId` returned HTTP 403 with JSON-RPC
+`-32601`, `rpc method is not allowed`. The driver therefore separates the read
+RPC from the raw-transaction relay, including the duplicate-send check. RPC
+error bodies on non-200 HTTP responses remain errors, not success fallbacks.
+
+### Stage A observed result
+
+[V] `python3 spikes/gate-min/driver.py --mode fork --rpc-url
+http://127.0.0.1:18545` completed both cases. This is a local fork of Base
+Sepolia at block 53606308, with real NEAR MPC signatures. No live Base
+Sepolia transaction was sent and no production gate account was touched.
+
+- Spike redeploy: `7p2Ju2f5ksEUJiJXmiXBuzspUc5a8ijizVNgFQu8Dvdx`.
+- New local wasm: 164236 bytes, SHA-256
+  `0d1adc563840217e829fb5a0d368610b7dec87787cfa162cad80d0652fff33e9`.
+- Executor: `0xa44d05793c89be410c93647fd08f3523444681ae`.
+- Proxy: `0xb0c3b305fea795e4bd6081c7880f000846544d9d`.
+- Honest implementation: `0x7c03601778461ce80bac321297b65756f34418ca`.
+- Honest NEAR signing transaction:
+  `6f1G8LktpqCLxWJmdtJnjEAZe7JgDjbshZe1Pj1AqLqb`.
+- Honest fork transaction:
+  `0x62a8b7392f00453e67ba383bd52d978c45704e620721ddea96539e5ddecfcdf0`,
+  status 1, gas used 105159, nonce 0 to 1. The implementation slot and exact
+  UpgradeExecuted event match the new implementation, and depositCap is
+  1000e18. Repeating the raw transaction returned `-32003`, `nonce too low`.
+- Expired NEAR signing transaction:
+  `2PVrxh9hcE5rcRThqfSii9ixUAF4HvdfqyVsFSjBXmKE`.
+- Expired fork transaction:
+  `0xc5c4c45608e6ae6a1ee83e26dc008d6c07598ededd45a7305cc00ad17ef589a3`,
+  status 0, gas used 28900, nonce 1 to 2. Inclusion-block replay returns
+  DeadlinePassed selector `0x3dee80f2`; the implementation is unchanged.
+
+The vector contains complete inputs, preimages, signing hashes, MPC responses,
+raw signed transaction bytes, receipts, events, duplicate error and revert
+data. It is sufficient to independently recover both senders and recompute
+the unsigned and signed transaction hashes.
+
+### D14 fee observations, not activation caps
+
+[V] The public source RPC at Base Sepolia block 53612404 reported base fee
+5000000 wei and suggested priority fee 1000000 wei. The Anvil fork separately
+suggested priority fee 1000000000 wei. Do not confuse Anvil's default suggestion
+with the source network's suggestion.
+
+The honest fork transaction used max fee 1009731712 wei and effective gas price
+1004846875 wei. The expired fork transaction used max fee 1009693750 wei and
+effective gas price 1004827590 wei. Both used gas limit 300000. These are
+observations of one run, not a production worst-case bound or funding policy.
+
+Initial driver attempts failed before MPC signing due to the public RPC
+rejecting Python's default User-Agent, then due to forge create using `--from`
+where forge script uses `--sender`. The final driver uses a project User-Agent
+and the correct command-specific flags.
