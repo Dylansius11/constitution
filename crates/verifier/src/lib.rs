@@ -1,4 +1,5 @@
 //! [I] Local deterministic verifier plumbing. No attestation or Pass issuance.
+pub mod api;
 pub mod bundle;
 pub mod identity;
 pub mod manifest;
