@@ -1,0 +1,12 @@
+[profile.default]
+src = "src"
+test = "test"
+solc = "/usr/local/bin/solc"
+evm_version = "prague"
+ffi = false
+build_info = true
+extra_output = ["storageLayout"]
+optimizer = false
+
+[profile.osaka]
+evm_version = "osaka"
