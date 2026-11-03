@@ -25,6 +25,7 @@ Deleting the gate's last access key is irreversible: after step 7 nobody can red
      --password-file ../.secrets/evm/deployer.password --broadcast
    ```
    Record `executor`, `proxy`, `proxyAdmin`, `vaultV1Implementation`, `token` and the tx hashes. Check `cast call <proxyAdmin> 'owner()(address)'` equals `executor`.
+1a. **R5 corpus on the new vault**: rewrite `rules/r5/corpus.json` with a project-controlled actor (not anvil's public account 0), mint, approve and seed that actor's deposit on the new proxy, recompute `corpus_sha256` into `rules/manifest.json`, then commit and push the manifest and run `constitution rules hash rules/manifest.json`. This closes precondition D; record the seeding tx hashes.
 2. **Initial EVM nonce**: `cast nonce 0x3b20f46860d27d81917a45221c594fc051af7e94 --rpc-url "$BASE_SEPOLIA_RPC_URL"` (expected 0) becomes `initial_evm_nonce`.
 3. **Gate deploy and `new` in one transaction** (`constitution-gate.testnet`, key in `.secrets/near-credentials/testnet/`):
    ```sh
