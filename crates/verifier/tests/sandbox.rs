@@ -80,6 +80,7 @@ fn t_rule_2_committed_depth_four_harness_passes_honest_and_fails_drain() {
         "src/demo/VaultV2Drain.sol".into(),
         std::fs::read(repo().join("contracts/src/demo/VaultV2Drain.sol")).unwrap(),
     ));
+    let mut failures = Vec::new();
     for (name, want, reason) in [
         (
             "src/demo/VaultV2Honest.sol:VaultV2Honest",
@@ -95,14 +96,43 @@ fn t_rule_2_committed_depth_four_harness_passes_honest_and_fails_drain() {
         b.contract_name = name.into();
         let sandbox = Sandbox::new(&repo(), &b, &m).unwrap();
         let start = std::time::Instant::now();
-        let (status, code, log) = sandbox.solvency(&m, &b).unwrap();
-        let log = String::from_utf8_lossy(&log);
+        let result = sandbox.solvency(&m, &b);
+        let elapsed_ms = start.elapsed().as_millis();
+        let label = if want == StageStatus::Pass {
+            "honest"
+        } else {
+            "r2-fail"
+        };
         eprintln!(
-            "r2 {name}: {status:?} {code} in {}s",
-            start.elapsed().as_secs()
+            "r2 {label}: {}ms {:?}",
+            elapsed_ms,
+            result.as_ref().map(|(s, c, _)| (s, c))
         );
-        assert_eq!((status, code), (want, reason), "{name}: {log}");
+        if let Ok(dir) = std::env::var("RULES_R2_EVIDENCE_DIR") {
+            let dir = repo().join(dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let log = match &result {
+                Ok((_, _, log)) => log.as_slice(),
+                Err(error) => error.as_bytes(),
+            };
+            std::fs::write(dir.join(format!("{label}.log")), log).unwrap();
+            std::fs::write(
+                dir.join(format!("{label}.json")),
+                serde_json::to_vec_pretty(&serde_json::json!({
+                    "elapsed_ms": elapsed_ms,
+                    "depth": m.r2.invariant_depth,
+                    "result": result.as_ref().map(|(status, reason, _)| (status, reason)),
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        }
+        match result {
+            Ok((status, code, _)) if (status, code) == (want, reason) => {}
+            other => failures.push(format!("{label}: {other:?}")),
+        }
     }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 fn proposal(m: &RuleSetManifest, b: &SourceBundle) -> LocalProposal {
     LocalProposal {
@@ -125,7 +155,7 @@ fn proposal(m: &RuleSetManifest, b: &SourceBundle) -> LocalProposal {
     }
 }
 #[test]
-fn precheck_tamper_and_runtime_mismatch_sign_decodable_rejects() {
+fn precheck_tamper_never_signs_and_runtime_mismatch_signs_decodable_reject() {
     use ed25519_dalek::Verifier;
     let m = manifest();
     let b = bundle();
@@ -151,6 +181,14 @@ fn precheck_tamper_and_runtime_mismatch_sign_decodable_rejects() {
             "local registry, not chain observed",
             None,
         );
+        if reason == 1 {
+            assert_eq!(run.stage, "failed");
+            assert_eq!(run.error_code.as_deref(), Some("bad_bundle"));
+            assert!(run.verdict.is_none());
+            assert!(run.certificate_b64.is_none());
+            assert!(run.signature_b64.is_none());
+            continue;
+        }
         assert_eq!(
             run.verdict,
             Some(Verdict::Reject {

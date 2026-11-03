@@ -309,7 +309,7 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .public_key()
         .seal(&mut crypto_box::aead::rand_core::OsRng, &bytes)
         .map_err(|_| "cannot seal local test bundle")?;
-    let source = GateSource::new(&worker.rpc_addr(), &rpc, &manifest)?;
+    let source = GateSource::new(&worker.rpc_addr(), &rpc, &manifest, gate.id().clone())?;
     let mut service = Service::with_submitter(
         identity,
         manifest,
@@ -348,7 +348,7 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             .error_for_status()?
             .json()
             .await?;
-        if run["stage"] == "done" {
+        if matches!(run["stage"].as_str(), Some("done" | "failed")) {
             break run;
         }
         assert!(Instant::now() < deadline, "verifier timeout: {run}");

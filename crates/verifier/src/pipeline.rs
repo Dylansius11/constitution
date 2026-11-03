@@ -19,6 +19,8 @@ pub struct Run {
     pub stages: Vec<Stage>,
     pub outcome: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<Verdict>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_b64: Option<Base64Bytes>,
@@ -39,6 +41,7 @@ impl Run {
             started_at: now(),
             stages: vec![],
             outcome: "pending".into(),
+            error_code: None,
             verdict: None,
             certificate_b64: None,
             signature_b64: None,
@@ -47,6 +50,32 @@ impl Run {
             evidence: None,
             observer: None,
         }
+    }
+    pub(crate) fn fail(&mut self, code: &str) {
+        self.error_code = Some(code.into());
+        self.outcome = "failed; no certificate or on-chain verdict; retry permitted".into();
+        self.verdict = None;
+        self.certificate_b64 = None;
+        self.signature_b64 = None;
+        self.record("failed", StageStatus::Incomplete, code, Instant::now());
+        self.observer = None;
+    }
+    pub(crate) fn interrupt_submission(&mut self) {
+        // A sender panic cannot prove a transaction was not broadcast.
+        self.outcome = "submission incomplete; certificate retained".into();
+        self.record(
+            "submit",
+            StageStatus::Incomplete,
+            "worker_panic; inspect relay account transactions before starting another run",
+            Instant::now(),
+        );
+        self.record(
+            "done",
+            StageStatus::Incomplete,
+            "submission outcome unknown",
+            Instant::now(),
+        );
+        self.observer = None;
     }
     pub fn snapshot(&self) -> Self {
         let mut copy = self.clone();
@@ -172,7 +201,7 @@ pub fn execute_observed(
     let mut ev = evidence(p, m, archive_provider);
     run.record("queued", StageStatus::Pass, "run started", Instant::now());
     let mut ai_review = AiReview::NotRun;
-    let rejection = run_stages(
+    let result = run_stages(
         repo,
         m,
         identity,
@@ -184,6 +213,15 @@ pub fn execute_observed(
         &mut ev,
         &mut ai_review,
     );
+    let rejection = match result {
+        Ok(rejection) => rejection,
+        Err(code) => {
+            run.elapsed_ms = start.elapsed().as_millis() as u64;
+            run.evidence = Some(ev);
+            run.fail(code);
+            return run;
+        }
+    };
     if rejection.is_some() {
         for (name, evidence) in [
             ("r1_layout", &mut ev.r1),
@@ -329,14 +367,14 @@ fn run_stages(
     run: &mut Run,
     ev: &mut EvidenceManifest,
     ai_review: &mut AiReview,
-) -> Option<(u8, u16)> {
+) -> Result<Option<(u8, u16)>, &'static str> {
     run.begin("unsealing");
     let start = Instant::now();
     let (b, bytes) = match bundle::open(&identity.transport, sealed) {
         Ok(b) => b,
-        Err(e) => {
-            run.record("unsealing", StageStatus::Incomplete, e, start);
-            return Some((0, 1));
+        Err(_) => {
+            run.record("unsealing", StageStatus::Incomplete, "bad_bundle", start);
+            return Err("bad_bundle");
         }
     };
     if sha256(&bytes) != p.source_commitment.0 {
@@ -346,7 +384,7 @@ fn run_stages(
             "source commitment mismatch",
             start,
         );
-        return Some((0, 1));
+        return Err("bad_bundle");
     }
     run.record(
         "unsealing",
@@ -363,31 +401,25 @@ fn run_stages(
             "current implementation changed",
             start,
         );
-        return Some((0, 3));
+        return Ok(Some((0, 3)));
     }
-    for (name, hash) in &m.reference.source_sha256s {
-        if !b
-            .files
-            .iter()
-            .any(|(n, v)| n == name && sha256(v) == hash.0)
-        {
-            run.record(
-                "compiling",
-                StageStatus::Fail,
-                "reference source missing or modified",
-                start,
-            );
-            return Some((0, 4));
-        }
+    if let Err(error) = bundle::validate_sources(&b, m) {
+        run.record("compiling", StageStatus::Fail, error, start);
+        return Ok(Some((0, 4)));
     }
     let sandbox = match Sandbox::new(repo, &b, m) {
         Ok(s) => s,
         Err(e) => {
-            run.record("compiling", StageStatus::Incomplete, e, start);
-            return Some((0, 2));
+            let code = crate::tools::infrastructure_error(&e).unwrap_or("storage_error");
+            run.record("compiling", StageStatus::Incomplete, code, start);
+            return Err(code);
         }
     };
     if let Err(e) = sandbox.compile() {
+        if let Some(code) = crate::tools::infrastructure_error(&e) {
+            run.record("compiling", StageStatus::Incomplete, code, start);
+            return Err(code);
+        }
         run.record(
             "compiling",
             StageStatus::Incomplete,
@@ -397,13 +429,22 @@ fn run_stages(
             ),
             start,
         );
-        return Some((0, 2));
+        return Ok(Some((0, 2)));
     }
     let runtime = match sandbox.runtime(&b.contract_name) {
         Ok(v) => v,
         Err(e) => {
-            run.record("compiling", StageStatus::Incomplete, e, start);
-            return Some((0, 2));
+            if let Some(code) = crate::tools::infrastructure_error(&e) {
+                run.record("compiling", StageStatus::Incomplete, code, start);
+                return Err(code);
+            }
+            run.record(
+                "compiling",
+                StageStatus::Fail,
+                "candidate runtime unavailable",
+                start,
+            );
+            return Ok(Some((0, 2)));
         }
     };
     ev.compile.runtime_hash = Hex32(keccak(&runtime));
@@ -414,10 +455,13 @@ fn run_stages(
             "compiled runtime mismatch",
             start,
         );
-        return Some((0, 2));
+        return Ok(Some((0, 2)));
     }
     let current = match sandbox.runtime(&m.reference.contract_name) {
         Ok(current) if keccak(&current) == p.current_impl_codehash.0 => current,
+        Err(e) if crate::tools::infrastructure_error(&e).is_some() => {
+            return Err(crate::tools::infrastructure_error(&e).unwrap());
+        }
         _ => {
             run.record(
                 "compiling",
@@ -425,7 +469,7 @@ fn run_stages(
                 "current source runtime mismatch",
                 start,
             );
-            return Some((0, 4));
+            return Ok(Some((0, 4)));
         }
     };
     ev.current.reproduced = true;
@@ -443,7 +487,10 @@ fn run_stages(
             &m.reference.contract_name,
             &m.r1.unsafe_allow,
         )
-        .unwrap_or_else(|e| (StageStatus::Incomplete, e.into_bytes()));
+        .map_err(|e| crate::tools::infrastructure_error(&e).unwrap_or("tool_unavailable"))?;
+    if status == StageStatus::Incomplete {
+        return Err("tool_unavailable");
+    }
     let code = if status == StageStatus::Pass {
         0
     } else if status == StageStatus::Fail {
@@ -466,13 +513,13 @@ fn run_stages(
         start,
     );
     if code != 0 {
-        return Some((1, code));
+        return Ok(Some((1, code)));
     }
     run.begin("r2_solvency");
     let start = Instant::now();
     let (status, code, log) = sandbox
         .solvency(m, &b)
-        .unwrap_or_else(|e| (StageStatus::Incomplete, 23, e.into_bytes()));
+        .map_err(|e| crate::tools::infrastructure_error(&e).unwrap_or("tool_unavailable"))?;
     ev.r2 = RuleEvidence {
         status,
         artifact_sha256: Hex32(sha256(&log)),
@@ -488,7 +535,7 @@ fn run_stages(
         start,
     );
     if code != 0 {
-        return Some((2, code));
+        return Ok(Some((2, code)));
     }
     run.begin("r3_filter");
     let start = Instant::now();
@@ -506,7 +553,7 @@ fn run_stages(
     };
     run.record("r3_filter", status, format!("reason {code}"), start);
     if code != 0 {
-        return Some((3, code));
+        return Ok(Some((3, code)));
     }
     run.begin("r4_initializer");
     let start = Instant::now();
@@ -525,16 +572,20 @@ fn run_stages(
     };
     run.record("r4_initializer", status, format!("reason {code}"), start);
     if code != 0 {
-        return Some((4, code));
+        return Ok(Some((4, code)));
     }
     run.begin("r5_replay");
     let start = Instant::now();
     let (evidence, detail) = replay_evidence(repo, m, p, archive_rpc, &current, &runtime);
+    if let Some(code) = replay_fault(&detail) {
+        run.record("r5_replay", StageStatus::Incomplete, code, start);
+        return Err(code);
+    }
     let code = evidence.detail_code;
     run.record("r5_replay", evidence.status, detail, start);
     ev.r5 = evidence;
     if code != 0 {
-        return Some((5, code));
+        return Ok(Some((5, code)));
     }
     run.begin("ai_review");
     let start = Instant::now();
@@ -569,7 +620,7 @@ fn run_stages(
     });
     ev.ai = report.evidence;
     *ai_review = report.review;
-    rejection
+    Ok(rejection)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -672,7 +723,7 @@ fn replay_evidence(
         let bytes = std::fs::read(repo.join("rules/r5/corpus.json"))
             .map_err(|_| "cannot read committed R5 corpus")?;
         let corpus = Corpus::from_json(&bytes, m.r5.max_txs, m.r5.confirmations)
-            .map_err(|e| e.to_string())?;
+            .map_err(|_| "committed R5 corpus invalid")?;
         if corpus.sha256 != m.r5.corpus_sha256.0 {
             return Err("R5 corpus commitment mismatch".into());
         }
@@ -713,6 +764,28 @@ fn replay_evidence(
             },
             format!("reason 51; {error}"),
         ),
+    }
+}
+fn replay_fault(detail: &str) -> Option<&'static str> {
+    if detail.contains(": transport failure")
+        || detail.contains(": HTTP failure")
+        || detail.contains(": RPC error")
+        || detail.contains(": unreadable response")
+        || detail.contains(": invalid JSON")
+        || detail == "reason 51; RPC response exceeds bound"
+        || detail == "reason 51; no archive RPC configured"
+    {
+        Some("rpc_unavailable")
+    } else if matches!(
+        detail,
+        "reason 51; cannot read committed R5 corpus"
+            | "reason 51; committed R5 corpus invalid"
+            | "reason 51; R5 corpus commitment mismatch"
+            | "reason 51; cannot encode R5 witness"
+    ) {
+        Some("committed_data_unavailable")
+    } else {
+        None
     }
 }
 
@@ -779,7 +852,7 @@ mod replay_stage_tests {
             repo.path(),
             &m,
             Some("http://unused.invalid"),
-            "invalid corpus JSON",
+            "committed R5 corpus invalid",
         );
     }
     #[test]
@@ -807,5 +880,181 @@ mod replay_stage_tests {
             Some("http://relay:password@127.0.0.1:0/secret-key"),
             "eth_chainId: transport failure",
         );
+    }
+    fn sealed_fixture(
+        identity: &Identity,
+        tamper: bool,
+    ) -> (RuleSetManifest, LocalProposal, Vec<u8>) {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let m = manifest();
+        let files = m.reference.source_sha256s.keys().map(|name| {
+            let bytes = if tamper && name.ends_with("/MockToken.sol") {
+                b"contract MockToken { function balanceOf(address) external pure returns(uint256) { return type(uint256).max; } }".to_vec()
+            } else {
+                std::fs::read(repo.join("contracts").join(name)).unwrap()
+            };
+            (name.clone(), bytes)
+        }).collect();
+        let bundle = constitution_types::bundle::SourceBundle {
+            contract_name: m.reference.contract_name.clone(),
+            files,
+            foundry_profile: "default".into(),
+        };
+        let bytes = borsh::to_vec(&bundle).unwrap();
+        let mut p = proposal();
+        p.source_commitment = Hex32(sha256(&bytes));
+        p.rule_set_hash = Hex32(rule_set_hash(&m).unwrap());
+        p.expires_at_s = now() + 300;
+        let sealed = identity
+            .transport
+            .public_key()
+            .seal(&mut crypto_box::aead::rand_core::OsRng, &bytes)
+            .unwrap();
+        (m, p, sealed)
+    }
+    #[test]
+    fn forged_trusted_token_is_rejected_before_sandbox() {
+        let identity = Identity::new();
+        let (m, p, sealed) = sealed_fixture(&identity, true);
+        let run = execute(
+            Path::new("/absent-verifier-repository"),
+            &m,
+            &identity,
+            &p,
+            &sealed,
+            1,
+            "local",
+            None,
+        );
+        assert_eq!(
+            run.verdict,
+            Some(Verdict::Reject {
+                rule_id: 0,
+                reason_code: 4
+            })
+        );
+        assert!(run.certificate_b64.is_some());
+        assert!(run.error_code.is_none());
+    }
+    #[test]
+    fn verifier_storage_fault_never_signs_or_submits() {
+        struct NoSubmit;
+        impl crate::submit::VerdictSubmitter for NoSubmit {
+            fn submit(
+                &self,
+                _: &AccountId,
+                _: &Base64Bytes,
+                _: &Base64<64>,
+            ) -> Result<String, String> {
+                panic!("fault must not submit a verdict")
+            }
+        }
+        let identity = Identity::new();
+        let (m, p, sealed) = sealed_fixture(&identity, false);
+        let absent = tempfile::tempdir().unwrap();
+        let run = execute(
+            &absent.path().join("absent"),
+            &m,
+            &identity,
+            &p,
+            &sealed,
+            1,
+            "local",
+            None,
+        );
+        assert_eq!(run.stage, "failed");
+        assert_eq!(run.error_code.as_deref(), Some("storage_error"));
+        assert!(run.verdict.is_none());
+        assert!(run.certificate_b64.is_none());
+        assert!(run.signature_b64.is_none());
+        let submitted = crate::submit::SubmittedRun::submit(run, &p.gate, &NoSubmit);
+        assert!(submitted.near_tx_hash.is_none());
+        assert_eq!(submitted.run.stage, "failed");
+    }
+    #[test]
+    fn pipeline_unseal_and_commitment_failures_never_sign() {
+        let identity = Identity::new();
+        let (m, mut p, sealed) = sealed_fixture(&identity, false);
+        p.source_commitment = Hex32([0; 32]);
+        for ciphertext in [&sealed[..], &[][..]] {
+            let run = execute(
+                Path::new("."),
+                &m,
+                &identity,
+                &p,
+                ciphertext,
+                1,
+                "local",
+                None,
+            );
+            assert_eq!(run.stage, "failed");
+            assert_eq!(run.error_code.as_deref(), Some("bad_bundle"));
+            assert!(run.verdict.is_none());
+            assert!(run.certificate_b64.is_none());
+            assert!(run.signature_b64.is_none());
+        }
+    }
+    #[test]
+    fn rpc_outages_are_faults_but_witness_incompleteness_stays_fail_closed() {
+        assert_eq!(
+            replay_fault("reason 51; eth_chainId: transport failure"),
+            Some("rpc_unavailable")
+        );
+        assert_eq!(
+            replay_fault("reason 51; eth_getProof: HTTP failure"),
+            Some("rpc_unavailable")
+        );
+        for error in [": RPC error", ": unreadable response", ": invalid JSON"] {
+            assert_eq!(
+                replay_fault(&format!("reason 51; eth_getProof{error}")),
+                Some("rpc_unavailable")
+            );
+        }
+        assert_eq!(
+            replay_fault("reason 51; RPC response exceeds bound"),
+            Some("rpc_unavailable")
+        );
+        assert_eq!(
+            replay_fault("reason 51; committed R5 corpus invalid"),
+            Some("committed_data_unavailable")
+        );
+        assert_eq!(
+            replay_fault("reason 51; differential replay incomplete"),
+            None
+        );
+        assert_eq!(replay_fault("reason 51; unproved slot"), None);
+        assert_eq!(
+            replay_fault("reason 51; cannot read committed R5 corpus"),
+            Some("committed_data_unavailable")
+        );
+    }
+    #[test]
+    fn proposal_compilation_error_remains_a_signed_reject() {
+        let identity = Identity::new();
+        let (m, mut p, sealed) = sealed_fixture(&identity, false);
+        let (mut bundle, _) = bundle::open(&identity.transport, &sealed).unwrap();
+        bundle
+            .files
+            .push(("src/Invalid.sol".into(), b"not Solidity".to_vec()));
+        let bytes = borsh::to_vec(&bundle).unwrap();
+        p.source_commitment = Hex32(sha256(&bytes));
+        let sealed = identity
+            .transport
+            .public_key()
+            .seal(&mut crypto_box::aead::rand_core::OsRng, &bytes)
+            .unwrap();
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let run = execute(&repo, &m, &identity, &p, &sealed, 1, "local", None);
+        assert_eq!(run.stage, "done");
+        assert_eq!(
+            run.verdict,
+            Some(Verdict::Reject {
+                rule_id: 0,
+                reason_code: 2
+            })
+        );
+        assert!(run.error_code.is_none());
+        assert!(run.certificate_b64.is_some());
+        assert!(run.signature_b64.is_some());
     }
 }

@@ -2,10 +2,11 @@
 
 [I] A Pass certificate requires R1–R5 Pass, AI Clean with a verified `provider_tee`
 response, complete candidate replay, and a socket-attested signing identity with
-a nonzero release hash. Without a dstack socket, identity remains NOT ATTESTED:
-ephemeral boot keys, zero release hash, absent quote/event-log claims, and the
-unchanged refusal `local verifier never signs Pass`. Never register a local
-identity on testnet. Chain connectivity and protocol fakes are not attestation.
+a nonzero release hash. Chain-connected startup requires a dstack socket;
+without one it stops with `attestation_required`. Only explicit
+`--insecure-dev-identity` permits NOT ATTESTED mode (ephemeral boot keys,
+zero release hash, no quote claims, local registry and no submitter).
+Never register that identity on testnet. Protocol fakes are not attestation.
 
 ## Start
 
@@ -18,6 +19,7 @@ Default mode reads real gate and Base JSON-RPC endpoints and submits issued verd
 ```text
 NEAR_RPC_URL=http://127.0.0.1:<sandbox-port>
 BASE_SEPOLIA_RPC_URL=http://127.0.0.1:<anvil-port>
+GATE_ACCOUNT_ID=<one-protected-gate-account>
 VERIFIER_RELAY_ACCOUNT_ID=<sandbox-relay-account>
 VERIFIER_RELAY_KEY_FILE=<near-cli-legacy-credential.json>
 cargo run -p constitution-verifier
@@ -51,12 +53,87 @@ runtime are observed at that block. A block hash change during reads refuses the
 observation. RPC errors and incomplete observations cannot fabricate a proposal.
 Blocking reads and signing run outside the HTTP async runtime.
 
+Admission [I]: `GATE_ACCOUNT_ID` pins the only chain-connected gate;
+other gates return `400 wrong_gate` before any RPC. Unseal/validation errors
+and `sha256(plaintext) != source_commitment` return `400 bad_bundle`, without
+creating a run, consuming a certificate attempt or submitting a verdict.
+The commitment is checked after only `get_proposal`, before config/Base reads.
+Bad requests still count toward off-chain admission rate limits.
+
+Constants in `api.rs`: one request per proposal per 10 seconds
+(`PROPOSAL_INTERVAL`), globally at most 10 admitted requests per one-second
+sliding window (`GLOBAL_REQUESTS`, `GLOBAL_WINDOW`). `429 rate_limited` and
+`429 queue_full` include `Retry-After` seconds; a bad-bundle retry at exactly
+10 seconds is eligible again. One worker runs at a time; an active same-proposal
+request otherwise returns `409 run_in_progress`. A panic drop guard releases
+that slot and ends a pre-submission run `failed`/`worker_panic`; poisoned state
+locks recover. Post-signing submission uncertainty is retained as described below.
+The newest 64 finished runs are retained (`FINISHED_RUNS`), plus any unfinished
+run. IDs are monotonic; evicted status/evidence returns 404, not a lifetime
+queue refusal. Export evidence before eviction if it must be retained.
+The allowed CORS origin can read `Retry-After` via `Access-Control-Expose-Headers`.
+
+### Outcome classification
+
+| Cause | HTTP / run outcome | Certificate / gate |
+| --- | --- | --- |
+| Bad sealed bundle, malformed plaintext, wrong source commitment | `400 bad_bundle`; no run or attempt | None; Pending |
+| Other gate | `400 wrong_gate` before RPC | None |
+| Admission rate / busy worker | `429 rate_limited` / `429 queue_full`, `Retry-After`; same active proposal otherwise 409 | None |
+| RPC failure before queueing | `502 rpc_unavailable` | None; Pending |
+| Source compilation failure, runtime mismatch, incompatible R1, R3/R4 violation | Signed Reject with existing rule/reason | Terminal Reject |
+| Halmos solver timeout/unknown in a completed solver report | R2 Incomplete, reason 23 (fail closed) | Signed Reject |
+| Missing/unproved R5 witness or incomplete deterministic replay | R5 Incomplete, reason 51 | Signed Reject |
+| Sandbox/Docker unavailable, disk/tempdir failure, missing verifier tools, infrastructure wall timeout | `failed`, stable `error_code`: `sandbox_unavailable`, `storage_error`, `tool_unavailable`, `infrastructure_timeout` | None; Pending and retryable |
+| Malformed/inconsistent verifier-tool artifacts or an unavailable committed harness | `failed`, `tool_output_invalid` | None; Pending and retryable |
+| R5 RPC transport/HTTP/protocol failure (including malformed/oversized RPC responses), or committed verifier data unavailable/invalid | `failed`: `rpc_unavailable` / `committed_data_unavailable` | None; Pending and retryable |
+| Incomplete required AI review | Withheld, no Pass | None; Pending and retryable |
+
+Failure details expose static codes/digests, never tool diagnostics, keys or RPC
+URLs. A generic container wall timeout is infrastructure, not a solver timeout.
+`failed` is terminal for that run, not terminal for the proposal.
+
+### Run JSON contract for CLI/page consumers
+
+`POST /v1/runs` success is `202 {"run_id": <u64>}`. Admission errors are
+plain-text stable codes; rate/busy 429 responses include `Retry-After` integer
+seconds. Successful `GET /v1/runs/{id}` returns the following flattened object
+(a schema description, not a live receipt):
+
+| Field | JSON shape / meaning |
+| --- | --- |
+| `stage` | String: `queued`, `unsealing`, `compiling`, `r1_layout`, `r2_solvency`, `r3_filter`, `r4_initializer`, `r5_replay`, `ai_review`, `reproducing`, `signing`, `submitting`, `done`, or `failed` |
+| `started_at` | u64 Unix seconds |
+| `stages` | Array of `{name: string, status: "Pass" \| "Fail" \| "Incomplete" \| "NotRun" \| "Skipped", detail: string, elapsed_ms: u64}`; submission result uses stage name `submit` |
+| `outcome` | Human-readable string, not a machine discriminator |
+| `elapsed_ms` | u64 elapsed milliseconds |
+| `error_code` | Optional string, present on `failed`; stable codes from the classification table, including `tool_output_invalid` for malformed verifier-tool artifacts and `worker_panic`; defensive pipeline-only unseal failures use `bad_bundle` |
+| `verdict` | Optional `"Pass"` or `{"Reject":{"rule_id":u8,"reason_code":u16}}`; present only after signing |
+| `certificate_b64`, `signature_b64` | Optional base64 strings, canonical certificate bytes and Ed25519 signature |
+| `evidence_root` | Optional `0x`-prefixed 32-byte lowercase hex string |
+| `near_tx_hash` | Optional observed successful submission hash; never inferred |
+
+Both `done` and **`failed` are terminal run stages**; stop polling either.
+A `done` run may be rejected, certified, review-withheld or submission-incomplete:
+inspect certificate/verdict and submit status, not just `stage`.
+`failed` has no certificate, signature, verdict or on-chain submission; the
+proposal remains Pending and may be retried. `Stage.status` is a stage result,
+not a proposal state. Absent optional fields are omitted, never fake/null facts.
+Evidence is fetched separately from `/v1/runs/{id}/evidence`; it is not embedded
+in status JSON. Export either before finished-history eviction.
+
 Each issued certificate/signature pair triggers exactly one relay submission.
 Successful execution adds `near_tx_hash` to run JSON. A failed/pending submission
 records `submit: Incomplete`, retains the certificate, and never retries
 automatically. Inspect the relay's chain transactions before starting another run,
 because a lost response may still have landed. No certificate means no submission.
 All R2 manifest fields must be resolved before startup; null never becomes a bound.
+
+The no-certificate verifier-fault policy applies **before signing**. Once
+`submitting` begins, an RPC error or sender panic cannot prove the transaction
+was not broadcast. Such a run ends `done` with a `submit: Incomplete` stage and
+retains its signed certificate (not `failed`); inspect relay transactions before
+retrying. The worker slot is still released. No automatic resubmission occurs.
 
 ## Local end-to-end check
 
@@ -96,14 +173,13 @@ The stage requires an RPC supporting `debug_traceCall` / `prestateTracer`,
 endpoint internally through `ProposalSource::archive_rpc()`; prefer
 `BASE_SEPOLIA_ARCHIVE_RPC_URL` for an archive provider. The full URL is never
 included in evidence or run details. LocalRegistry has no archive endpoint:
-reaching R5 in offline mode produces Incomplete 51, not a pass.
+reaching R5 in offline mode fails with `rpc_unavailable`, never a pass.
 
-R5 records Pass 0, divergence Fail 50, or Incomplete 51. Missing RPC/corpus,
-commitment mismatch, unreadable observations, or an incomplete replay all fail
-closed. Codes 50/51 produce signed Reject rule 5 certificates under the existing
-rejection policy. Evidence hashes JSON witness bytes for a complete observation,
-or the sanitized error message for Incomplete; status exposes only `reason N`
-and, for Incomplete, the sanitized message.
+R5 records Pass 0, divergence Fail 50, or Incomplete 51. Missing or unproved
+witness state and incomplete replay fail closed as signed Reject reason 51.
+Transport/HTTP outages, missing archive configuration and unavailable or corrupt
+committed corpus are verifier faults instead: `failed`, no certificate and no
+submission. Evidence hashes witness bytes or sanitized incomplete details.
 
 After all deterministic rules pass, the verifier calls the loopback AI sidecar.
 An unavailable sidecar, gateway signature, timeout, malformed response or incomplete
