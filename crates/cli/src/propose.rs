@@ -115,6 +115,62 @@ pub fn seal(bytes: &[u8], public_key: [u8; 32]) -> Result<Vec<u8>, Failure> {
         })
 }
 
+/// Retry verification of an existing proposal without another on-chain write.
+/// File input is canonical Borsh SourceBundle; directories use the propose collector.
+pub fn verifier_run(
+    path: &Path,
+    contract: Option<&str>,
+    gate: &str,
+    id: u64,
+    near: &Near,
+    verifier: &Verifier,
+) -> Result<(), Failure> {
+    let bytes = if path.is_dir() {
+        let contract = contract
+            .ok_or_else(|| bundle_error("directory input requires --contract src/path.sol:Name"))?;
+        canonical_bytes(&build_bundle(path, contract)?)?
+    } else {
+        if fs::metadata(path).map_err(bundle_error)?.len() > MAX_BUNDLE as u64 {
+            return Err(bundle_error("Borsh bundle exceeds 2 MiB"));
+        }
+        let raw = fs::read(path).map_err(bundle_error)?;
+        let bundle: SourceBundle = borsh::from_slice(&raw).map_err(bundle_error)?;
+        canonical_bytes(&bundle)?
+    };
+    let proposal = crate::receipt::read_proposal(near, gate, id)?;
+    if proposal.state != constitution_types::ProposalState::Pending {
+        return Err(Failure::new(
+            format!("proposal {id} is not Pending"),
+            "inspect `constitution status <id>`; only Pending proposals can start another verifier run",
+        ));
+    }
+    if constitution_types::certificate_hash(&bytes) != proposal.source_commitment {
+        return Err(Failure::new(
+            format!(
+                "bundle differs from proposal {id} source commitment; no verifier request was sent"
+            ),
+            "use exactly the original canonical source bundle and contract selection; do not change the existing proposal",
+        ));
+    }
+    let identity = verifier.identity()?;
+    let key: Hex32 =
+        serde_json::from_value(identity["transport_pubkey"].clone()).map_err(|_| {
+            Failure::new(
+                "verifier identity has no valid transport_pubkey",
+                "check --verifier-url/VERIFIER_URL and fetch the current identity before retrying",
+            )
+        })?;
+    println!(
+        "verifier identity NOT APPRAISED by this command; use constitution verifier appraise (D5)"
+    );
+    let run_id = verifier.start(gate, id, &seal(&bytes, key.0)?)?;
+    println!("verifier run: {run_id}");
+    println!(
+        "next: constitution status {id} --run {run_id} --watch 600 (use the same --gate, --near-rpc and --verifier)"
+    );
+    Ok(())
+}
+
 pub struct Input<'a> {
     pub bytes: &'a [u8],
     pub implementation: &'a str,
