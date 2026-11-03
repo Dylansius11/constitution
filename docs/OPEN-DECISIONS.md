@@ -108,7 +108,13 @@ Resolution [I]: the executor does not know NEAR rule epochs. A signature issued 
 
 ### D14. Gas, fee caps and funding
 
-Open. Lead sets `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas` and `fee_cap` at activation from fees observed on Base Sepolia during spike P1.4, recorded with the observation. Founder funds: NEAR testnet accounts (faucet), the derived EOA with Base Sepolia ETH (CDP faucet advertises up to 0.1 ETH per 24 h, docs.base.org/get-started/get-funds, 2026-10-26), demo-key credit. No real money involved except D2.
+Open for funding; lead caps set from observation. Founder funds: NEAR testnet accounts (faucet), the derived EOA with Base Sepolia ETH, demo-key credit. No real money involved except D2.
+
+Observation [V, Base Sepolia, 2026-11-03, spike P1.4 stage B]: base fee 5,000,000 wei, suggested priority fee 1,000,000 wei, effective gas price 6,000,000 wei; the `execute` upgrade with `initializeV2` used 105,159 gas, an expired-deadline revert 28,900 gas; L1 data fee about 500 wei.
+
+Lead caps for activation [I]: `gas_limit = 300000` (2.8x the observed upgrade; init calldata is capped at 1,024 bytes), `max_priority_fee_per_gas = 1000000`, `max_fee_per_gas = 50000000` (10x the observed base fee), `fee_cap = 1000000000` (ceiling for bumped fees). Worst case per signed transaction at the cap: 300,000 x 1 gwei = 0.0003 ETH.
+
+Funding proposal for the founder [I]: 0.01 ETH to the derived EOA from the deployer at activation (at least 33 transactions at the cap, thousands at observed fees); deployer balance after the spike is 0.04698 ETH.
 
 ### D15. Rust toolchain pin (lead)
 

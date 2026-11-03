@@ -57,7 +57,7 @@ Phase acceptance: P1.4 and P1.6 evidence recorded in SMART-CONTRACT "Deployment"
 
 - [ ] **P2.1 Shared types** (F1, F3, F5). Owned: `crates/constitution-types/`. Certificate, Proposal, ChangeKind, Params, manifests, reason codes, EVM encoder, derivation helper.
   - Acceptance: T-ENC-1, T-ENC-2 vectors pass; Borsh round-trip property test; `constitution rules hash rules/manifest.json` deterministic across runs.
-  - Progress (2026-11-02 UTC, local WSL): T-ENC-1 green (P1.5); Borsh and JSON round-trip properties and the independent Python certificate-hash oracle pass (`cargo test -p constitution-types`); `constitution rules hash` is stable across runs and JSON formatting on a resolved fixture (`cargo test -p constitution-cli`). Open: the committed `rules/manifest.json` still has null R2 values (waits for the R2 harness), and T-ENC-2 against the page decoder waits for P3.5.
+  - Progress (2026-11-02 UTC, local WSL): T-ENC-1 green (P1.5); Borsh and JSON round-trip properties and the independent Python certificate-hash oracle pass (`cargo test -p constitution-types`); `constitution rules hash` is stable across runs and JSON formatting on a resolved fixture (`cargo test -p constitution-cli`). R2 values committed 2026-11-03 (`c150662`). Open: T-ENC-2 against the page decoder (in progress with the page data layer).
 - [x] **P2.2 Gate: credit and proposals** (F1, D3). Owned: `crates/gate/src/{lib,credit,proposal}.rs`, tests.
   - Acceptance: T-GATE-1, T-GATE-11 (partial), expire path, duplicate active rejection, init calldata length limit.
 - [x] **P2.3 Gate: verdicts, signing, nonces, fee bump** (F3, D12, D13). Owned: `crates/gate/src/{verdict,signing,evm}.rs`.
