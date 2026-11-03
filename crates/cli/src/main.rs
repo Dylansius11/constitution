@@ -1,6 +1,7 @@
 //! `constitution` CLI. Interface: docs/technical/ARCHITECTURE.md "CLI".
 mod appraise;
 mod audit;
+mod executor_build;
 mod failure;
 mod govern;
 mod near_tx;
@@ -42,11 +43,13 @@ enum Command {
         implementation: String,
         #[arg(long, default_value = "0x")]
         init: String,
-        #[arg(long, env = "VERIFIER_URL")]
+        #[arg(long, env = "VERIFIER_URL", hide_env_values = true)]
         verifier: String,
         #[arg(
             long,
             env = "BASE_SEPOLIA_RPC_URL",
+            hide_env_values = true,
+            hide_default_value = true,
             default_value = "https://sepolia.base.org"
         )]
         evm_rpc: String,
@@ -81,6 +84,11 @@ enum Command {
         #[command(subcommand)]
         command: VerifierCommand,
     },
+    /// Print the masked executor runtime keccak256 from a local committed Foundry artifact.
+    ExecutorRuntimeHash {
+        #[arg(long, default_value = executor_build::DEFAULT_ARTIFACT)]
+        executor_artifact: PathBuf,
+    },
     /// Read-only F7 audit: prove the claim's preconditions from public state. Exits 1 on any failure.
     Audit {
         /// Deployment record written at activation.
@@ -89,15 +97,22 @@ enum Command {
         /// Committed rule-set manifest the gate must enforce.
         #[arg(long, default_value = "rules/manifest.json")]
         manifest: PathBuf,
+        /// Local artifact built from the committed executor source; defines immutable positions.
+        #[arg(long, default_value = executor_build::DEFAULT_ARTIFACT)]
+        executor_artifact: PathBuf,
         #[arg(
             long,
             env = "NEAR_RPC_URL",
+            hide_env_values = true,
+            hide_default_value = true,
             default_value = "https://test.rpc.fastnear.com"
         )]
         near_rpc: String,
         #[arg(
             long,
             env = "BASE_SEPOLIA_RPC_URL",
+            hide_env_values = true,
+            hide_default_value = true,
             default_value = "https://sepolia.base.org"
         )]
         evm_rpc: String,
@@ -117,18 +132,24 @@ enum Command {
         #[arg(
             long,
             env = "NEAR_RPC_URL",
+            hide_env_values = true,
+            hide_default_value = true,
             default_value = "https://test.rpc.fastnear.com"
         )]
         near_rpc: String,
         #[arg(
             long,
             env = "BASE_SEPOLIA_RPC_URL",
+            hide_env_values = true,
+            hide_default_value = true,
             default_value = "https://sepolia.base.org"
         )]
         evm_rpc: String,
         #[arg(
             long,
             env = "BASE_SEPOLIA_SEND_URL",
+            hide_env_values = true,
+            hide_default_value = true,
             default_value = "https://sepolia-sequencer.base.org"
         )]
         send_rpc: String,
@@ -155,7 +176,7 @@ enum VerifierCommand {
         #[arg(long, value_parser = appraise::parse_compose_hash)]
         expect_compose_hash: Option<constitution_types::Hex32>,
         /// Collateral service; signatures remain anchored to Intel's production root.
-        #[arg(long, env = "PCCS_URL", default_value = appraise::DEFAULT_PCCS_URL)]
+        #[arg(long, env = "PCCS_URL", default_value = appraise::DEFAULT_PCCS_URL, hide_env_values = true, hide_default_value = true)]
         pccs_url: String,
         #[arg(long)]
         json: bool,
@@ -169,16 +190,20 @@ struct ReadArgs {
     #[arg(
         long,
         env = "NEAR_RPC_URL",
+        hide_env_values = true,
+        hide_default_value = true,
         default_value = "https://test.rpc.fastnear.com"
     )]
     near_rpc: String,
     #[arg(
         long,
         env = "BASE_SEPOLIA_RPC_URL",
+        hide_env_values = true,
+        hide_default_value = true,
         default_value = "https://sepolia.base.org"
     )]
     evm_rpc: String,
-    #[arg(long, env = "VERIFIER_URL")]
+    #[arg(long, env = "VERIFIER_URL", hide_env_values = true)]
     verifier: Option<String>,
     #[arg(long, default_value = "testnet", value_parser = ["testnet", "local"])]
     network: String,
@@ -221,6 +246,8 @@ struct SignerArgs {
         long,
         global = true,
         env = "NEAR_RPC_URL",
+        hide_env_values = true,
+        hide_default_value = true,
         default_value = "https://test.rpc.fastnear.com"
     )]
     near_rpc: String,
@@ -343,18 +370,28 @@ fn run(cli: Cli) -> Result<(), Failure> {
             println!("0x{}", hex::encode(rules::hash_file(&manifest)?));
             Ok(())
         }
+        Command::ExecutorRuntimeHash { executor_artifact } => {
+            println!(
+                "0x{}",
+                hex::encode(executor_build::ExecutorBuild::read(&executor_artifact)?.hash())
+            );
+            Ok(())
+        }
         Command::Audit {
             deployment,
             manifest,
+            executor_artifact,
             near_rpc,
             evm_rpc,
         } => {
             let manifest_hash = rules::hash_file(&manifest)?;
             let deployment = audit::read_deployment(&deployment)?;
+            let build = executor_build::ExecutorBuild::read(&executor_artifact)?;
             let observed = audit::observe(
                 &deployment,
                 &rpc::Near::new(&near_rpc),
                 &rpc::Evm::new(&evm_rpc),
+                &build,
             )?;
             audit::report(&audit::evaluate(&deployment, manifest_hash, &observed))
         }
