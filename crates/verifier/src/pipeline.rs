@@ -149,6 +149,7 @@ pub fn execute(
         attempt,
         archive_provider,
         archive_rpc,
+        &crate::ai::LocalSidecar,
         None,
     )
 }
@@ -162,6 +163,7 @@ pub fn execute_observed(
     attempt: u32,
     archive_provider: &str,
     archive_rpc: Option<&str>,
+    ai_transport: &dyn crate::ai::Transport,
     observer: Option<Observer>,
 ) -> Run {
     let start = Instant::now();
@@ -169,8 +171,20 @@ pub fn execute_observed(
     run.observer = observer;
     let mut ev = evidence(p, m, archive_provider);
     run.record("queued", StageStatus::Pass, "run started", Instant::now());
-    let rejection = run_stages(repo, m, identity, p, sealed, archive_rpc, &mut run, &mut ev);
-    if let Some((rule, reason)) = rejection {
+    let mut ai_review = AiReview::NotRun;
+    let rejection = run_stages(
+        repo,
+        m,
+        identity,
+        p,
+        sealed,
+        archive_rpc,
+        ai_transport,
+        &mut run,
+        &mut ev,
+        &mut ai_review,
+    );
+    if rejection.is_some() {
         for (name, evidence) in [
             ("r1_layout", &mut ev.r1),
             ("r2_solvency", &mut ev.r2),
@@ -188,18 +202,37 @@ pub fn execute_observed(
                 );
             }
         }
-        run.record(
-            "ai_review",
-            StageStatus::NotRun,
-            "deterministic stages did not all pass",
-            Instant::now(),
-        );
-        run.record(
-            "reproducing",
-            StageStatus::NotRun,
-            "AI not run",
-            Instant::now(),
-        );
+        if !run.stages.iter().any(|s| s.name == "ai_review") {
+            run.record(
+                "ai_review",
+                StageStatus::NotRun,
+                "deterministic stages did not all pass; provider near; candidates 0",
+                Instant::now(),
+            );
+            run.record(
+                "reproducing",
+                StageStatus::NotRun,
+                "AI not run",
+                Instant::now(),
+            );
+        }
+    }
+    let verdict = rejection
+        .map(|(rule_id, reason_code)| Verdict::Reject {
+            rule_id,
+            reason_code,
+        })
+        .or_else(|| {
+            matches!(
+                ai_review,
+                AiReview::Clean {
+                    signature_kind: 1,
+                    ..
+                }
+            )
+            .then_some(Verdict::Pass)
+        });
+    if let Some(verdict) = verdict {
         let issued = now();
         let mut cert = Certificate {
             domain: DOMAIN,
@@ -221,11 +254,8 @@ pub fn execute_observed(
             evidence_block_number: p.evidence_block_number,
             evidence_block_hash: p.evidence_block_hash.0,
             evidence_root: [0; 32],
-            ai: AiReview::NotRun,
-            verdict: Verdict::Reject {
-                rule_id: rule,
-                reason_code: reason,
-            },
+            ai: ai_review,
+            verdict,
             issued_at_s: issued,
             expires_at_s: p.expires_at_s.min(issued.saturating_add(m.max_cert_ttl_s)),
         };
@@ -236,38 +266,32 @@ pub fn execute_observed(
         ));
         let root = evidence_root(&ev).expect("evidence serialize");
         cert.evidence_root = root;
-        match identity.sign_reject(&cert) {
+        match identity.sign_certificate(&cert) {
             Ok((signature, bytes)) => {
-                run.verdict = Some(cert.verdict);
+                run.verdict = Some(cert.verdict.clone());
                 run.certificate_b64 = Some(Base64Bytes(bytes));
                 run.signature_b64 = Some(Base64(signature));
                 run.evidence_root = Some(Hex32(root));
-                run.outcome = "rejected (local, not attested; not submitted)".into();
+                run.outcome = match cert.verdict {
+                    Verdict::Pass => "certified Pass (attested identity; independent appraisal required; not submitted)",
+                    Verdict::Reject { .. } if identity.release_hash() == [0;32] => "rejected (local, not attested; not submitted)",
+                    Verdict::Reject { .. } => "rejected (attested identity; not submitted)",
+                }.into();
                 run.record(
                     "signing",
                     StageStatus::Pass,
-                    "ephemeral Ed25519 Reject",
+                    "ephemeral Ed25519 certificate",
                     Instant::now(),
                 );
             }
             Err(e) => {
                 run.outcome = format!("withheld: {e}");
+                run.evidence_root = Some(Hex32(root));
+                run.record("signing", StageStatus::Incomplete, e, Instant::now());
             }
         }
     } else {
-        run.record(
-            "ai_review",
-            StageStatus::NotRun,
-            "AI review not integrated (P2.6)",
-            Instant::now(),
-        );
-        run.record(
-            "reproducing",
-            StageStatus::NotRun,
-            "AI not run",
-            Instant::now(),
-        );
-        run.outcome = "withheld: AI review not integrated; no Pass without AI".into();
+        run.outcome = "withheld: AI review incomplete; no Pass without provider_tee Clean".into();
         run.evidence_root = Some(Hex32(evidence_root(&ev).expect("evidence serialize")));
         run.record(
             "signing",
@@ -301,8 +325,10 @@ fn run_stages(
     p: &LocalProposal,
     sealed: &[u8],
     archive_rpc: Option<&str>,
+    ai_transport: &dyn crate::ai::Transport,
     run: &mut Run,
     ev: &mut EvidenceManifest,
+    ai_review: &mut AiReview,
 ) -> Option<(u8, u16)> {
     run.begin("unsealing");
     let start = Instant::now();
@@ -510,7 +536,126 @@ fn run_stages(
     if code != 0 {
         return Some((5, code));
     }
-    None
+    run.begin("ai_review");
+    let start = Instant::now();
+    let report = ai_evidence(
+        repo,
+        m,
+        p,
+        &b,
+        archive_rpc,
+        &current,
+        &runtime,
+        ai_transport,
+    );
+    run.record("ai_review", report.status, &report.detail, start);
+    run.begin("reproducing");
+    run.record(
+        "reproducing",
+        if report.evidence.candidates.is_empty() {
+            StageStatus::NotRun
+        } else {
+            report.status
+        },
+        &report.detail,
+        Instant::now(),
+    );
+    let rejection = report.verdict().and_then(|v| match v {
+        Verdict::Reject {
+            rule_id,
+            reason_code,
+        } => Some((rule_id, reason_code)),
+        Verdict::Pass => None,
+    });
+    ev.ai = report.evidence;
+    *ai_review = report.review;
+    rejection
+}
+
+#[allow(clippy::too_many_arguments)]
+fn ai_evidence(
+    repo: &Path,
+    m: &RuleSetManifest,
+    p: &LocalProposal,
+    bundle: &constitution_types::bundle::SourceBundle,
+    archive_rpc: Option<&str>,
+    current: &[u8],
+    candidate: &[u8],
+    ai_transport: &dyn crate::ai::Transport,
+) -> crate::ai::Report {
+    use crate::ai::{Report, ReviewRequest, SourceFile};
+    if m.ai.model != crate::ai::MODEL
+        || m.ai.signature_kind != "provider_tee"
+        || !(1..=16).contains(&m.ai.max_candidates)
+        || !(1..=300).contains(&m.ai.timeout_s)
+    {
+        return crate::ai::Report::incomplete("AI incomplete; unsupported committed policy");
+    }
+    use crypto_box::aead::rand_core::{OsRng, RngCore};
+    let files = match bundle
+        .files
+        .iter()
+        .map(|(path, bytes)| {
+            String::from_utf8(bytes.clone()).map(|content| SourceFile {
+                path: path.clone(),
+                content,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(files) => files,
+        Err(_) => return Report::incomplete("AI incomplete; source is not UTF-8"),
+    };
+    let mut nonce = [0; 32];
+    OsRng.fill_bytes(&mut nonce);
+    let request = ReviewRequest {
+        files,
+        rules: vec![
+            "R1: append-only storage layout".into(),
+            "R2: totalDeposits() <= token.balanceOf(proxy); only deposit(uint256) and withdraw(uint256); replay every candidate locally".into(),
+            "R3: no forbidden opcodes or proxy-slot constants".into(),
+            "R4: committed initializer only".into(),
+            "R5: committed differential replay corpus".into(),
+        ],
+        nonce: hex::encode(nonce),
+        max_candidates: m.ai.max_candidates,
+        timeout_s: m.ai.timeout_s,
+    };
+    let corpus_bytes = match std::fs::read(repo.join("rules/r5/corpus.json")) {
+        Ok(bytes) => bytes,
+        Err(_) => return Report::incomplete("AI incomplete; committed corpus unavailable"),
+    };
+    let corpus =
+        match crate::replay::Corpus::from_json(&corpus_bytes, m.r5.max_txs, m.r5.confirmations) {
+            Ok(corpus) if corpus.sha256 == m.r5.corpus_sha256.0 => corpus,
+            _ => return Report::incomplete("AI incomplete; committed corpus invalid"),
+        };
+    crate::ai::review(ai_transport, &request, |sequence| {
+        let calls =
+            crate::ai::candidate_corpus(sequence, corpus.calls[0].from, m.r5.confirmations)?;
+        let witness = crate::ai::fetch_candidate_witness(
+            archive_rpc.ok_or("AI replay archive unavailable")?,
+            crate::replay::EvidenceBlock {
+                number: p.evidence_block_number,
+                hash: p.evidence_block_hash.0.into(),
+            },
+            &calls,
+            p.proxy.0.into(),
+            p.new_impl.0.into(),
+            p.new_impl_codehash.0.into(),
+            &p.init_calldata.0,
+            corpus.calls[0].from,
+        )
+        .map_err(|e| e.to_string())?;
+        crate::ai::reproduce(
+            &witness,
+            &calls,
+            current,
+            candidate,
+            &p.init_calldata.0,
+            corpus.calls[0].from,
+        )
+    })
 }
 
 fn replay_evidence(

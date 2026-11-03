@@ -1,4 +1,6 @@
 //! Local NEAR sandbox + anvil + real no-network tool image. No testnet writes.
+#[path = "fixtures/dstack_socket.rs"]
+mod dstack_socket;
 use constitution_types::{bundle::SourceBundle, manifest::rule_set_hash, *};
 use constitution_verifier::{
     api::{Service, router},
@@ -78,7 +80,15 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
     let gate = worker.dev_deploy(&wasm).await?;
     let relay = worker.dev_create_account().await?;
     let proposer = worker.dev_create_account().await?;
-    let identity = Identity::new();
+    // Local socket simulator, not a genuine attested deployment. The gate now
+    // refuses a zero release hash even in local sandbox initialization.
+    let (quote_dir, quote_handle) = dstack_socket::guest(false);
+    let identity = Identity::new()
+        .attest(&quote_dir.path().join("dstack.sock"))
+        .await?;
+    quote_handle
+        .join()
+        .map_err(|_| "local socket simulator panicked")?;
     let manifest = load_manifest(repo().join("rules/manifest.json"))?;
     let confirmations = manifest.r5.confirmations;
     let socket = std::net::TcpListener::bind("127.0.0.1:0")?;
@@ -215,7 +225,7 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             callback_gas_tgas: 20,
         },
     };
-    gate.call("new").args_json(json!({"config":config,"constitution":constitution,"roles":Roles {governor:proposer.id().clone(),guardian:proposer.id().clone()},"verifiers":[(Base64(identity.pubkey()),VerifierRecord {release_hash:[0;32],attestation_uri:"local:not-attested".into(),added_at_ns:0})],"initial_evm_nonce":0})).transact().await?.into_result()?;
+    gate.call("new").args_json(json!({"config":config,"constitution":constitution,"roles":Roles {governor:proposer.id().clone(),guardian:proposer.id().clone()},"verifiers":[(Base64(identity.pubkey()),VerifierRecord {release_hash:identity.release_hash(),attestation_uri:"local:socket-simulator-not-real-attestation".into(),added_at_ns:0})],"initial_evm_nonce":0})).transact().await?.into_result()?;
     let mut files = vec![];
     for name in [
         "VaultV1.sol",
@@ -300,13 +310,21 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .seal(&mut crypto_box::aead::rand_core::OsRng, &bytes)
         .map_err(|_| "cannot seal local test bundle")?;
     let source = GateSource::new(&worker.rpc_addr(), &rpc, &manifest)?;
-    let service = Service::with_submitter(
+    let mut service = Service::with_submitter(
         identity,
         manifest,
         repo(),
         Box::new(source),
         Box::new(submitter),
     )?;
+    // Explicit local protocol fake: never contact a possibly running funded sidecar.
+    struct LocalUnavailableAiFake;
+    impl constitution_verifier::ai::Transport for LocalUnavailableAiFake {
+        fn review(&self, _: Vec<u8>, _: u32) -> Result<Vec<u8>, &'static str> {
+            Err("local protocol fake: unavailable")
+        }
+    }
+    std::sync::Arc::get_mut(&mut service).unwrap().ai_transport = Box::new(LocalUnavailableAiFake);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let app = router(service, "http://page.local")?;
@@ -379,8 +397,16 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         assert_eq!(evidence.r5.detail_code, 0);
         assert_eq!(
             run["outcome"],
-            "withheld: AI review not integrated; no Pass without AI"
+            "withheld: AI review incomplete; no Pass without provider_tee Clean"
         );
+        let ai_stage = run["stages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == "ai_review")
+            .unwrap();
+        assert_eq!(ai_stage["status"], "Incomplete");
+        assert!(evidence.ai.candidates.is_empty());
         for field in [
             "verdict",
             "certificate_b64",

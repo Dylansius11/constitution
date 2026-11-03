@@ -397,6 +397,64 @@ pub fn fetch_witness(
     new_impl_codehash: B256,
     new_init_calldata: &[u8],
 ) -> Result<Witness, Incomplete> {
+    fetch_witness_inner(
+        rpc_url,
+        block,
+        corpus,
+        proxy,
+        new_impl,
+        new_impl_codehash,
+        new_init_calldata,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn fetch_ai_witness(
+    rpc_url: &str,
+    block: EvidenceBlock,
+    corpus: &Corpus,
+    proxy: Address,
+    new_impl: Address,
+    new_impl_codehash: B256,
+    init: &[u8],
+    actor: Address,
+) -> Result<Witness, Incomplete> {
+    fetch_witness_inner(
+        rpc_url,
+        block,
+        corpus,
+        proxy,
+        new_impl,
+        new_impl_codehash,
+        init,
+        Some(actor),
+    )
+}
+
+pub(crate) mod vault_abi {
+    alloy_sol_types::sol! {
+        function totalDeposits() external view returns (uint256);
+        function balanceOf(address account) external view returns (uint256);
+    }
+}
+pub(crate) fn vault_token_slot() -> U256 {
+    use alloy_sol_types::SolValue;
+    let namespace = U256::from_be_slice(&crate::keccak(b"constitution.storage.Vault")) - U256::ONE;
+    U256::from_be_slice(&crate::keccak(&namespace.abi_encode())) & !U256::from(255)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fetch_witness_inner(
+    rpc_url: &str,
+    block: EvidenceBlock,
+    corpus: &Corpus,
+    proxy: Address,
+    new_impl: Address,
+    new_impl_codehash: B256,
+    new_init_calldata: &[u8],
+    ai_actor: Option<Address>,
+) -> Result<Witness, Incomplete> {
     corpus.validate()?;
     require(
         new_init_calldata.len() <= 1024,
@@ -443,10 +501,13 @@ pub fn fetch_witness(
     needed.entry(environment.beneficiary).or_default();
     needed.entry(new_impl).or_default();
     needed.entry(implementation).or_default();
+    if let Some(actor) = ai_actor {
+        needed.entry(actor).or_default();
+    }
     let mut overrides =
         json!({(implementation.to_string()): {"code": format!("0x{}", hex::encode(&new_runtime))}});
     if !new_init_calldata.is_empty() {
-        let request = json!({"from":corpus.calls[0].from, "to":proxy, "value":"0x0", "data":format!("0x{}", hex::encode(new_init_calldata)), "gas":format!("0x{GAS_LIMIT:x}")});
+        let request = json!({"from":ai_actor.unwrap_or(corpus.calls[0].from), "to":proxy, "value":"0x0", "data":format!("0x{}", hex::encode(new_init_calldata)), "gas":format!("0x{GAS_LIMIT:x}")});
         let trace = rpc.call(
             "debug_traceCall",
             json!([request, tag, {"tracer":"prestateTracer", "stateOverrides":overrides}]),
@@ -469,6 +530,41 @@ pub fn fetch_witness(
                     .is_some_and(|accounts| !accounts.is_empty()),
                 "prestateTracer returned no accounts",
             )?;
+            collect_accesses(&mut needed, &trace)?;
+        }
+    }
+    if let Some(actor) = ai_actor {
+        use alloy_sol_types::SolCall;
+        // Discovery hints only. Every value used in replay is fetched/proof-checked below.
+        let token_slot = vault_token_slot();
+        let token_word = quantity(&rpc.call(
+            "eth_getStorageAt",
+            json!([proxy, format!("0x{token_slot:064x}"), tag]),
+        )?)?;
+        require(
+            token_word != U256::ZERO && token_word >> 160 == U256::ZERO,
+            "invalid vault token discovery",
+        )?;
+        let token = Address::from_slice(&token_word.to_be_bytes::<32>()[12..]);
+        needed
+            .entry(proxy)
+            .or_default()
+            .extend([token_slot, token_slot + U256::from(2)]);
+        needed.entry(token).or_default();
+        for (to, data, options) in [
+            (
+                proxy,
+                vault_abi::totalDepositsCall {}.abi_encode(),
+                json!({"tracer":"prestateTracer", "stateOverrides":overrides}),
+            ),
+            (
+                token,
+                vault_abi::balanceOfCall { account: proxy }.abi_encode(),
+                json!({"tracer":"prestateTracer"}),
+            ),
+        ] {
+            let request = json!({"from":actor, "to":to, "value":"0x0", "data":format!("0x{}",hex::encode(data)), "gas":format!("0x{GAS_LIMIT:x}")});
+            let trace = rpc.call("debug_traceCall", json!([request, tag, options]))?;
             collect_accesses(&mut needed, &trace)?;
         }
     }
@@ -849,6 +945,91 @@ fn replay_inner(
     new: &[u8],
     init: &[u8],
 ) -> Result<bool, Incomplete> {
+    let Some((mut old, mut upgraded)) = prepared_states(
+        w,
+        corpus,
+        current,
+        new,
+        init,
+        corpus.calls.first().map(|c| c.from),
+    )?
+    else {
+        return Ok(false);
+    };
+    for call in &corpus.calls {
+        let value = U256::from(
+            call.value
+                .parse::<u128>()
+                .map_err(|_| incomplete("invalid call value"))?,
+        );
+        let metadata_before = [IMPL, CAP, INITIALIZABLE]
+            .map(|key| upgraded.accounts[&w.proxy].storage.get(&key).copied());
+        let original = execute(
+            &mut old,
+            &w.environment,
+            call.from,
+            w.proxy,
+            value,
+            call.data.clone(),
+        )?;
+        let changed = execute(
+            &mut upgraded,
+            &w.environment,
+            call.from,
+            w.proxy,
+            value,
+            call.data.clone(),
+        )?;
+        if original != changed
+            || metadata_before
+                != [IMPL, CAP, INITIALIZABLE]
+                    .map(|key| upgraded.accounts[&w.proxy].storage.get(&key).copied())
+        {
+            return Ok(false);
+        }
+        let filtered_reads = |db: &StrictDb| {
+            db.reads
+                .iter()
+                .copied()
+                .filter(|(a, k)| *a != w.proxy || (*k != IMPL && *k != CAP))
+                .collect::<BTreeSet<_>>()
+        };
+        if filtered_reads(&old) != filtered_reads(&upgraded) {
+            return Ok(false);
+        }
+        for (a, state) in &old.accounts {
+            let other = upgraded
+                .accounts
+                .get(a)
+                .ok_or_else(|| incomplete("missing comparison account"))?;
+            if state.balance != other.balance
+                || state.exists != other.exists
+                || state.nonce != other.nonce
+                || state.code != other.code
+            {
+                return Ok(false);
+            }
+            for (key, value) in &state.storage {
+                if *a == w.proxy && (*key == IMPL || *key == CAP || *key == INITIALIZABLE) {
+                    continue;
+                }
+                if other.storage.get(key) != Some(value) {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn prepared_states(
+    w: &Witness,
+    corpus: &Corpus,
+    current: &[u8],
+    new: &[u8],
+    init: &[u8],
+    initializer_sender: Option<Address>,
+) -> Result<Option<(StrictDb, StrictDb)>, Incomplete> {
     corpus.validate()?;
     let (root, environment) = verified_header(&w.header, w.block)?;
     require(
@@ -867,7 +1048,7 @@ fn replay_inner(
         w.accounts.len() <= 256 && w.environment.number == U256::from(w.block.number),
         "invalid witness environment",
     )?;
-    let mut old = StrictDb {
+    let old = StrictDb {
         accounts: w
             .accounts
             .iter()
@@ -943,10 +1124,10 @@ fn replay_inner(
         if upgraded.accounts[&w.proxy].storage[&CAP] != U256::ZERO
             || upgraded.accounts[&w.proxy].storage[&INITIALIZABLE] != U256::ONE
         {
-            return Ok(false);
+            return Ok(None);
         }
         let before = upgraded.clone();
-        let sender = corpus.calls[0].from;
+        let sender = initializer_sender.ok_or_else(|| incomplete("initializer sender absent"))?;
         let outcome = execute(
             &mut upgraded,
             &w.environment,
@@ -956,10 +1137,10 @@ fn replay_inner(
             Bytes::copy_from_slice(init),
         )?;
         if !outcome.success {
-            return Ok(false);
+            return Ok(None);
         }
         if upgraded.accounts[&w.proxy].storage[&INITIALIZABLE] != U256::from(2) {
-            return Ok(false);
+            return Ok(None);
         }
         upgraded
             .accounts
@@ -973,80 +1154,78 @@ fn replay_inner(
                 || state.nonce != original.nonce
                 || state.code != original.code
             {
-                return Ok(false);
+                return Ok(None);
             }
             for (key, value) in &state.storage {
                 if *a == w.proxy && (*key == CAP || *key == INITIALIZABLE) {
                     continue;
                 }
                 if original.storage.get(key) != Some(value) {
-                    return Ok(false);
+                    return Ok(None);
                 }
             }
         }
     }
-    for call in &corpus.calls {
-        let value = U256::from(
-            call.value
-                .parse::<u128>()
-                .map_err(|_| incomplete("invalid call value"))?,
-        );
-        let metadata_before = [IMPL, CAP, INITIALIZABLE]
-            .map(|key| upgraded.accounts[&w.proxy].storage.get(&key).copied());
-        let original = execute(
-            &mut old,
-            &w.environment,
-            call.from,
-            w.proxy,
-            value,
-            call.data.clone(),
-        )?;
-        let changed = execute(
-            &mut upgraded,
-            &w.environment,
-            call.from,
-            w.proxy,
-            value,
-            call.data.clone(),
-        )?;
-        if original != changed
-            || metadata_before
-                != [IMPL, CAP, INITIALIZABLE]
-                    .map(|key| upgraded.accounts[&w.proxy].storage.get(&key).copied())
-        {
-            return Ok(false);
-        }
-        let filtered_reads = |db: &StrictDb| {
-            db.reads
-                .iter()
-                .copied()
-                .filter(|(a, k)| *a != w.proxy || (*k != IMPL && *k != CAP))
-                .collect::<BTreeSet<_>>()
-        };
-        if filtered_reads(&old) != filtered_reads(&upgraded) {
-            return Ok(false);
-        }
-        for (a, state) in &old.accounts {
-            let other = upgraded
+    Ok(Some((old, upgraded)))
+}
+
+/// Crate-private authenticated upgraded fork; all execution uses R5's strict DB.
+pub(crate) struct CandidateReplay {
+    db: StrictDb,
+    environment: BlockEnv,
+    proxy: Address,
+}
+impl CandidateReplay {
+    pub(crate) fn new(
+        w: &Witness,
+        corpus: &Corpus,
+        current: &[u8],
+        new: &[u8],
+        init: &[u8],
+        initializer_sender: Address,
+    ) -> Result<Self, Incomplete> {
+        let (_, db) = prepared_states(w, corpus, current, new, init, Some(initializer_sender))?
+            .ok_or_else(|| incomplete("candidate initializer failed replay policy"))?;
+        Ok(Self {
+            db,
+            environment: w.environment.clone(),
+            proxy: w.proxy,
+        })
+    }
+    pub(crate) fn call_proxy(&mut self, from: Address, data: Bytes) -> Result<(), Incomplete> {
+        require(
+            self.db
                 .accounts
-                .get(a)
-                .ok_or_else(|| incomplete("missing comparison account"))?;
-            if state.balance != other.balance
-                || state.exists != other.exists
-                || state.nonce != other.nonce
-                || state.code != other.code
-            {
-                return Ok(false);
-            }
-            for (key, value) in &state.storage {
-                if *a == w.proxy && (*key == IMPL || *key == CAP || *key == INITIALIZABLE) {
-                    continue;
-                }
-                if other.storage.get(key) != Some(value) {
-                    return Ok(false);
-                }
-            }
-        }
+                .get(&from)
+                .is_some_and(|a| a.code.is_empty()),
+            "candidate caller must be a witnessed EOA",
+        )?;
+        execute(
+            &mut self.db,
+            &self.environment,
+            from,
+            self.proxy,
+            U256::ZERO,
+            data,
+        )?;
+        Ok(())
     }
-    Ok(true)
+    /// Predicate reads run on a discarded clone, so untrusted getters cannot change replay state.
+    pub(crate) fn query(
+        &self,
+        from: Address,
+        to: Address,
+        data: Bytes,
+    ) -> Result<Bytes, Incomplete> {
+        let result = execute(
+            &mut self.db.clone(),
+            &self.environment,
+            from,
+            to,
+            U256::ZERO,
+            data,
+        )?;
+        require(result.success, "R2 predicate getter reverted")?;
+        Ok(result.output)
+    }
 }
