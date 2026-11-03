@@ -342,10 +342,10 @@ Rule ids and reason codes (shared enum in `constitution-types`):
 
 | rule_id | Rule | reason_code examples |
 | --- | --- | --- |
-| 0 | Pre-check | 1 source hash mismatch, 2 compiled runtime hash != `new_impl_codehash`, 3 current impl on chain != `expected_current_impl`, 4 current impl source does not reproduce on-chain runtime |
+| 0 | Pre-check | 1 source hash mismatch, 2 compiled runtime hash != `new_impl_codehash`, 3 current impl on chain != `expected_current_impl`, 4 reserved harness/reference source modified or missing, or current impl source does not reproduce on-chain runtime |
 | 1 | R1 storage layout | 10 incompatible layout, 11 reference layout missing |
-| 2 | R2 solvency property | 20 bounded counterexample found, 21 fuzz counterexample, 22 AI counterexample reproduced, 23 solver incomplete (fails closed) |
-| 3 | R3 opcode and slot filter | 30 forbidden opcode, 31 ERC-1967 slot constant present |
+| 2 | R2 bounded aggregate solvency and slot preservation | 20 bounded counterexample found, 21 fuzz counterexample, 22 AI counterexample reproduced, 23 explicit solver incomplete (fails closed); verifier/tool faults withhold certificates |
+| 3 | R3 opcode, literal slot/address and label filter | 30 forbidden opcode, 31 committed slot/±1 neighbor, Foundry/Halmos cheatcode address, or ERC-1967 ASCII label present |
 | 4 | R4 initializer | 40 selector not allowlisted, 41 argument out of schema |
 | 5 | R5 differential replay | 50 behavior diverged, 51 witness incomplete (fails closed) |
 | 6 | AI review | none on-chain: an incomplete required review is not a rejection; the verifier emits no certificate and the proposal stays `Pending` until retried or expired |
@@ -435,7 +435,7 @@ Constructor (atomic bootstrap, no leftover authority):
 
 `rotateSigner` check order: `msg.sender == signer`; `!usedChange[changeId]`; `block.timestamp <= deadline`; `newSigner != address(0)`. Effects: mark used, set signer, emit `SignerRotated`.
 
-Limits [I]: `currentImplementation` is the executor's record, not a read of the proxy slot (OZ 5.6.1 ProxyAdmin has no implementation getter [V]). It stays correct only if no implementation can write the ERC-1967 slots; R3 rejects implementations that contain those slot constants or `DELEGATECALL`, and `constitution audit` compares the tracker with `eth_getStorageAt(proxy, implementation_slot)` publicly.
+Limits [I]: `currentImplementation` is the executor's record, not a read of the proxy slot (OZ 5.6.1 ProxyAdmin has no implementation getter [V]). G1 holds against implementations that cannot write arbitrary proxy storage. R3 rejects committed slot literals/±1 neighbors, ERC-1967 ASCII labels and `DELEGATECALL`; it cannot prove the absence of computed-slot `SSTORE`. R2's slot post-condition covers only its declared bounded handlers. A computed write can change the proxy implementation without changing the executor's tracker; `constitution audit` detects an observed divergence with `eth_getStorageAt(proxy, implementation_slot)` but is not a preventive storage-write guard.
 
 ## Demo contracts
 
@@ -470,7 +470,7 @@ Bypass analysis (each item has a test or audit check in "Test matrix"):
 5. Wrong chain, proxy or calldata: chain id and every field are inside the signed preimage built by the gate.
 6. Caller-supplied hash: no method takes a hash to sign.
 7. Callback spoofing: `on_signed` is `#[private]`; `submit_verdict` validity is the Ed25519 signature, not the caller.
-8. Initializer abuse: R4 allowlist and R3 slot filter; initializer bytes are certificate-bound.
+8. Initializer/storage abuse: R4 allowlist and certificate-bound initializer bytes; R3 rejects literal ERC-1967 implementation/admin slots, their ±1 neighbors, the ASCII labels `eip1967.proxy.implementation` / `eip1967.proxy.admin`, literal Foundry/Halmos cheatcode addresses and forbidden opcodes. R2 additionally checks the proxy implementation slot after each bounded explored deposit/withdraw call on chain id 84532. G1 holds only against implementations that cannot write arbitrary storage: computed-slot `SSTORE` and computed cheatcode addresses can evade these filters, and unsearched entry points remain a limit. Filters are filters, not proofs; the executor's tracker is not a write barrier.
 9. Time-of-check versus time-of-use: `expected_current_impl` and code hash checked at execution; proxy storage between evidence block and execution is not frozen (stated limit).
 10. Reorg on Base Sepolia: certificate binds evidence block hash; verifier waits for a confirmation depth set in the manifest before evidence is final [I].
 11. Authority migration: `MigrateAuthority` is timelocked like everything else.

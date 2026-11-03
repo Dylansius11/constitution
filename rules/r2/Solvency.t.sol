@@ -2,10 +2,11 @@
 pragma solidity 0.8.38;
 
 import {StdInvariant} from "forge-std/StdInvariant.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {VaultV1} from "src/demo/VaultV1.sol";
 import {MockToken} from "src/demo/MockToken.sol";
-import {Candidate} from "candidate.sol";
+import {Candidate, CandidateConfig} from "candidate.sol";
 
 /// @dev One fixed vault account. The only state-changing entry points the explorer may call are
 /// these two handlers, so every explored sequence is a sequence of vault calls by one of the two
@@ -30,6 +31,10 @@ contract Actor {
 contract Solvency is StdInvariant {
     uint256 internal constant VICTIM_DEPOSIT = 100 ether;
     uint256 internal constant ACTOR_FUNDS = 10 ether;
+    Vm internal constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+    bytes32 internal constant IMPLEMENTATION_SLOT =
+        0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+    bytes32 internal expectedImplementation;
 
     VaultV1 internal vault;
     MockToken internal token;
@@ -37,8 +42,11 @@ contract Solvency is StdInvariant {
     Actor internal bob;
 
     function setUp() public {
+        vm.chainId(84532);
         token = new MockToken();
         address implementation = address(new Candidate());
+        require(keccak256(implementation.code) == CandidateConfig.EXPECTED_RUNTIME_HASH, "candidate runtime mismatch");
+        expectedImplementation = bytes32(uint256(uint160(implementation)));
         vault = VaultV1(address(new ERC1967Proxy(implementation, abi.encodeCall(VaultV1.initialize, (token)))));
         (bool initialized,) = address(vault).call(abi.encodeWithSignature("initializeV2(uint256)", uint256(1000 ether)));
         require(initialized);
@@ -57,10 +65,10 @@ contract Solvency is StdInvariant {
         targetContract(address(bob));
     }
 
-    /// @dev R2. The vault never records more deposits than the tokens it holds. A sequence in
-    /// which an account withdraws more than it deposited, or the vault moves tokens it does not
-    /// record, leaves recorded deposits above the vault's token balance.
+    /// @dev Bounded aggregate solvency and implementation-slot preservation.
+    /// The invariant is checked after every explored handler call.
     function invariant_solvency() public view {
+        assert(vm.load(address(vault), IMPLEMENTATION_SLOT) == expectedImplementation);
         assert(vault.totalDeposits() <= token.balanceOf(address(vault)));
     }
 }

@@ -106,8 +106,8 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 - Outcome: a verifier running inside an attested environment receives the private source bundle, compiles it with the pinned compiler, checks that the resulting runtime bytecode hash equals the proposal's `new_impl_codehash`, runs the committed rules and signs a `Certificate` or a `Rejection`.
 - Rules in the demo rule set (manifest fields in ARCHITECTURE "Rule-set manifest", reason codes in SMART-CONTRACT "Certificate"):
   - R1 storage layout: new layout is an append-only extension of the current implementation's layout, using compiler storage-layout output for the deployed current artifact.
-  - R2 solvency property: no sequence within the configured bound lets any account withdraw more than its recorded balance; bounded symbolic checks plus property fuzzing.
-  - R3 opcode and slot filter: the runtime bytecode contains no `SELFDESTRUCT`, `CALLCODE` or `DELEGATECALL` opcode and no push of the ERC-1967 implementation or admin slot constants. This keeps the executor's implementation tracker truthful. A filter with stated limits, not a proof.
+  - R2 solvency property: bounded symbolic checks and seeded fuzzing of two fixed actors' deposit/withdraw handlers enforce aggregate solvency, not per-depositor withdrawability. The verifier supplies the token/reference definitions and checks the tested candidate runtime hash and implementation-slot preservation. Bounds and measured limits are committed in the manifest and ARCHITECTURE.
+  - R3 opcode and slot filter: reject `SELFDESTRUCT`, `CALLCODE`, `DELEGATECALL`, literal ERC-1967 implementation/admin slots and their ±1 neighbors, embedded ERC-1967 ASCII labels, and literal Foundry/Halmos cheatcode addresses. Filters are filters, not proofs: runtime-computed storage slots or cheatcode addresses can evade them.
   - R4 initializer allowlist: `init_calldata` empty or matching a committed selector and argument schema.
   - R5 bounded differential replay: a committed corpus of demo transactions replayed against current and new implementation from a pinned prestate; outputs and state must match except declared changes.
 - Outputs: signed certificate or signed rejection with `reason_code`, `rule_id` and an evidence hash pointing to a reproducible trace.
@@ -200,7 +200,7 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 
 What the product guarantees, if the stated trust assumptions hold [I]:
 
-- G1. The proxy changes implementation only through `ConstitutionExecutor`, which only accepts transactions signed for the gate's derived EOA.
+- G1. Against implementations that cannot write arbitrary proxy storage, the proxy changes implementation only through `ConstitutionExecutor`, which only accepts transactions signed for the gate's derived EOA. This is conditional: an implementation capable of computed-slot `SSTORE` can bypass that upgrade path; the executor's tracker is not an on-chain storage-write guard.
 - G2. The gate requests a signature only for the exact executor call bound to a certificate from an allowlisted verifier over the active rule-set hash.
 - G3. Rules, verifier allowlist and authority migration change only after a public 7-day delay; guardian actions can only reduce authority.
 - G4. AI output can only cause rejection, never certification.
@@ -210,7 +210,7 @@ Trust assumptions and limits:
 - MPC network honesty and availability (threshold signing inside TEEs; not post-quantum per NEAR blog 2026-10-23, brief 15).
 - TEE vendor and attestation chain for the verifier and the inference provider. [V] Attestation proves which code ran on which input and output, not that the conclusion is correct or that RPC data was honest.
 - Rules protect only what they declare. A dormant backdoor outside the declared properties and bounds can pass.
-- Opcode and selector filters are filters, not proofs. Bounded symbolic checks are bounded.
+- Opcode and selector filters are filters, not proofs. R3 catches committed literals and labels, not every computed-slot `SSTORE`; R2 checks slot preservation only along its bounded deposit/withdraw sequences. Other entry points and dormant triggers are outside that search. Aggregate solvency is not per-depositor withdrawability; bounded symbolic checks are bounded.
 - AI review is nondeterministic; its find rate is reported from rehearsal runs, not promised.
 - Liveness: MPC, verifier or inference outages delay upgrades; they never cause a signature without certification.
 
