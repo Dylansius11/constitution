@@ -137,6 +137,75 @@ describe("verifier client", () => {
     }
   });
 
+  it("startRun: parses every refusal the verifier now emits from the plain-text body", async () => {
+    const cases: [number, string, string][] = [
+      [400, "bad_bundle", "bad_bundle"],
+      [400, "wrong_gate", "wrong_gate"],
+      [400, "unsupported_proposal", "unsupported_proposal"],
+      [502, "rpc_unavailable", "rpc_unavailable"],
+      [429, "rate_limited", "rate_limited"],
+      [429, "queue_full", "queue_full"],
+      [409, "run_in_progress", "run_in_progress"],
+      // A body naming no known code falls back to the status default.
+      [400, "", "bad_bundle"],
+      [502, "upstream unhappy", "rpc_unavailable"],
+    ];
+    for (const [status, body, code] of cases) {
+      const { client } = server({ "POST /v1/runs": () => new Response(body, { status }) });
+      const error = await client
+        .startRun({ gate: "gate.testnet", proposalId: 1, sealedBundle: new Uint8Array(100) })
+        .catch((e: unknown) => e);
+      expect(error, `${status} ${body}`).toBeInstanceOf(RunRefusedError);
+      expect(error, `${status} ${body}`).toMatchObject({ code, status, retryAfterSeconds: null });
+    }
+  });
+
+  it("startRun: carries Retry-After seconds when present and ignores values that are not seconds", async () => {
+    const refuse = async (body: string, retryAfter: string | null) => {
+      const headers: Record<string, string> =
+        retryAfter === null ? {} : { "retry-after": retryAfter };
+      const { client } = server({
+        "POST /v1/runs": () => new Response(body, { status: 429, headers }),
+      });
+      return client
+        .startRun({ gate: "gate.testnet", proposalId: 1, sealedBundle: new Uint8Array(100) })
+        .catch((e: unknown) => e);
+    };
+    const limited = await refuse("rate_limited", "7");
+    expect(limited).toBeInstanceOf(RunRefusedError);
+    expect(limited).toMatchObject({
+      code: "rate_limited",
+      retryAfterSeconds: 7,
+      message: expect.stringContaining("retry after 7s"),
+    });
+    expect(await refuse("queue_full", "1")).toMatchObject({
+      code: "queue_full",
+      retryAfterSeconds: 1,
+    });
+    expect(await refuse("queue_full", null)).toMatchObject({ retryAfterSeconds: null });
+    for (const bad of ["soon", "-3", "1.5", "Wed, 21 Oct 2026 07:28:00 GMT", ""]) {
+      expect(await refuse("rate_limited", bad), bad).toMatchObject({ retryAfterSeconds: null });
+    }
+  });
+
+  it("startRun: a Retry-After from one refusal never leaks into the next call", async () => {
+    let first = true;
+    const { client } = server({
+      "POST /v1/runs": () => {
+        const headers: Record<string, string> = first ? { "retry-after": "9" } : {};
+        first = false;
+        return new Response("rate_limited", { status: 429, headers });
+      },
+    });
+    const args = { gate: "gate.testnet", proposalId: 1, sealedBundle: new Uint8Array(100) };
+    expect(await client.startRun(args).catch((e: unknown) => e)).toMatchObject({
+      retryAfterSeconds: 9,
+    });
+    expect(await client.startRun(args).catch((e: unknown) => e)).toMatchObject({
+      retryAfterSeconds: null,
+    });
+  });
+
   it("startRun: other failures stay HTTP or network errors, and bad input never leaves the page", async () => {
     const { client, seen } = server({
       "POST /v1/runs": () => new Response("boom", { status: 500 }),
@@ -201,6 +270,7 @@ describe("verifier client", () => {
     expect(future?.stage).toBe("from_the_future");
     expect(isVerifierStage("from_the_future")).toBe(false);
     expect(VERIFIER_STAGES.every(isVerifierStage)).toBe(true);
+    expect(isVerifierStage("failed")).toBe(true);
   });
 
   it("getRun: 404 is null; malformed runs are wire errors", async () => {
@@ -219,6 +289,55 @@ describe("verifier client", () => {
     }
     await expect(missing.client.getRun(-1)).rejects.toThrow(InputError);
     await expect(missing.client.getRun(1.5)).rejects.toThrow(InputError);
+  });
+
+  it("getRun: a failed run keeps its error code; no code is null; an unknown code is accepted as unknown_code", async () => {
+    const failed = { ...RUN, stage: "failed", outcome: "failed" };
+    const get = (body: unknown) => server({ "GET /v1/runs/1": json(body) }).client.getRun(1);
+    expect(await get({ ...failed, error_code: "worker_panic" })).toMatchObject({
+      stage: "failed",
+      error_code: "worker_panic",
+      verdict: null,
+      certificate_b64: null,
+    });
+    for (const code of [
+      "sandbox_unavailable",
+      "storage_error",
+      "tool_unavailable",
+      "tool_output_invalid",
+      "infrastructure_timeout",
+      "rpc_unavailable",
+      "committed_data_unavailable",
+      "bad_bundle",
+    ]) {
+      expect((await get({ ...failed, error_code: code }))?.error_code, code).toBe(code);
+    }
+    expect((await get(failed))?.error_code).toBeNull();
+    expect((await get({ ...failed, error_code: null }))?.error_code).toBeNull();
+    expect((await get({ ...failed, error_code: "from_the_future" }))?.error_code).toBe(
+      "unknown_code",
+    );
+    // Not a failed run: the code, when present, is still parsed and the run is otherwise normal.
+    expect((await get({ ...RUN, error_code: "storage_error" }))?.error_code).toBe("storage_error");
+  });
+
+  it("getRun: malformed failed runs are wire errors", async () => {
+    const failed = { ...RUN, stage: "failed", error_code: "worker_panic" };
+    for (const bad of [
+      { ...failed, error_code: 7 },
+      { ...failed, error_code: ["worker_panic"] },
+      { ...failed, started_at: "now" },
+      { ...failed, stages: "none" },
+      // A failed run has no certificate, signature, verdict or submission.
+      { ...failed, certificate_b64: "AAEC" },
+      { ...failed, signature_b64: btoa("s".repeat(64)) },
+      { ...failed, verdict: "Pass" },
+      { ...failed, verdict: { Reject: { rule_id: 2, reason_code: 22 } } },
+      { ...failed, near_tx_hash: "AbC123" },
+    ]) {
+      const { client } = server({ "GET /v1/runs/1": json(bad) });
+      await expect(client.getRun(1), JSON.stringify(bad).slice(0, 80)).rejects.toThrow(WireError);
+    }
   });
 
   it("getEvidence: parses the manifest the page reads; 404 is null", async () => {
