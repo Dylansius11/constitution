@@ -190,8 +190,8 @@ AI doubt alone never produces a rejection. A reproduced R2 violation produces
 [I] The committed two-successor-block lag is a minimal demo evidence policy,
 not a Base finality claim. The corpus actor is a public anvil account; testnet
 activation requires a deliberately seeded testnet actor and a new corpus commitment.
-Rule-set hash (CLI observed locally, 2026-11-03):
-`0x0707c9b79926d02204b74fe9c67d840b7ed6a3b8d73862b8a37ae1ecd5a2e1b1`.
+Rule-set hash (CLI observed locally, 2026-11-03, after the security-review fixes):
+`0x8060ddbf63635e14a955b4fef81c8e696c01e349c9f959cae135d48056e89455`.
 
 Library witness policy and limits:
 [`rules/r5/README.md`](../../../rules/r5/README.md).
