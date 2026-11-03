@@ -1,12 +1,17 @@
-//! Local anvil EVM + explicitly stubbed NEAR views. No testnet evidence.
+//! Local real hardened gate wasm + near-sandbox + real Deploy.s.sol/anvil, not testnet evidence.
+//! Only MPC `derived_public_key` is an offline double seeded by vectors/mpc-derivation.json.
+//! Build first: `(cd crates/gate && cargo near build non-reproducible-wasm)`.
+#[path = "fixtures/deployment_schema.rs"]
+mod deployment_schema;
 use axum::{Json, Router, extract::State, routing::post};
 use base64::Engine;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -50,63 +55,107 @@ fn rpc(url: &str, method: &str, params: Value) -> Value {
         v["result"].clone()
     })
 }
-#[derive(Clone)]
-struct NearState {
-    config: Value,
-    constitution: Value,
-    changes: Arc<Mutex<Vec<Value>>>,
-    pause: Arc<Mutex<Option<bool>>>,
+const DERIVED_KEY: &str = "secp256k1:2LxkyX7Nuw1MbtVBAHWubggYkZ91pGE2yxuEo7bNuVakGYsBrmnHvAuDQtiVExSFF2RPLeepXsYszq8ynFToa8KZ";
+
+struct OfflineMpc {
+    sandbox_rpc: String,
+    gates: [String; 2],
+    mpc: String,
+    client: reqwest::Client,
 }
-async fn near(State(s): State<NearState>, Json(q): Json<Value>) -> Json<Value> {
+
+async fn near(State(s): State<Arc<OfflineMpc>>, Json(q): Json<Value>) -> Json<Value> {
     let p = &q["params"];
-    let result = match p["request_type"].as_str().unwrap() {
-        "view_access_key_list" => json!({"keys":[]}),
-        "view_account" => json!({"code_hash":"committed-gate"}),
-        "call_function" => {
-            let value = match p["method_name"].as_str().unwrap() {
-                "get_config" => s.config,
-                "get_constitution" => s.constitution,
-                "get_roles" => json!({"governor":"governor.testnet","guardian":"guardian.testnet"}),
-                "is_signing_paused" => match *s.pause.lock().unwrap() {
-                    Some(value) => json!(value),
-                    None => {
-                        return Json(
-                            json!({"jsonrpc":"2.0","id":q["id"],"error":{"code":-32000,"message":"MethodNotFound: is_signing_paused"}}),
-                        );
-                    }
-                },
-                "list_changes" => {
-                    let args: Value = serde_json::from_slice(
-                        &base64::engine::general_purpose::STANDARD
-                            .decode(p["args_base64"].as_str().unwrap())
-                            .unwrap(),
-                    )
-                    .unwrap();
-                    let changes = s.changes.lock().unwrap();
-                    json!(
-                        changes
-                            .iter()
-                            .filter(
-                                |c| c["id"].as_u64().unwrap() >= args["from_id"].as_u64().unwrap()
-                            )
-                            .take(50)
-                            .collect::<Vec<_>>()
-                    )
-                }
-                "list_verifiers" => json!([]),
-                "derived_public_key" => json!(
-                    "secp256k1:2LxkyX7Nuw1MbtVBAHWubggYkZ91pGE2yxuEo7bNuVakGYsBrmnHvAuDQtiVExSFF2RPLeepXsYszq8ynFToa8KZ"
-                ),
-                other => panic!("unexpected view {other}"),
-            };
-            json!({"result":serde_json::to_vec(&value).unwrap()})
-        }
-        other => panic!("unexpected request {other}"),
-    };
-    Json(json!({"jsonrpc":"2.0","id":q["id"],"result":result}))
+    if p["account_id"] == s.mpc {
+        assert_eq!(q["method"], "query");
+        assert_eq!(p["request_type"], "call_function");
+        assert_eq!(p["method_name"], "derived_public_key");
+        let args: Value = serde_json::from_slice(
+            &base64::engine::general_purpose::STANDARD
+                .decode(p["args_base64"].as_str().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        let predecessor = args["predecessor"].as_str().unwrap();
+        assert!(s.gates.iter().any(|gate| gate == predecessor));
+        assert_eq!(
+            args,
+            json!({"predecessor":predecessor,"path":"constitution/base-sepolia/v1","domain_id":0})
+        );
+        return Json(json!({"jsonrpc":"2.0","id":q["id"],
+            "result":{"result":serde_json::to_vec(DERIVED_KEY).unwrap()}}));
+    }
+    // No gate/account view is synthesized, including pause, access keys and code hash.
+    assert!(s.gates.iter().any(|gate| p["account_id"] == *gate));
+    Json(
+        s.client
+            .post(&s.sandbox_rpc)
+            .json(&q)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap(),
+    )
 }
+
+const PRECONDITIONS: [&str; 11] = [
+    "gate_has_no_access_keys",
+    "gate_code_is_committed_build",
+    "executor_code_is_committed_build",
+    "gate_binds_this_deployment",
+    "derived_eoa_is_executor_signer",
+    "executor_controls_this_proxy",
+    "executor_owns_proxy_admin",
+    "proxy_admin_is_erc1967_admin",
+    "implementation_tracker_matches_slot",
+    "active_rule_set_is_committed_manifest",
+    "verifier_allowlist_is_committed",
+];
+
+fn assert_checks(out: &Output, failed: &[&str], warnings: &[&str]) {
+    let output = text(out);
+    assert_eq!(
+        out.status.code(),
+        Some(i32::from(!failed.is_empty())),
+        "{output}"
+    );
+    for name in PRECONDITIONS {
+        let status = if failed.contains(&name) {
+            "FAIL"
+        } else {
+            "PASS"
+        };
+        assert!(output.contains(&format!("{status} {name}:")), "{output}");
+    }
+    let names = |status: &str| {
+        output
+            .lines()
+            .filter_map(|line| {
+                line.strip_prefix(status)?
+                    .split_once(':')
+                    .map(|(name, _)| name)
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(names("FAIL "), failed, "{output}");
+    assert_eq!(names("WARN "), warnings, "{output}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn committed_executor_passes_and_modified_runtime_fails_by_name() {
+async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn std::error::Error>>
+{
+    let total = Instant::now();
+    let worker = near_workspaces::sandbox().await?;
+    let wasm = std::fs::read(root().join("target/near/constitution_gate/constitution_gate.wasm"))?;
+    let gate = worker.dev_deploy(&wasm).await?;
+    // Same hardened gate, but an extra valid custom section gives a genuinely different code hash.
+    let mut different_wasm = wasm.clone();
+    different_wasm.extend_from_slice(&[0, 2, 1, b'x']);
+    let different_gate = worker.dev_deploy(&different_wasm).await?;
+    let governor = worker.dev_create_account().await?;
+    let guardian = worker.dev_create_account().await?;
     let socket = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = socket.local_addr().unwrap().port();
     drop(socket);
@@ -164,16 +213,34 @@ async fn committed_executor_passes_and_modified_runtime_fails_by_name() {
         serde_json::from_slice(&std::fs::read(root().join("rules/manifest.json")).unwrap())
             .unwrap();
     let hash = constitution_types::manifest::rule_set_hash(&manifest).unwrap();
-    let changes = Arc::new(Mutex::new(vec![]));
-    let pause = Arc::new(Mutex::new(Some(false)));
-    let state = NearState {
-        config: json!({"chain_id":84532,"executor":executor,"proxy":proxy,"proxy_admin":admin,"derived_eoa":"0x3b20f46860d27d81917a45221c594fc051af7e94","mpc_account":"mpc.testnet","mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0}),
-        constitution: json!({"rule_set_hash":format!("0x{}",hex::encode(hash)),"manifest_uri":"rules/manifest.json","ai_required":true,"params":{"proposal_deposit":"1","proposal_ttl_s":7200,"max_cert_ttl_s":1800,"sign_validity_s":3600,"gas_limit":300000,"max_fee_per_gas":"50000000","max_priority_fee_per_gas":"1000000","fee_cap":"1000000000","sign_gas_tgas":15,"callback_gas_tgas":20}}),
-        changes: changes.clone(),
-        pause: pause.clone(),
-    };
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let near_url = format!("http://{}", listener.local_addr().unwrap());
+    // Gate pins this account; the loopback relay intercepts its sole derivation view.
+    let mpc = "v1.signer-prod.testnet";
+    let config = json!({"chain_id":84532,"executor":executor,"proxy":proxy,"proxy_admin":admin,"derived_eoa":"0x3b20f46860d27d81917a45221c594fc051af7e94","mpc_account":mpc,"mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0});
+    let constitution = json!({"rule_set_hash":format!("0x{}",hex::encode(hash)),"manifest_uri":"local:rules/manifest.json","ai_required":true,"params":{"proposal_deposit":"100","proposal_ttl_s":7200,"max_cert_ttl_s":1800,"sign_validity_s":3600,"gas_limit":300000,"max_fee_per_gas":"50000000","max_priority_fee_per_gas":"1000000","fee_cap":"1000000000","sign_gas_tgas":15,"callback_gas_tgas":20}});
+    let pubkey = base64::engine::general_purpose::STANDARD.encode([7; 32]);
+    let release_hash = format!("0x{}", "06".repeat(32));
+    for contract in [&gate, &different_gate] {
+        contract.call("new").args_json(json!({
+            "config":config,"constitution":constitution,
+            "roles":{"governor":governor.id(),"guardian":guardian.id()},
+            "verifiers":[[pubkey,{"release_hash":release_hash,"attestation_uri":"local:offline-fixture-not-attested","added_at_ns":0}]],
+            "initial_evm_nonce":0
+        })).transact().await?.into_result()?;
+    }
+    different_gate
+        .batch()
+        .delete_key(different_gate.as_account().secret_key().public_key())
+        .transact()
+        .await?
+        .into_result()?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let near_url = format!("http://{}", listener.local_addr()?);
+    let state = Arc::new(OfflineMpc {
+        sandbox_rpc: worker.rpc_addr(),
+        gates: [gate.id().to_string(), different_gate.id().to_string()],
+        mpc: mpc.into(),
+        client: reqwest::Client::new(),
+    });
     let server = tokio::spawn(async move {
         axum::serve(
             listener,
@@ -182,8 +249,11 @@ async fn committed_executor_passes_and_modified_runtime_fails_by_name() {
         .await
         .unwrap();
     });
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempfile::tempdir()?;
     let path = temp.path().join("deployment.json");
+    // Every audit must read the exact manifest used at initialization, even during sibling edits.
+    let manifest_path = temp.path().join("manifest.json");
+    std::fs::write(&manifest_path, serde_json::to_vec(&manifest)?)?;
     let expected = Command::new(env!("CARGO_BIN_EXE_constitution"))
         .current_dir(root())
         .arg("executor-runtime-hash")
@@ -191,31 +261,59 @@ async fn committed_executor_passes_and_modified_runtime_fails_by_name() {
         .unwrap();
     assert!(expected.status.success(), "{}", text(&expected));
     let expected_hash = String::from_utf8(expected.stdout).unwrap();
-    let mut deployment = json!({"chain_id":84532,"gate":"gate.testnet","gate_code_hash":"committed-gate","mpc_account":"mpc.testnet","executor":executor,"proxy":proxy,"executor_runtime_hash":expected_hash.trim(),"verifiers":[]});
-    let audit = |d: &Value| {
+    let mut deployment = json!({"chain_id":84532,"gate":gate.id(),"gate_code_hash":bs58::encode(Sha256::digest(&wasm)).into_string(),"mpc_account":mpc,"executor":executor,"proxy":proxy,"executor_runtime_hash":expected_hash.trim(),"verifiers":[{"pubkey":pubkey,"release_hash":release_hash}]});
+    deployment_schema::validate(&deployment);
+    let audit = |label: &str, d: &Value| {
         std::fs::write(&path, d.to_string()).unwrap();
-        Command::new(env!("CARGO_BIN_EXE_constitution"))
+        let start = Instant::now();
+        let out = Command::new(env!("CARGO_BIN_EXE_constitution"))
             .current_dir(root())
             .args([
                 "audit",
                 "--deployment",
                 path.to_str().unwrap(),
+                "--manifest",
+                manifest_path.to_str().unwrap(),
                 "--near-rpc",
                 &near_url,
                 "--evm-rpc",
                 &evm,
             ])
             .output()
-            .unwrap()
+            .unwrap();
+        eprintln!(
+            "{label}: {:.2}s\n{}",
+            start.elapsed().as_secs_f64(),
+            text(&out)
+        );
+        out
     };
-    let honest = audit(&deployment);
-    assert!(honest.status.success(), "{}", text(&honest));
-    assert!(text(&honest).contains("PASS executor_code_is_committed_build"));
+    let keyed = audit("before key deletion", &deployment);
+    assert_checks(&keyed, &["gate_has_no_access_keys"], &[]);
+
+    let mut different_deployment = deployment.clone();
+    different_deployment["gate"] = json!(different_gate.id());
+    let changed = audit(
+        "different deployed keyless gate wasm",
+        &different_deployment,
+    );
+    assert_checks(&changed, &["gate_code_is_committed_build"], &[]);
+    gate.batch()
+        .delete_key(gate.as_account().secret_key().public_key())
+        .transact()
+        .await?
+        .into_result()?;
+    assert!(gate.view_access_keys().await?.is_empty());
+    let honest = audit("honest keyless deployment", &deployment);
+    assert_checks(&honest, &[], &[]);
+    assert!(text(&honest).contains("PASS pending_governance_changes: 0 pending change(s)"));
+    assert!(!text(&honest).contains("pending_authority_change"));
+    assert!(text(&honest).contains("audit passed: 14 named checks/information lines"));
     deployment
         .as_object_mut()
         .unwrap()
         .remove("executor_runtime_hash");
-    let missing = audit(&deployment);
+    let missing = audit("missing executor commitment", &deployment);
     assert_eq!(missing.status.code(), Some(1));
     assert!(text(&missing).contains("FAIL executor_code_is_committed_build"));
     deployment["executor_runtime_hash"] = json!(expected_hash.trim());
@@ -282,7 +380,7 @@ async fn committed_executor_passes_and_modified_runtime_fails_by_name() {
         "anvil_setCode",
         json!([executor, format!("0x{}", hex::encode(modified_bytes))]),
     );
-    let modified = audit(&deployment);
+    let modified = audit("modified executor runtime", &deployment);
     assert_eq!(modified.status.code(), Some(1));
     assert!(
         text(&modified).contains("FAIL executor_code_is_committed_build"),
@@ -299,61 +397,111 @@ async fn committed_executor_passes_and_modified_runtime_fails_by_name() {
         text(&modified)
     );
     rpc(&evm, "anvil_setCode", json!([executor, original]));
-    for (id, kind) in [
-        (
-            0,
-            json!({"MigrateAuthority":{"new_signer":"0x3333333333333333333333333333333333333333"}}),
-        ),
-        (1, json!({"SetGuardian":{"account":"other.testnet"}})),
-        (2, json!({"SetGovernor":{"account":"other.testnet"}})),
-        (
-            3,
-            json!({"AddVerifier":{"pubkey":base64::engine::general_purpose::STANDARD.encode([7;32]),"release_hash":format!("0x{}","06".repeat(32)),"attestation_uri":"local"}}),
-        ),
+    let mut changes = Vec::new();
+    for kind in [
+        json!({"MigrateAuthority":{"new_signer":"0x3333333333333333333333333333333333333333"}}),
+        json!({"SetGuardian":{"account":"other.testnet"}}),
+        json!({"SetGovernor":{"account":"other.testnet"}}),
+        json!({"AddVerifier":{"pubkey":base64::engine::general_purpose::STANDARD.encode([8;32]),"release_hash":release_hash,"attestation_uri":"local"}}),
     ] {
-        changes.lock().unwrap().push(json!({"id":id,"kind":kind,"scheduled_by":"governor.testnet","scheduled_at_ns":1,"eta_ns":604800000000001u64,"status":"Pending","evm":null}));
+        let id: u64 = governor
+            .call(gate.id(), "schedule_change")
+            .args_json(json!({"kind":kind}))
+            .transact()
+            .await?
+            .into_result()?
+            .json()?;
+        let change: Value = gate
+            .view("get_change")
+            .args_json(json!({"id":id}))
+            .await?
+            .json()?;
+        changes.push(change);
+        if id == 0 {
+            let warning = audit("governor schedules migration", &deployment);
+            assert_checks(&warning, &[], &["pending_authority_change"]);
+            assert!(text(&warning).contains(&format!("eta_ns={}", changes[0]["eta_ns"])));
+            assert!(text(&warning).contains("audit WARNING: pending authority change"));
+        }
     }
-    let warning = audit(&deployment);
-    assert!(warning.status.success(), "{}", text(&warning));
-    assert!(text(&warning).contains("WARN pending_authority_change"));
-    assert!(text(&warning).contains("pending authority change"));
-    assert!(text(&warning).contains("eta_ns=604800000000001"));
     deployment["planned_changes"] = json!(
         changes
-            .lock()
-            .unwrap()
             .iter()
             .map(|c| json!({"id":c["id"],"kind":c["kind"],"eta_ns":c["eta_ns"]}))
             .collect::<Vec<_>>()
     );
-    let planned = audit(&deployment);
-    assert!(planned.status.success(), "{}", text(&planned));
-    assert!(!text(&planned).contains("WARN pending_authority_change"));
-    // Historical cancelled changes must not hide an authority change on the next page.
-    for id in 4..50 {
-        changes.lock().unwrap().push(json!({"id":id,"kind":"Unpause","scheduled_by":"governor.testnet","scheduled_at_ns":1,"eta_ns":604800000000001u64,"status":"Cancelled","evm":null}));
+    deployment_schema::validate(&deployment);
+    let planned = audit("exact planned authority changes", &deployment);
+    assert_checks(&planned, &[], &[]);
+    // The hardened gate permits only one pending change per authority kind.
+    // Cancel through the guardian before scheduling the later SetGovernor.
+    guardian
+        .call(gate.id(), "cancel_changes")
+        .args_json(json!({"ids":[0,1,2,3]}))
+        .transact()
+        .await?
+        .into_result()?;
+    // Real cancelled changes must not hide an authority change on the next page.
+    for _ in 4..50 {
+        let id: u64 = governor
+            .call(gate.id(), "schedule_change")
+            .args_json(json!({"kind":"Unpause"}))
+            .transact()
+            .await?
+            .into_result()?
+            .json()?;
+        guardian
+            .call(gate.id(), "cancel_change")
+            .args_json(json!({"change_id":id}))
+            .transact()
+            .await?
+            .into_result()?;
     }
-    changes.lock().unwrap().push(json!({"id":50,"kind":{"SetGovernor":{"account":"late.testnet"}},"scheduled_by":"governor.testnet","scheduled_at_ns":1,"eta_ns":604800000000001u64,"status":"Pending","evm":null}));
-    changes.lock().unwrap().push(json!({"id":51,"kind":{"SetParams":{"params":{
-        "proposal_deposit":"1","proposal_ttl_s":7200,"max_cert_ttl_s":1800,"sign_validity_s":3600,"gas_limit":300000,
-        "max_fee_per_gas":"50000000","max_priority_fee_per_gas":"1000000","fee_cap":"1000000000","sign_gas_tgas":15,"callback_gas_tgas":20
-    }}},"scheduled_by":"governor.testnet","scheduled_at_ns":1,"eta_ns":604800000000001u64,"status":"Pending","evm":null}));
-    changes.lock().unwrap().push(json!({"id":52,"kind":{"SetRuleSet":{"rule_set_hash":format!("0x{}","07".repeat(32)),"manifest_uri":"local","ai_required":true}},"scheduled_by":"governor.testnet","scheduled_at_ns":1,"eta_ns":604800000000001u64,"status":"Pending","evm":null}));
-    let paged = audit(&deployment);
-    assert!(paged.status.success(), "{}", text(&paged));
+    for kind in [
+        json!({"SetGovernor":{"account":"late.testnet"}}),
+        json!({"SetParams":{"params":constitution["params"]}}),
+        json!({"SetRuleSet":{"rule_set_hash":format!("0x{}","07".repeat(32)),"manifest_uri":"local","ai_required":true}}),
+    ] {
+        governor
+            .call(gate.id(), "schedule_change")
+            .args_json(json!({"kind":kind}))
+            .transact()
+            .await?
+            .into_result()?;
+    }
+    let paged = audit("authority change after 50 real changes", &deployment);
+    assert_checks(&paged, &[], &["pending_authority_change"]);
     assert!(text(&paged).contains("WARN pending_authority_change: id=50"));
     assert!(text(&paged).contains("SetParams") && text(&paged).contains("SetRuleSet"));
-    assert!(text(&paged).contains("7 pending change(s)"));
-    *pause.lock().unwrap() = Some(true);
-    let paused = audit(&deployment);
-    assert!(paused.status.success(), "{}", text(&paused));
+    assert!(text(&paged).contains("3 pending change(s)"));
+    guardian
+        .call(gate.id(), "pause_signing")
+        .args_json(json!({}))
+        .transact()
+        .await?
+        .into_result()?;
+    let paused = audit("guardian pauses real gate", &deployment);
+    assert_checks(
+        &paused,
+        &[],
+        &["signing_paused", "pending_authority_change"],
+    );
     assert!(text(&paused).contains("WARN signing_paused: signing_paused=true"));
-    *pause.lock().unwrap() = None;
-    let unavailable = audit(&deployment);
-    assert_eq!(unavailable.status.code(), Some(1));
-    assert!(
-        text(&unavailable).contains("FAIL read_failed")
-            && text(&unavailable).contains("is_signing_paused")
+    // A warning cannot conceal a failed precondition.
+    deployment["gate_code_hash"] = json!(bs58::encode([0; 32]).into_string());
+    let warning_and_fail = audit(
+        "pause and authority warnings cannot mask failure",
+        &deployment,
+    );
+    assert_checks(
+        &warning_and_fail,
+        &["gate_code_is_committed_build"],
+        &["signing_paused", "pending_authority_change"],
     );
     server.abort();
+    eprintln!(
+        "real gate audit total: {:.2}s",
+        total.elapsed().as_secs_f64()
+    );
+    Ok(())
 }
