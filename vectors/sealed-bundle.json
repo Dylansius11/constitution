@@ -1,0 +1,18 @@
+{
+  "js_recipient": {
+    "public_key": "0x9df9e69ba211314369279707bd0e685cf0bafdcb43be5cd96244030535350034",
+    "secret_key": "0xf103e00c89da5788209279c3612112f0b4d87d13aac8ccf66d978761ac691cab"
+  },
+  "js_to_rust": {
+    "sealed_b64": "Lv5gu/odJmhnAD+I7GGAqVpcFA795y3/WUHdKMTXAT8s6KN/OrPEAWKAQxfaCKBH7CdwEE5JqzOtqVKVKbhrmZTNsdmHxCiYII+vD4bHNtrdmVceG5APD2c2CD8D6LawJsIGhPCYXsCoQvmf/BO20KQX8Nz1yhn6YavL3zzJPg6kcUPkmRGCyEy8QQyNeA4s2fJboZzBbnIZwj4LFrP1lh5duR8YxswvrRTZW0YaCBSJLNP/GOkliwsD4YSnVd1x8vPzL3UV3lwkfldaJVQ+mCIN9Z/XeZEi5pDC8L+Vt/BhMWV9PGTTYOUQ9L/jig=="
+  },
+  "label": "T-ENC-3 sealed-box vectors. TEST-ONLY keys derived from public labels; they protect nothing and must never be reused. rust_to_js is sealed by crypto_box 0.9.1 with a deterministic RNG; js_to_rust is sealed by libsodium-wrappers 0.8.4 and written by web/test/seal.test.ts when CONSTITUTION_WRITE_VECTORS=1.",
+  "plaintext_hex": "0x230000007372632f5661756c745632486f6e6573742e736f6c3a5661756c745632486f6e65737402000000150000007372632f5661756c745632486f6e6573742e736f6c520000002f2f20535044582d4c6963656e73652d4964656e7469666965723a204d49540a707261676d6120736f6c696469747920302e382e33383b0a636f6e7472616374205661756c745632486f6e657374207b7d0a0b0000007372632f4c69622e736f6c06000000000102fdfeff0700000064656661756c74",
+  "rust_recipient": {
+    "public_key": "0x0029a04dfc04f8b3909f323528928dde799182119c92634c46a901eb7fccd818",
+    "secret_key": "0x6e5ce62773e95547c58e93079180bdef41a9954ebfd8a47cc941287fca783fa2"
+  },
+  "rust_to_js": {
+    "sealed_b64": "TG6WxaykSReMzqDDtxNHLLqoZQ+oWNXcTg5PoFYNPHhjSwMhvj1EBHfzWjgvxV1V8IUoEaSwUu8GFmOvDN3yiFAd7deCoYzDqLnYjwoqVufm9IgLq8pRfsrurlTJtooRTrQvYCritfHkSPbM+q1XAw3B9pWH7bnwYbeKkkw2ElN06f7ILp+exDmKXb7/KFmwmDWZdd+TQSM5bWVdvL+5ObocuOM2SyLFeXABZU0NmbKbkgGz32goU+COzMxj5BCHk684TX2ny+bbsxftDtNDLBBPK0ExKOQ7AaPvjK9r/bNJAH5koogIrWIuBXSbvQ=="
+  }
+}

@@ -1308,6 +1308,8 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "borsh",
+ "crypto_box",
+ "hex",
  "near-account-id",
  "proptest",
  "schemars 0.8.22",

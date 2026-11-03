@@ -19,3 +19,5 @@ base64.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
 proptest.workspace = true
+crypto_box.workspace = true
+hex.workspace = true
