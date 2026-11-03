@@ -155,7 +155,7 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B3 | Phala Cloud account, card verification, USD 20 credit | founder | open; steps sent to founder 2026-11-02 | P1.6 | INTEGRATIONS "Phala Cloud"; confirm credit visible in workspace |
 | B4 | NEAR AI Cloud credits and API key in local `.env` | founder | founder reports key available (2026-11-02); not yet in `.env` | P2.6 | Founder writes `NEARAI_API_KEY` into local `.env`; key never shared in chat |
 | B5 | Validation Cloud account and Base Sepolia endpoint | founder | open; steps sent to founder 2026-11-02 | P1.7, P2.5 | Endpoint URL in local `.env` |
-| B6 | Public GitHub repo `Dylansius11/constitution` | founder | open; founder creates it (2026-11-02) | P4 | Local repo has commits since 2026-11-02; lead pushes only when asked |
+| B6 | GitHub repo `Dylansius11/constitution` | founder | resolved 2026-11-03: repo exists (private, empty at start); `main` and `dev` pushed; default branch `dev`; work via branch then PR into `dev`, `dev` into `main` by PR. Open: the repo is PRIVATE, so make it public before submission (founder) | P4 | `git ls-remote origin` lists `main` and `dev` |
 | B7 | Hosting choice | founder | open | P3.6 | Resolve D8 |
 | B8 | Visual direction | founder | open | P3.4 | Resolve D7 |
 
