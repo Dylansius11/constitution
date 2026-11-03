@@ -1,4 +1,5 @@
 //! `constitution` CLI. Interface: docs/technical/ARCHITECTURE.md "CLI".
+mod appraise;
 mod audit;
 mod failure;
 mod govern;
@@ -75,6 +76,11 @@ enum Command {
         #[command(subcommand)]
         command: RulesCommand,
     },
+    /// Independently appraise a verifier's Intel TDX evidence before registration.
+    Verifier {
+        #[command(subcommand)]
+        command: VerifierCommand,
+    },
     /// Read-only F7 audit: prove the claim's preconditions from public state. Exits 1 on any failure.
     Audit {
         /// Deployment record written at activation.
@@ -140,6 +146,20 @@ enum Command {
 enum RulesCommand {
     /// Print the rule-set hash, sha256(borsh(manifest)), of a validated manifest.
     Hash { manifest: PathBuf },
+}
+#[derive(Subcommand)]
+enum VerifierCommand {
+    /// Verify Intel DCAP collateral, TCB, runtime measurements and key bindings.
+    Appraise {
+        url: String,
+        #[arg(long, value_parser = appraise::parse_compose_hash)]
+        expect_compose_hash: Option<constitution_types::Hex32>,
+        /// Collateral service; signatures remain anchored to Intel's production root.
+        #[arg(long, env = "PCCS_URL", default_value = appraise::DEFAULT_PCCS_URL)]
+        pccs_url: String,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args)]
@@ -245,6 +265,15 @@ enum GovernCommand {
 
 fn run(cli: Cli) -> Result<(), Failure> {
     match cli.command {
+        Command::Verifier {
+            command:
+                VerifierCommand::Appraise {
+                    url,
+                    expect_compose_hash,
+                    pccs_url,
+                    json,
+                },
+        } => appraise::appraise(&url, &pccs_url, expect_compose_hash, json),
         Command::Propose {
             signer,
             bundle,
