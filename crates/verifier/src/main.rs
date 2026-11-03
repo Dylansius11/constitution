@@ -1,4 +1,4 @@
-//! Chain-connected by default. Identity remains explicitly NOT ATTESTED.
+//! Chain-connected by default; dstack evidence is selected only when its socket exists.
 use constitution_verifier::{
     api::{Service, router},
     chain::GateSource,
@@ -24,7 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repo = std::env::current_dir()?;
     let manifest = load_manifest(repo.join("rules/manifest.json"))?;
     let origin = required("PAGE_ORIGIN")?;
-    let identity = Identity::new();
+    let identity = Identity::new().attest_if_present().await?;
+    let identity_label = identity.view([0; 32]).label;
     let service = if local {
         let registry = required("LOCAL_PROPOSAL_REGISTRY")?;
         Service::new(
@@ -60,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = router(service, &origin)?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8787").await?;
     eprintln!(
-        "verifier listening on 127.0.0.1:8787; NOT ATTESTED; no Pass certificates; mode={}",
+        "verifier listening on 127.0.0.1:8787; {identity_label}; no Pass certificates; mode={}",
         if local {
             "local registry (no submission)"
         } else {

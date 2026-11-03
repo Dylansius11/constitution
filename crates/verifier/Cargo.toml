@@ -26,6 +26,7 @@ reqwest.workspace = true
 hex.workspace = true
 rlp.workspace = true
 near-api.workspace = true
+dcap-qvl.workspace = true
 
 [dev-dependencies]
 near-workspaces.workspace = true

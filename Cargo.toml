@@ -43,6 +43,7 @@ reqwest = { version = "=0.13.5", features = ["blocking", "json"] }
 bs58 = "=0.5.1"
 near-api = "=0.8.6"
 revm = { version = "=43.0.3", features = ["serde", "optional_fee_charge"] }
+dcap-qvl = { version = "=0.7.1", default-features = false, features = ["std", "report", "ring", "default-x509"] }
 
 [profile.release]
 codegen-units = 1
