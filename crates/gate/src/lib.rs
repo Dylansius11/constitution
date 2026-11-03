@@ -20,6 +20,18 @@ mod signing;
 mod verdict;
 mod views;
 
+const MAX_PENDING_CHANGES: usize = 8;
+const SIGN_REQUEST_TIMEOUT: u64 = 1_200_000_000_000;
+const MIN_CERT_TTL_S: u64 = 30;
+const MAX_CERT_TTL_S: u64 = 86_400;
+const MIN_SIGN_VALIDITY_S: u64 = 60;
+const MAX_SIGN_VALIDITY_S: u64 = 86_400;
+const MIN_PROPOSAL_TTL_S: u64 = 300;
+const MAX_PROPOSAL_TTL_S: u64 = 604_800;
+const STORAGE_INSOLVENT: &str = "E12_STORAGE_INSOLVENT";
+const AI_SIGNATURE_KIND: &str = "E58_AI_SIGNATURE_KIND";
+const PENDING_CHANGE_LIMIT: &str = "E59_PENDING_CHANGE_LIMIT";
+const DUPLICATE_AUTHORITY_CHANGE: &str = "E60_DUPLICATE_AUTHORITY_CHANGE";
 #[derive(borsh::BorshSerialize, BorshStorageKey)]
 enum StorageKey {
     Verifiers,
@@ -31,6 +43,9 @@ enum StorageKey {
     OutstandingSignatures,
     FeeBumps,
     MigrationSigning,
+    SignRequestedAt,
+    MigrationRequestedAt,
+    MigrationFeeBumps,
 }
 
 #[near(contract_state)]
@@ -53,6 +68,12 @@ pub struct Gate {
     outstanding_signatures: IterableSet<u64>,
     fee_bumps: LookupMap<u64, u8>,
     migration_signing: LookupMap<u64, signing::MigrationSigning>,
+    total_liabilities: u128,
+    pending_withdrawals: u128,
+    pending_changes: Vec<u64>,
+    sign_requested_at: LookupMap<u64, u64>,
+    migration_requested_at: LookupMap<u64, u64>,
+    migration_fee_bumps: LookupMap<u64, u8>,
 }
 
 use constitution_types::Roles;
@@ -105,6 +126,11 @@ impl Gate {
         for (index, (pubkey, record)) in verifiers.iter().enumerate() {
             validate_uri(&record.attestation_uri);
             check(
+                record.release_hash != [0; 32],
+                GateError::InvalidChange,
+                "zero release_hash",
+            );
+            check(
                 !verifiers[..index].iter().any(|(key, _)| key == pubkey),
                 GateError::InvalidChange,
                 "duplicate verifier",
@@ -127,10 +153,17 @@ impl Gate {
             outstanding_signatures: IterableSet::new(StorageKey::OutstandingSignatures),
             fee_bumps: LookupMap::new(StorageKey::FeeBumps),
             migration_signing: LookupMap::new(StorageKey::MigrationSigning),
+            total_liabilities: 0,
+            pending_withdrawals: 0,
+            pending_changes: Vec::new(),
+            sign_requested_at: LookupMap::new(StorageKey::SignRequestedAt),
+            migration_requested_at: LookupMap::new(StorageKey::MigrationRequestedAt),
+            migration_fee_bumps: LookupMap::new(StorageKey::MigrationFeeBumps),
         };
         for (key, record) in verifiers {
             gate.verifiers.insert(key.0, record);
         }
+        gate.assert_solvent(0);
         gate
     }
 }
@@ -151,15 +184,62 @@ fn validate_uri(uri: &str) {
 
 fn validate_params(params: &Params) {
     check(
-        params.sign_gas_tgas >= 15,
+        (15..=200).contains(&params.sign_gas_tgas)
+            && (10..=100).contains(&params.callback_gas_tgas)
+            && params.sign_gas_tgas + params.callback_gas_tgas <= 250
+            && (MIN_CERT_TTL_S..=MAX_CERT_TTL_S).contains(&params.max_cert_ttl_s)
+            && (MIN_SIGN_VALIDITY_S..=MAX_SIGN_VALIDITY_S).contains(&params.sign_validity_s)
+            && (MIN_PROPOSAL_TTL_S..=MAX_PROPOSAL_TTL_S).contains(&params.proposal_ttl_s)
+            && params.gas_limit > 0
+            && params.max_priority_fee_per_gas <= params.max_fee_per_gas
+            && params.max_fee_per_gas <= params.fee_cap,
         GateError::InvalidChange,
-        "sign_gas_tgas < 15",
+        "unsafe gas, time or fee parameters",
     );
-    check(
-        s_to_ns(params.proposal_ttl_s).is_some(),
-        GateError::InvalidChange,
-        "proposal_ttl_s overflows nanoseconds",
-    );
+}
+
+impl Gate {
+    // SDK store collections defer writes. Flush before measuring, including the
+    // root value normally written by the generated wrapper after this method.
+    fn flush_storage(&mut self) {
+        self.verifiers.flush();
+        self.changes.flush();
+        self.proposals.flush();
+        self.active_by_account.flush();
+        self.credit.flush();
+        self.active_by_key.flush();
+        self.outstanding_signatures.flush();
+        self.fee_bumps.flush();
+        self.migration_signing.flush();
+        self.sign_requested_at.flush();
+        self.migration_requested_at.flush();
+        self.migration_fee_bumps.flush();
+        env::state_write(self);
+    }
+
+    fn liquid_balance(&self) -> Option<u128> {
+        env::account_balance()
+            .as_yoctonear()
+            .checked_sub(u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear())
+    }
+
+    fn has_liquid_backing(&self, outgoing: u128) -> bool {
+        match (
+            self.liquid_balance()
+                .and_then(|liquid| liquid.checked_sub(outgoing)),
+            self.total_liabilities.checked_add(self.pending_withdrawals),
+        ) {
+            (Some(liquid), Some(required)) => liquid >= required,
+            _ => false,
+        }
+    }
+
+    fn assert_solvent(&mut self, outgoing: u128) {
+        self.flush_storage();
+        if !self.has_liquid_backing(outgoing) {
+            env::panic_str(STORAGE_INSOLVENT);
+        }
+    }
 }
 
 fn emit(event: &str, data: serde_json::Value) {

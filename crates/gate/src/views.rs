@@ -3,6 +3,12 @@ use crate::GateExt;
 
 #[near]
 impl Gate {
+    pub fn is_signing_paused(&self) -> bool {
+        self.signing_paused
+    }
+    pub fn get_total_liabilities(&self) -> U128 {
+        U128(self.total_liabilities)
+    }
     pub fn get_config(&self) -> &Config {
         &self.config
     }

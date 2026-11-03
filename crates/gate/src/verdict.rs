@@ -107,6 +107,7 @@ impl Gate {
             );
             let view = proposal.clone();
             self.proposals.insert(id, proposal);
+            self.assert_solvent(0);
             return PromiseOrValue::Value(view);
         }
         // A Vetoed review can never accompany Pass, even when the rule set does not require AI.
@@ -117,6 +118,9 @@ impl Gate {
             GateError::AiReviewRequired,
             "Clean AI review required",
         );
+        if matches!(certificate.ai, AiReview::Clean { signature_kind, .. } if signature_kind != 1) {
+            env::panic_str(AI_SIGNATURE_KIND);
+        }
         check(
             !self.signing_paused,
             GateError::SigningPaused,
@@ -143,6 +147,8 @@ impl Gate {
         self.proposals.insert(id, proposal);
         self.next_evm_nonce = next_nonce;
         self.outstanding_signatures.insert(id);
+        self.sign_requested_at.insert(id, now_ns);
+        self.assert_solvent(1);
         PromiseOrValue::Promise(self.request_signature(SignTarget::Proposal(id)))
     }
 }

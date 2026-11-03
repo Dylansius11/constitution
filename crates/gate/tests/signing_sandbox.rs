@@ -149,7 +149,11 @@ impl Harness {
         Ok(self
             .actor
             .call(self.gate.id(), method)
-            .args_json(json!({"proposal_id":id}))
+            .args_json(if method == "bump_fee" {
+                json!({"target":SignTarget::Proposal(id)})
+            } else {
+                json!({"proposal_id":id})
+            })
             .max_gas()
             .transact()
             .await?)

@@ -1,6 +1,6 @@
 # CONSTITUTION: smart contract specification
 
-**Status: NOT DEPLOYED. Nothing in this document has been compiled, tested or deployed.** This is the protocol contract between the gate, the executor, the verifier, the CLI, the page and the tests. It becomes a deployment record only when the "Deployment and measured costs" section contains observed addresses, transaction hashes and code hashes. Not audited.
+**Status: production gate NOT DEPLOYED; not audited.** This is the protocol contract between the gate, executor, verifier, CLI, page and tests. Local and spike-testnet evidence is labeled below; it is not production activation evidence. Production deployment is recorded only after observed addresses, transaction hashes and reproducible code hashes are added.
 
 Labels: [V] primary source read 2026-10-26 (sources at the end), [I] design decision of this foundation, [U] unverified until the named spike.
 
@@ -50,11 +50,17 @@ pub struct Gate {
     changes: IterableMap<u64, PendingChange>,
     proposals: LookupMap<u64, Proposal>,
     active_by_account: LookupMap<AccountId, u64>,
-    active_by_key: LookupMap<[u8; 32], u64>,         // sha256(new_impl_codehash || init_calldata) of active proposals, for E24
+    active_by_key: LookupMap<[u8; 32], u64>,         // sha256(account_length || proposer || new_impl_codehash || init_calldata), for E24
     outstanding_signatures: IterableSet<u64>,         // proposals in SignRequested, SignFailed or Signed; the only set D13 iterates
     fee_bumps: LookupMap<u64, u8>,                    // per-proposal bump count, independent of retries (cap 8)
     migration_signing: LookupMap<u64, MigrationSigning>, // InFlight | Failed | Signed for applied MigrateAuthority changes
     credit: LookupMap<AccountId, u128>,               // unreserved yoctoNEAR
+    total_liabilities: u128,                          // free credit + active reservations; pending transfers are debited, restored on failure
+    pending_withdrawals: u128,                        // contingent failed-transfer refunds; reserved until callback settlement
+    pending_changes: Vec<u64>,                       // at most 8 Pending changes, no historical scan
+    sign_requested_at: LookupMap<u64, u64>,           // latest proposal request timestamp, ns
+    migration_requested_at: LookupMap<u64, u64>,       // latest migration request timestamp, ns
+    migration_fee_bumps: LookupMap<u64, u8>,           // per-migration cap of 8, independent of retries
     next_proposal_id: u64,
     next_change_id: u64,
     next_evm_nonce: u64,                              // derived EOA nonce the gate will assign next
@@ -162,6 +168,7 @@ stateDiagram-v2
     SignRequested --> Signed: on_signed Ok
     SignRequested --> SignFailed: on_signed Err
     SignFailed --> SignRequested: retry_sign (same nonce, same fields)
+    SignRequested --> SignRequested: retry_sign after 20 minutes (new attempt)
     Signed --> SignRequested: bump_fee (same nonce and calldata, higher fees)
     Rejected --> [*]
     Expired --> [*]
@@ -169,6 +176,14 @@ stateDiagram-v2
 ```
 
 Reservation release: `Rejected`, `Expired` and the first entry into `Signed` return `reserved` to the proposer's credit and clear `active_by_account`. `SignFailed` keeps the proposal active because its EVM nonce is reserved: the nonce must still be filled by a signature of the identical transaction (see "Nonce discipline").
+
+[I] Storage solvency: `total_liabilities` is exactly free credit plus proposal reservations. Deposits increase it; reservation/release preserve it; withdrawal dispatch decreases it and a failed-transfer callback restores it. `pending_withdrawals` separately reserves contingent refunds until each transfer callback settles, so a refund arriving before its callback cannot be spent as operating surplus. All storage-growing synchronous methods flush deferred SDK writes and persist the root before checking `account_balance - storage_byte_cost * storage_usage >= total_liabilities + pending_withdrawals`, additionally subtracting outgoing transfer/MPC deposits before dispatch. Insufficient operating funds reject atomically with `E12_STORAGE_INSOLVENT`. Signing callbacks preflight raw transaction growth against the same backing requirement and record SignFailed rather than panic on insufficient storage funds; late callbacks never reallocate a D13 index already pruned after deadline/timeout. Historical proposals/changes remain stored; this protects user backing, not unlimited free storage.
+
+[I] Operating limit: anyone can replenish the keyless gate with a plain NEAR transfer; `deposit_credit` is not an operating top-up because it creates an equal user liability. When the operating storage margin is exhausted, proposal/governance growth fails closed until a top-up. The queue cap bounds simultaneous guardian workload, not lifetime historical storage or an attacker's ability to reschedule after cancellation. Guardian monitoring during the full timelock remains required.
+
+[I] Withdrawal reserve tradeoff: an outgoing withdrawal temporarily needs operating surplus equal to its amount in addition to normal credit backing. The reserve is released by a successful callback or converted back to user liability by a failed callback. This conservative buffer prevents asynchronous refund interleavings from making the gate insolvent. If `E12` refuses a withdrawal, replenish operating funds with a plain transfer before retrying; do not create another credit liability as a top-up.
+
+[I] Parameter bounds (enforced by `new`, `schedule_change`, and revalidated at apply): `sign_gas_tgas` 15..=200, `callback_gas_tgas` 10..=100, sum <=250 Tgas (leaves 50 Tgas of a 300-Tgas transaction for gate work); `max_cert_ttl_s` 30..=86,400; `sign_validity_s` 60..=86,400; `proposal_ttl_s` 300..=604,800; `gas_limit > 0`; `max_priority_fee_per_gas <= max_fee_per_gas <= fee_cap`. The 10-Tgas callback floor is conservative headroom over the spike's observed 1.36 Tgas, not a production callback gas measurement; the committed 20 Tgas remains valid. D14 gas/fee values remain valid. Bounded seconds and checked timestamp additions prevent overflow; fee bump arithmetic remains checked.
 
 ## Public interfaces
 
@@ -178,17 +193,18 @@ All methods are `#[near]`; JSON arguments unless marked Borsh. "Anyone" means an
 
 `#[init] new(config: Config, constitution: Constitution, roles: Roles, verifiers: Vec<(Base64 [u8;32] pubkey, VerifierRecord)>, initial_evm_nonce: u64) -> Self`
 
-- Called in the same batch transaction as the code deploy. Validates `config.chain_id == 84532`, `mpc_account == "v1.signer-prod.testnet"`, non-zero addresses, `params.sign_gas_tgas >= 15`, at least one verifier.
+- Called in the same batch transaction as the code deploy. Validates chain/MPC identity, non-zero addresses, parameter bounds above, nonempty verifier set, nonzero verifier `release_hash`, unique verifier keys and URI lengths; invalid input is `E51_INVALID_CHANGE`.
 - No method exists to deploy code, add or delete keys, delete the account or call arbitrary functions on itself (D6). The deployer then deletes every access key of the gate account (activation ceremony, BUILD-PLAN P2.8).
 
 ### Proposer and credit
 
 | Method | Caller | Effects | Rejections |
 | --- | --- | --- | --- |
-| `#[payable] deposit_credit(account: Option<AccountId>)` | anyone | Adds attached yoctoNEAR to `credit[account or predecessor]` | `E10_ZERO_DEPOSIT` |
-| `withdraw_credit(amount: U128)` | credit owner | Transfers unreserved credit to predecessor | `E11_INSUFFICIENT_CREDIT` |
-| `propose(args: ProposeArgs) -> u64` | anyone (allowed while signing is paused) | Reserves `proposal_deposit` from credit; stores `Pending` proposal binding the active `rule_set_hash`; emits `proposal_created` | `E21_ACTIVE_PROPOSAL_EXISTS`; `E11_INSUFFICIENT_CREDIT`; `E22_INIT_CALLDATA_TOO_LONG` (>1024); `E23_ZERO_ADDRESS`; `E24_DUPLICATE_ACTIVE` (same `new_impl_codehash` and `init_calldata` already active) |
-| `expire(proposal_id: u64)` | anyone | `Pending` past `expires_at_ns` becomes `Expired`; releases reservation | `E30_NOT_FOUND`; `E31_WRONG_STATE`; `E32_NOT_EXPIRED` |
+| `#[payable] deposit_credit(account: Option<AccountId>)` | anyone | Adds attached yoctoNEAR to credit and liabilities | `E10_ZERO_DEPOSIT`, `E11_INSUFFICIENT_CREDIT` on arithmetic overflow, `E12_STORAGE_INSOLVENT` |
+| `withdraw_credit(amount: U128)` | credit owner | Debits free credit/liabilities before transfer; private callback restores both if the transfer fails | `E11_INSUFFICIENT_CREDIT`, `E12_STORAGE_INSOLVENT` |
+| `#[private] on_withdraw_credit(account: AccountId, amount: U128) -> bool` | gate only | Successful transfer: true, no credit change. Failed transfer: re-credit refunded amount, restore liability, return false | no caller-controlled invocation |
+| `propose(args: ProposeArgs) -> u64` | anyone (allowed while signing paused) | Reserves `proposal_deposit`; stores Pending bound to active rules | `E21_ACTIVE_PROPOSAL_EXISTS`, `E11_INSUFFICIENT_CREDIT`, `E22_INIT_CALLDATA_TOO_LONG` (>1024), `E23_ZERO_ADDRESS`, `E24_DUPLICATE_ACTIVE` (same proposer, codehash and calldata active), `E12_STORAGE_INSOLVENT` |
+| `expire(proposal_id: u64)` | anyone | Pending past expiry becomes Expired; releases reservation | `E30_NOT_FOUND`, `E31_WRONG_STATE`, `E32_NOT_EXPIRED`, `E12_STORAGE_INSOLVENT` |
 
 `ProposeArgs { new_impl: Hex20, new_impl_codehash: Hex32, expected_current_impl: Hex20, init_calldata: Hex, source_commitment: Hex32 }`. Hex fields are lowercase `0x`-prefixed, exact length.
 
@@ -207,15 +223,15 @@ Check order (first failure panics, nothing is written):
 7. Time: `issued_at_s <= now_s + 60`, `now_s <= expires_at_s`, `expires_at_s - issued_at_s <= max_cert_ttl_s`. `E46_CERT_TIME`.
 8. Verdict:
    - `Reject { rule_id, reason_code }`: store `rejection`, `certificate_hash = message`, state `Rejected`, release reservation, emit `verdict_rejected`. Return. The MPC contract is never called.
-   - `Pass`: requires `ai != Vetoed` always, and `ai == Clean { .. }` when `constitution.ai_required` (`E47_AI_REVIEW_REQUIRED`), and `!signing_paused` (`E20_SIGNING_PAUSED`). Continue.
+   - `Pass`: requires `ai != Vetoed` always, and `ai == Clean { .. }` when `constitution.ai_required` (`E47_AI_REVIEW_REQUIRED`). Every Clean review must have `signature_kind == 1` (`E58_AI_SIGNATURE_KIND`), even if AI is optional. Requires `!signing_paused` (`E20_SIGNING_PAUSED`). Continue.
 9. Assign `nonce = next_evm_nonce; next_evm_nonce += 1`. Build `EvmTx` from params with `deadline_s = min(certificate.expires_at_s, now_s + sign_validity_s)`. Compute `signing_hash` (next section). Store, set `SignRequested`, `certificate_hash = message`, emit `sign_requested`.
 10. Return `Promise` to `mpc_account.sign({"request":{"payload_v2":{"Ecdsa":"<hex signing_hash, no 0x>"},"path":"constitution/base-sepolia/v1","domain_id":0}})` with 1 yoctoNEAR from the gate's own balance and `sign_gas_tgas`, `.then(on_signed(proposal_id, attempts))` with `callback_gas_tgas`.
 
 | Method | Caller | Effects | Rejections |
 | --- | --- | --- | --- |
 | `#[private] on_signed(target: SignTarget, attempt: u32)` | gate only | Reads the raw MPC result with `env::promise_result` (max 4096 bytes) and parses it strictly inside the callback, so malformed or wrong-shape results become a recorded failure instead of a generated-deserializer panic. Ok: build the signed raw tx from the stored fields, state `Signed`, release the reservation only if `active_by_account[proposer]` is still this proposal, emit `signed { proposal_id, nonce, tx_hash, raw_tx }`. Err: state `SignFailed`, emit `sign_failed`. Stale `attempt` is ignored with a log | never panics after logging |
-| `retry_sign(proposal_id: u64)` | anyone | `SignFailed` to `SignRequested`; signs the identical stored transaction | `E31_WRONG_STATE`, `E20_SIGNING_PAUSED`, `E45_BINDING_MISMATCH rule_set_hash` when the proposal's rule set was superseded and its deadline has not passed (after the deadline the bytes only fill the nonce: the executor reverts `DeadlinePassed`) |
-| `bump_fee(proposal_id: u64)` | anyone | `Signed` only; both fee fields `* 5 / 4` rounded up, `max_fee_per_gas <= fee_cap`; same nonce, deadline, calldata; re-signs; at most 8 bumps counted in `fee_bumps`; a failed bump keeps the previous `signed_tx` | `E31_WRONG_STATE`, `E20_SIGNING_PAUSED`, `E45` as for `retry_sign`, `E48_FEE_CAP`, `E49_TOO_MANY_BUMPS` |
+| `retry_sign(proposal_id: u64)` | anyone | SignFailed or SignRequested at least 20 minutes after its latest request becomes SignRequested; identical transaction, incremented attempt; late original callback ignored | `E31_WRONG_STATE`, `E20_SIGNING_PAUSED`, `E45_BINDING_MISMATCH rule_set_hash` unless stored deadline passed, `E12_STORAGE_INSOLVENT` |
+| `bump_fee(target: SignTarget)` | anyone | Signed proposal or migration only; both fees increase by 25% rounded up, max fee <= cap; same nonce/deadline/calldata; at most 8 per target; old raw tx survives failure | `E30_NOT_FOUND` / `E52_NOT_FOUND`, `E31_WRONG_STATE`, `E20_SIGNING_PAUSED`, `E45` for proposals as for retry, `E48_FEE_CAP`, `E49_TOO_MANY_BUMPS`, `E12_STORAGE_INSOLVENT` |
 
 `SignTarget` is `Proposal(u64)` or `Change(u64)`. `SignatureResponse` accepts exactly the shape observed in spike P1.2 [V, NEAR testnet 2026-11-02, sign tx `FNd6BUDznLA3wwmdtiCE2F8auBaJmfQMTCDS4g4ro6Rz`, captured in `vectors/mpc-response.json`]: `{"scheme":"Secp256k1","big_r":{"affine_point":"<33-byte hex>"},"s":{"scalar":"<32-byte hex>"},"recovery_id":<u8>}`, identical to near/mpc source at commit `b78f4f5b`. The installed `near-smart-contracts` skill shows a different shape and is wrong. Conversion: `r = affine_point[1..33]`, `s = scalar`, `y_parity = recovery_id`; the captured signature recovers to the derived EOA in Rust and Python.
 
@@ -225,9 +241,10 @@ The gate does not re-run `ecrecover` on-chain: [V] `env::ecrecover` in near-sdk 
 
 | Method | Caller | Effects | Rejections |
 | --- | --- | --- | --- |
-| `schedule_change(kind: ChangeKind) -> u64` | governor | Stores `Pending` change with `eta_ns = now_ns + 604_800 * 10^9`; emits `change_scheduled { id, kind, eta_ns }` | `E50_NOT_GOVERNOR`, `E51_INVALID_CHANGE` (e.g. empty URI over 256 bytes, zero address, params violating init rules) |
-| `apply_change(change_id: u64)` | anyone | If `now_ns >= eta_ns`: applies; `MigrateAuthority` becomes `Applied`, assigns a nonce and signs `rotateSigner` (same signing path, `SignTarget::Change`); calling `apply_change` again on an applied `MigrateAuthority` whose signing failed retries the identical bytes; emits `change_applied` | `E52_NOT_FOUND`, `E53_TIMELOCK_NOT_ELAPSED { eta_ns, now_ns }`, `E54_NOT_PENDING`, `E55_SIGNATURES_OUTSTANDING` for `SetRuleSet` while any proposal is `SignRequested`, or `SignFailed`/`Signed` with `deadline_s > now_s` (D13) |
-| `cancel_change(change_id: u64)` | guardian | `Pending` to `Cancelled`; emits `change_cancelled` | `E56_NOT_GUARDIAN`, `E54_NOT_PENDING` |
+| `schedule_change(kind: ChangeKind) -> u64` | governor | Pending queue capped at 8 total, at most one Pending of each MigrateAuthority/SetGuardian/SetGovernor kind; eta remains now +604,800 seconds | `E50_NOT_GOVERNOR`, `E51_INVALID_CHANGE`, `E59_PENDING_CHANGE_LIMIT`, `E60_DUPLICATE_AUTHORITY_CHANGE`, `E12_STORAGE_INSOLVENT` |
+| `apply_change(change_id: u64)` | anyone | Applies after eta. Migration assigns one nonce and signs rotateSigner; applied Failed or 20-minute timed-out InFlight migration can re-request identical bytes with a new attempt (including failed fee bumps) | `E52_NOT_FOUND`, `E53_TIMELOCK_NOT_ELAPSED`, `E54_NOT_PENDING`, `E55_SIGNATURES_OUTSTANDING`: rule change waits for every stored deadline, and for SignRequested also the 20-minute timeout; `E12_STORAGE_INSOLVENT` |
+| `cancel_change(change_id: u64)` | guardian | Pending to Cancelled; frees queue slot | `E56_NOT_GUARDIAN`, `E52_NOT_FOUND`, `E54_NOT_PENDING` |
+| `cancel_changes(ids: Vec<u64>)` | guardian | At most 8 unique IDs; validates entire batch before cancelling; only reduces authority | `E56_NOT_GUARDIAN`, `E59_PENDING_CHANGE_LIMIT`, `E51_INVALID_CHANGE` (duplicate IDs), `E52_NOT_FOUND`, `E54_NOT_PENDING` |
 | `pause_signing()` | guardian | `signing_paused = true` immediately; only reduces authority | `E56_NOT_GUARDIAN` |
 | `remove_verifier_now(pubkey: Base64 [u8;32])` | guardian | Removes immediately; only reduces authority | `E56_NOT_GUARDIAN`, `E57_LAST_VERIFIER` |
 
@@ -235,7 +252,47 @@ Unpausing, adding verifiers, rule changes, parameter changes, role changes and a
 
 ### Views
 
-`get_config`, `get_constitution`, `get_roles`, `list_verifiers`, `get_proposal(id)`, `list_proposals(from_id, limit <= 50)`, `get_change(id)`, `list_changes(from_id, limit <= 50)`, `get_credit(account)`, `get_active(account)`, `signing_preimage(proposal_id) -> Hex` (unsigned RLP bytes, for independent recomputation).
+`get_config`, `get_constitution`, `get_roles`, `is_signing_paused() -> bool`, `get_total_liabilities() -> U128`, `list_verifiers`, `get_proposal(id)`, `list_proposals(from_id, limit <= 50)`, `get_change(id)`, `list_changes(from_id, limit <= 50)`, `get_credit(account)`, `get_active(account)`, `signing_preimage(proposal_id) -> Hex`. ABI allowlist: 30 methods including generated `contract_source_metadata`; both callbacks are private. Audit uses roles/pause and paginated `list_changes` without another authority-expanding method.
+
+### Panic-code table
+
+Codes are stable receipt prefixes; the four new codes are gate-private (the shared types crate is unchanged).
+
+| Code | Meaning |
+| --- | --- |
+| `E10_ZERO_DEPOSIT` | Credit funding attached zero |
+| `E11_INSUFFICIENT_CREDIT` | Insufficient unreserved credit or credit arithmetic overflow |
+| `E12_STORAGE_INSOLVENT` | Post-write liquid balance, less outgoing transfer/deposit, cannot cover liabilities plus contingent withdrawal reserves |
+| `E20_SIGNING_PAUSED` | Guardian paused a signature-creating action |
+| `E21_ACTIVE_PROPOSAL_EXISTS` | This proposer already has an active reservation |
+| `E22_INIT_CALLDATA_TOO_LONG` | Initializer exceeds 1,024 bytes |
+| `E23_ZERO_ADDRESS` | Proposal implementation address is zero |
+| `E24_DUPLICATE_ACTIVE` | This proposer already has this active codehash/calldata key (other proposers cannot squat it) |
+| `E30_NOT_FOUND` | Proposal does not exist |
+| `E31_WRONG_STATE` | Proposal/target state is invalid for this action, including a retry before request timeout |
+| `E32_NOT_EXPIRED` | Proposal expiry has not passed |
+| `E40_BAD_ENCODING` | Certificate Borsh is malformed or has trailing bytes |
+| `E41_WRONG_DOMAIN` | Certificate domain or gate differs |
+| `E42_UNKNOWN_VERIFIER` | Certificate key/release is not registered |
+| `E43_BAD_SIGNATURE` | Certificate Ed25519 signature is invalid |
+| `E44_PROPOSAL_EXPIRED` | Proposal expired before certificate submission |
+| `E45_BINDING_MISMATCH` | Certificate/stored rule or transaction binding differs |
+| `E46_CERT_TIME` | Certificate time window or maximum TTL is invalid |
+| `E47_AI_REVIEW_REQUIRED` | Required Clean review is absent, or Pass is Vetoed |
+| `E48_FEE_CAP` | Fee increase overflows or exceeds the timelocked cap |
+| `E49_TOO_MANY_BUMPS` | Eight fee bumps exhausted or attempt counter overflowed |
+| `E50_NOT_GOVERNOR` | Scheduler is not governor |
+| `E51_INVALID_CHANGE` | Invalid initialization/change/parameter/URI/address, zero release hash, duplicate batch ID, or bounded arithmetic overflow |
+| `E52_NOT_FOUND` | Governance change does not exist |
+| `E53_TIMELOCK_NOT_ELAPSED` | Applying before immutable seven-day eta |
+| `E54_NOT_PENDING` | Change is not Pending and is not a retryable applied migration |
+| `E55_SIGNATURES_OUTSTANDING` | Rule change is unsafe while an upgrade signature deadline/request is outstanding |
+| `E56_NOT_GUARDIAN` | Immediate restrictive action caller is not guardian |
+| `E57_LAST_VERIFIER` | Would remove the last registered verifier |
+| `E58_AI_SIGNATURE_KIND` | Clean review is not provider_tee kind 1 |
+| `E59_PENDING_CHANGE_LIMIT` | Eight Pending changes already queued, or cancellation batch exceeds eight |
+| `E60_DUPLICATE_AUTHORITY_CHANGE` | A Pending change of this authority kind already exists |
+
 
 ### Events
 
@@ -278,7 +335,7 @@ pub enum Verdict { Pass, Reject { rule_id: u8, reason_code: u16 } }
 ```
 
 - `certificate_hash = sha256(borsh(certificate))`; the verifier signs these 32 bytes with Ed25519; the same 32 bytes are the EVM `certId`.
-- `AiReview::Clean` with `signature_kind = 2` (gateway only) is recorded as weaker evidence; the demo rule set requires `1` and the verifier refuses to emit `Pass` otherwise (ARCHITECTURE "AI review").
+- Every `AiReview::Clean` attached to Pass must have `signature_kind = 1` (`provider_tee`); the gate rejects every other kind with `E58_AI_SIGNATURE_KIND`. The verifier separately enforces the committed rule set and verifies provider TEE evidence; the gate checks the authenticated certificate field, not the inference attestation itself.
 - `Verdict::Pass` with `AiReview::Vetoed` is invalid and the verifier never emits it; the gate additionally rejects it under `E47_AI_REVIEW_REQUIRED` because `Vetoed` is not `Clean`.
 
 Rule ids and reason codes (shared enum in `constitution-types`):
@@ -396,8 +453,8 @@ Limits [I]: `currentImplementation` is the executor's record, not a read of the 
 | Authority | Who holds it | What a thief can do | What a thief cannot do |
 | --- | --- | --- | --- |
 | Gate account access keys | nobody after activation | nothing | deploy code, add keys, delete account, transfer gate funds |
-| Governor (demo: public QR function-call key) | demo account | schedule public changes visible 7 days | apply early, cancel, sign, propose more than one active proposal |
-| Guardian | founder | cancel pending changes, pause signing, remove a verifier | add anything, unpause, apply, sign |
+| Governor (demo: public QR function-call key) | demo account | schedule up to 8 Pending changes, at most one per authority kind, visible 7 days | apply early, cancel, sign, propose more than one active proposal per account |
+| Guardian | founder | cancel one or a bounded batch of Pending changes, pause signing, remove a verifier | add anything, unpause, sign; apply is permissionless but cannot bypass eta |
 | Verifier Ed25519 key | inside measured CVM | sign certificates for the declared rule set until removed; the rules and AI requirement still bound what passes | change rules, verifier set or gate code |
 | Verifier relay NEAR key | CVM env, function-call key | submit verdicts (validity comes from the certificate signature) | anything else |
 | Deployer EOA on Base | founder | nothing after constructor | upgrade, rotate signer |
@@ -406,8 +463,8 @@ Limits [I]: `currentImplementation` is the executor's record, not a read of the 
 
 Bypass analysis (each item has a test or audit check in "Test matrix"):
 
-1. Replace gate code at the same account: impossible without access keys and without a deploy method (D6). Audit: `view_access_key_list(gate)` is empty; code hash equals the reproducible build.
-2. New verifier or rules: 7-day public queue; guardian can cancel.
+1. Replace gate code at the same account: impossible without access keys and without a deploy method (D6). Audit: `gate_has_no_access_keys`, `gate_code_is_committed_build`. Substitute executor code: `executor_code_is_committed_build` compares `eth_getCode` against the committed `executor_runtime_hash` and local Foundry artifact, masking only compiler-declared immutable references; ownership/slot checks still apply (11 preconditions total; schema and exact offline hash command in ARCHITECTURE “CLI”).
+2. New verifier or rules: 7-day public queue; guardian can cancel. Audit reads roles, pause state and the full pending-change queue with `eta_ns`; unplanned MigrateAuthority/AddVerifier/SetGuardian/SetGovernor prints named `WARN pending_authority_change` and a loud “pending authority change” summary (WARN exits 0, FAIL exits 1). Exact planned change tuples live in the committed deployment record; a missing view fails closed as `read_failed`.
 3. Verifier key extraction from the TEE: residual risk; mitigations are measurement allowlisting, `remove_verifier_now`, short certificate TTL.
 4. Stale signature replay: executor deadline and `usedCertificate`.
 5. Wrong chain, proxy or calldata: chain id and every field are inside the signed preimage built by the gate.
@@ -466,7 +523,7 @@ Commands are planned interfaces from BUILD-PLAN; none exists yet.
 | T-E2E-1 | testnet | drain proposal | `Rejected`, MPC not called (no `sign_requested` event), proxy slot unchanged |
 | T-E2E-2 | testnet | honest proposal | `Signed`, Base Sepolia tx success, slot = VaultV2Honest |
 | T-E2E-3 | testnet | governor schedules and immediately applies | `E53_TIMELOCK_NOT_ELAPSED` receipt |
-| T-AUD-1 | audit | gate with a remaining access key; tracker diverged from slot; ProxyAdmin owner changed | audit fails naming the precondition |
+| T-AUD-1 | audit | remaining gate access key; tracker diverged; ProxyAdmin owner changed; missing executor hash; extra-function executor fixture with identical getters | audit fails naming the precondition, honest masked runtime passes (local anvil); governance WARN does not conceal FAIL |
 
 No claim of full formal verification: R2 is bounded symbolic execution plus seeded fuzzing within committed bounds.
 
@@ -485,6 +542,13 @@ NOT DEPLOYED. Fill only with observed values:
 | Verifier public key and release hash | n/a | not generated | | |
 | MPC sign gas consumed | NEAR testnet | one spike observation: MPC sign receipt 4.28 Tgas, MPC completion 3.47 Tgas, spike callback 1.36 Tgas burnt, with 15 Tgas + 1 yoctoNEAR attached to `sign` and 20 Tgas to the callback (`spikes/gate-min/online-evidence.json`) | `FNd6BUDznLA3wwmdtiCE2F8auBaJmfQMTCDS4g4ro6Rz` | 2026-11-02 |
 | Upgrade gas used | Base Sepolia | spike, live: honest `execute` upgrade 105,159 gas at effective gas price 6,000,000 wei (base fee 5,000,000, priority 1,000,000) plus 501 wei L1 data fee; expired-deadline revert 28,900 gas | `0xc232188629763bec4eb9a72be7fd08f66ab5690a2ad997ac6ed20697ff0729d8`, `0x4e095a6be399e32cd5e72dc5140a433c128716e6dfe6f2c92191f4ca2c0afee3` | 2026-11-03 |
+| Maximum-calldata Pending proposal storage increment | Local unit host, 2026-11-03 | [V local] 1,421 bytes for 1,024-byte calldata and `alice.testnet`; 0.01421 NEAR at 10^19 yoctoNEAR/byte | `proposal_storage_growth_is_the_solvency_limiter_and_measurement`, `--nocapture` | 2026-11-03 |
+| Maximum-calldata Signed proposal storage increment | Local unit host, 2026-11-03 | [V local] 2,950 bytes from funded-credit baseline through first Signed state, including stored raw transaction; captured mock-MPC signature shape, not a testnet signature | `signed_max_calldata_storage_measurement`, `--nocapture` | 2026-11-03 |
+
+
+[I] Activation operating minimum: top up with a **plain transfer** until balance is at least current code/state storage stake + total user liabilities + contingent withdrawal reserves + **1 NEAR uncredited operating surplus**. Calculation from the [V local] 2,950-byte signed-proposal observation: at 10^19 yoctoNEAR/byte, ten maximum-calldata lifecycles require 0.295 NEAR; a 2x storage allowance is 0.59 NEAR, rounded up to 1 NEAR for longer account IDs, governance/index overhead and request deposits. This is an initial ten-proposal operating envelope, not a lifetime bound; monitor liquid surplus and top up before exhaustion. Also provision surplus for the largest aggregate in-flight withdrawal amount (the conservative refund reserve above), independently of proposal storage. Re-measure with the activation build and actual identities; reproducible build remains required at activation.
+
+[V local, 2026-11-03] Gate-scoped acceptance: `cargo test -p constitution-gate -- --test-threads=1` passed 52 unit, 15 property/state-machine, 2 sandbox (including exact 30-method ABI and storage-limited atomic rejection), and 3 mock-MPC signing sandbox tests; no failures or ignored tests. `cargo clippy -p constitution-gate --all-targets -- -D warnings` and `cargo fmt -p constitution-gate -- --check` passed. Host wasm rebuilt with `cargo near build non-reproducible-wasm`; this is not reproducible activation evidence. No live-network call was made for this hardening.
 
 ## Sources (all opened 2026-10-26)
 
@@ -495,3 +559,29 @@ NOT DEPLOYED. Fill only with observed values:
 - https://docs.rs/omni-transaction/0.5.0 ; https://eips.ethereum.org/EIPS/eip-1559 ; https://docs.base.org/specifications/transactions/troubleshooting-transactions
 - OpenZeppelin Contracts tag v5.6.1: `TransparentUpgradeableProxy.sol`, `ProxyAdmin.sol`, `ERC1967Utils.sol`, `IERC1967.sol`, `Ownable.sol`, `UUPSUpgradeable.sol`
 - Research notes: `scratch/research/A-chain-stack.md`, `scratch/research/B-verifier-ai-integrations.md` (local, gitignored)
+
+## Property tests
+
+- [I] `crates/gate/tests/props_state_machine.rs` drives the public Rust API with a small reference model, Borsh reloads after every operation, three funded actors, generated operation vectors (up to 32 operations), and focused generated lifecycle traces. Shrinking prints the operation vector and failing step. Proptest uses 64 cases per property and fixed seed `0x434f4e5354495455`; no network or near-workspaces is involved.
+- [I] Conservation means deposited credit = free credit + proposal reservations + successful or in-flight withdrawal transfers (failed transfers restore credit). Model liabilities equal free credit + reservations and never exceed measured liquid balance after each committed call. No slash operation exists. MPC's 1-yocto deposit comes from the gate operating balance. Active keys include proposer identity: another account's identical payload cannot block a proposal.
+- [I] Nonce uniqueness binds a nonce to one proposal and immutable executor calldata/deadline. Documented retries may request the identical payload again; fee bumps may change only fees at the same nonce. Duplicate/stale callbacks must not accept another signature or refund twice. The success callback uses the captured MPC response shape as a local fixture, not a real signature for the generated transaction. Registered release/attestation metadata is exercised, not Intel attestation appraisal.
+
+| Invariant | Enforcing test(s) |
+| --- | --- |
+| Credit/escrow conservation; reservation released once; at most one active proposal per account | `generated_operations_match_reference_model`, `signing_retries_bumps_and_stale_callbacks_preserve_nonce_and_credit` |
+| First-assigned nonces strictly increase across upgrade and authority-migration targets, never move to another calldata payload; retries preserve the signing hash; fee bumps preserve nonce/deadline/inputs | `generated_operations_match_reference_model`, `migration_and_upgrade_nonces_never_collide`, `signing_retries_bumps_and_stale_callbacks_preserve_nonce_and_credit` |
+| Only a valid, bound Pass from a registered verifier within TTL requests an upgrade signature; every expected failure asserts the exact documented error code | `certificate_mutations_never_authorize_signing`, `every_certificate_rejection_class_has_exact_error_and_no_effect`, `certificate_time_boundaries_and_terminal_rejections`, `generated_operations_match_reference_model` |
+| Rejected, AI-vetoed and Expired proposals never request signatures; stale/duplicate callbacks never accept a second result per attempt; expiry is exclusive and 1,024-byte calldata is accepted | `certificate_time_boundaries_and_terminal_rejections`, `proposal_expiry_and_calldata_boundaries_release_exactly_once`, `timelocked_verifiers_and_guardian_actions_never_expand_authority`, `signing_retries_bumps_and_stale_callbacks_preserve_nonce_and_credit` |
+| Guardian actions only pause, cancel or remove verifier authority; adding/removing verifiers and unpause are timelocked; early apply is exactly E53; the delay remains 604,800 seconds after parameter changes | `timelocked_verifiers_and_guardian_actions_never_expand_authority`, `generated_operations_match_reference_model` |
+| Rule changes wait for in-flight signatures; retries under superseded rules preserve expired bytes and cannot extend the deadline | `rule_changes_wait_for_inflight_signatures_and_expired_retries_only_fill_nonce` |
+| A lost callback is recoverable at the exact 20-minute timeout; a late original callback cannot double-apply | `requested_signature_retries_only_after_timeout_and_ignores_old_attempt` |
+| Clean review kind other than provider_tee never authorizes Pass, even when AI is optional | `non_provider_clean_never_authorizes_pass_even_when_ai_optional`, `certificate_mutations_never_authorize_signing` |
+| Queue <=8, unique Pending migration/guardian/governor kinds; guardian batch cancellation is atomic and restrictive | `pending_changes_are_bounded_unique_and_batch_cancel_is_atomic`, `generated_operations_match_reference_model` |
+| Storage growth/outgoing transfers cannot consume credit/refund backing, including refund-before-callback interleavings | `insolvent_liquid_balance_rejects_credit_growth_and_outgoing_actions`, `generated_operations_match_reference_model`; unit `refunded_withdrawal_cannot_be_spent_before_failure_callback` |
+| Migration fee bumps and timeout retries keep nonce/deadline/calldata and preserve the previous signed fallback on failure | `migration_bumps_and_timeout_retries_preserve_nonce_deadline_and_signed_fallback` |
+| Failed withdrawal callbacks restore credit and liabilities; success does not re-credit | `withdrawal_callback_preserves_credit_and_liability_conservation` |
+| Late failed callbacks after deadline/timeout pruning do not reallocate outstanding-signature storage | unit `late_failed_callback_after_rule_cleanup_does_not_allocate_outstanding_entry` |
+| Gate state, every stored proposal and every queued change Borsh round-trip after every model step | All model-driven tests above |
+
+- [V] Pre-hardening local WSL evidence (2026-11-03): original 9/9 tests passed with 64 cases and a 22-mutation matrix. This is historical evidence, not verification of the revised rules above. The existing ABI surface test remains authoritative; the revised surface has 30 methods.
+- [V local, 2026-11-03] Revised suite passed **15/15**, 64 cases per property, fixed seed `0x434f4e5354495455`, and one fixed 23-mutation rejection matrix; property execution 25.96 s in the gate-wide run. The refund-before-callback unit regression was observed failing before the contingent reserve fix and passing in the final 52-unit run. Two test-harness issues found during verification were corrected: the mocked balance includes attached deposits, and sandbox account patching must preserve the existing code/storage account fields.
