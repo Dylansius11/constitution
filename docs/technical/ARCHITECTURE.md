@@ -242,10 +242,10 @@ R2 as committed [V local, 2026-11-02, `crates/verifier/evidence/depth/`]: Halmos
 
 | Command | Effect |
 | --- | --- |
-| `constitution propose --bundle <dir> --impl <addr> [--init <hex>]` | Builds and seals the bundle, calls `propose`, posts the run to the verifier, prints proposal id |
-| `constitution status <id> [--watch]` | Gate state + verifier stages |
+| `constitution propose --bundle <dir> --contract src/<file>.sol:<Name> --impl <addr> [--init <hex>] [--verifier <url>]` | Reads the gate config and the implementation's live codehash, fetches the verifier transport key before any NEAR write, deposits only the credit shortfall, calls `propose`, seals the canonical bundle and posts the run; prints proposal id, NEAR tx and run id. It does not appraise the verifier identity (D5) |
+| `constitution status <id> [--run <run_id>] [--watch <s>]` | Gate state plus verifier stages; polls every 2 s until a terminal state or the timeout |
 | `constitution relay <id> [--change] [--watch <s>]` | Recovers sender, broadcasts the gate's `signed` raw transaction (details below) |
-| `constitution receipt <id> [--json]` | Canonical receipt |
+| `constitution receipt <id> [--run <run_id>] [--json] [--network testnet\|local]` | Canonical receipt; certificate facts only after the run's certificate bytes hash to the gate's accepted certificate |
 | `constitution audit [--deployment deployments/testnet.json] [--manifest rules/manifest.json]` | F7 checks, non-zero exit on any failure (details below) |
 | `constitution govern [--account <id>] [--key-file <path>] schedule --kind <ChangeKind JSON> / apply <id> / cancel <id>` | Governance; signs with a near-cli legacy key file (default `.secrets/near-credentials/<network>/<account>.json`) through near-api 0.8.6; a gate panic prints its code (for example `E53_TIMELOCK_NOT_ELAPSED`) and the next step |
 | `constitution rules hash <manifest>` | Prints rule-set hash |
