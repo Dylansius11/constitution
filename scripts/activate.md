@@ -1,0 +1,49 @@
+# Activation ceremony (BUILD-PLAN P2.8)
+
+Status: **planned, not run.** Every command below is the intended command; none has been executed against testnet or Base Sepolia. Target start 2026-11-07T12:00Z so the F11 change can mature before the 2026-11-14T23:59Z cutoff.
+
+Deleting the gate's last access key is irreversible: after step 7 nobody can redeploy, re-initialize or fix the gate. Every check before step 7 must pass; if one fails, fix it and start again on a fresh gate account.
+
+## Preconditions (each needs its proof before step 1)
+
+| # | Precondition | Owner | Proof to record |
+| --- | --- | --- | --- |
+| A | B2: deployer `0x67689e905bAA12cC0Fd045b2717694245F298cAb` holds Base Sepolia ETH | founder | `cast balance <deployer> --rpc-url $BASE_SEPOLIA_RPC_URL` |
+| B | B3: verifier CVM running the pinned image; `constitution verifier appraise <url>` passes (D5) | founder approves deploy, lead appraises | appraisal output: verifier pubkey, release hash, compose hash |
+| C | P1.4 stage B passed on live Base Sepolia; D14 params chosen from observed fees | lead | SMART-CONTRACT "Deployment" rows |
+| D | `rules/manifest.json` committed and pushed; `constitution rules hash rules/manifest.json` printed the hash | lead | hash + commit SHA; `manifest_uri` = raw GitHub URL at that SHA |
+| E | Reproducible gate wasm from a clean clone of the activation commit | lead | `cargo near build reproducible-wasm` sha256 and NEAR code hash |
+| F | Derived EOA for `(constitution-gate.testnet, constitution/base-sepolia/v1)` re-read live | lead | MPC `derived_public_key` view maps to `0x3b20f46860d27d81917a45221c594fc051af7e94` (recorded 2026-11-02, `vectors/mpc-derivation.json`) |
+
+## Steps
+
+1. **Executor, vault and proxy on Base Sepolia** (deployer key from the encrypted keystore):
+   ```sh
+   cd contracts
+   SIGNER=0x3b20f46860d27d81917a45221c594fc051af7e94 ~/.foundry/bin/forge script script/Deploy.s.sol \
+     --rpc-url "$BASE_SEPOLIA_RPC_URL" --keystore ../.secrets/evm/deployer.json \
+     --password-file ../.secrets/evm/deployer.password --broadcast
+   ```
+   Record `executor`, `proxy`, `proxyAdmin`, `vaultV1Implementation`, `token` and the tx hashes. Check `cast call <proxyAdmin> 'owner()(address)'` equals `executor`.
+2. **Initial EVM nonce**: `cast nonce 0x3b20f46860d27d81917a45221c594fc051af7e94 --rpc-url "$BASE_SEPOLIA_RPC_URL"` (expected 0) becomes `initial_evm_nonce`.
+3. **Gate deploy and `new` in one transaction** (`constitution-gate.testnet`, key in `.secrets/near-credentials/testnet/`):
+   ```sh
+   ./.tools/bin/near contract deploy constitution-gate.testnet \
+     use-file target/near/constitution_gate/constitution_gate.wasm \
+     with-init-call new json-args "$(cat scratch/activation/init-args.json)" \
+     prepaid-gas '100.0 Tgas' attached-deposit '0 NEAR' \
+     network-config testnet sign-with-legacy-keychain send
+   ```
+   `init-args.json` (fill from steps 1 and 2 and preconditions B, C, D):
+   `{"config":{"chain_id":84532,"executor":"0x..","proxy":"0x..","proxy_admin":"0x..","derived_eoa":"0x3b20f46860d27d81917a45221c594fc051af7e94","mpc_account":"v1.signer-prod.testnet","mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0},"constitution":{"rule_set_hash":"0x..","manifest_uri":"https://raw.githubusercontent.com/Dylansius11/constitution/<sha>/rules/manifest.json","ai_required":true,"params":{...D14...}},"roles":{"governor":"constitution-governor.testnet","guardian":"constitution-guardian.testnet"},"verifiers":[["<base64 pubkey>",{"release_hash":"0x..","attestation_uri":"<quote URL>","added_at_ns":0}]],"initial_evm_nonce":0}`
+   Record the NEAR tx hash and `view_account` code hash; the code hash must equal precondition E.
+4. **Fund the derived EOA** with the D14 amount from the deployer: `cast send 0x3b20f46860d27d81917a45221c594fc051af7e94 --value <D14> ...`. Record the tx hash.
+5. **Deployment record**: write `deployments/testnet.json` in the audit format (`chain_id`, `gate`, `gate_code_hash`, `mpc_account`, `executor`, `proxy`, `verifiers[{pubkey, release_hash}]`; lowercase hex) and commit it.
+6. **Audit before key deletion**: `constitution audit --deployment deployments/testnet.json`. Expected: exactly one FAIL, `gate_has_no_access_keys`; every other line PASS. Anything else stops the ceremony.
+7. **Founder deletes every gate access key** (explicit founder authorization at that moment):
+   `./.tools/bin/near account list-keys constitution-gate.testnet network-config testnet now`, then
+   `./.tools/bin/near account delete-keys constitution-gate.testnet public-keys <every key> network-config testnet sign-with-legacy-keychain send`.
+8. **Audit after deletion**: same command; expected `audit passed: 10 of 10 preconditions hold`. Save the full output as the activation receipt.
+9. **F11 change**: the governor schedules the harmless `SetParams` change (same params, documented in PRD F11):
+   `constitution govern --account constitution-governor.testnet --gate constitution-gate.testnet schedule --kind '{"SetParams":{...}}'`. Record change id and `eta_ns`.
+10. **Record**: every address, tx hash, code hash and the audit output in SMART-CONTRACT "Deployment"; note the CVM uptime start (D18).
