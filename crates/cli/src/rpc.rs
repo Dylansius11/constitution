@@ -344,6 +344,13 @@ impl Verifier {
         })
     }
 
+    fn endpoint(&self, path: &str) -> Result<reqwest::Url, crate::failure::Failure> {
+        let mut url = reqwest::Url::parse(&self.url)
+            .map_err(|_| Self::failure("invalid verifier endpoint".into()))?;
+        url.set_path(&format!("{}{path}", url.path().trim_end_matches('/')));
+        Ok(url)
+    }
+
     fn failure(cause: String) -> crate::failure::Failure {
         crate::failure::Failure::new(
             format!("verifier: {cause}"),
@@ -356,10 +363,19 @@ impl Verifier {
     }
 
     fn get(&self, path: &str) -> Result<Value, crate::failure::Failure> {
-        self.client
-            .get(format!("{}{path}", self.url))
+        let response = self
+            .client
+            .get(self.endpoint(path)?)
             .send()
-            .and_then(|r| r.error_for_status())
+            .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND && path.starts_with("/v1/runs/") {
+            return Err(crate::failure::Failure::new(
+                "verifier run was evicted (404); its status is no longer retained",
+                "inspect `constitution status <id>` and relay transactions first; if the proposal is still Pending, start again with `constitution verifier run --proposal <id> --bundle <bundle>` using the original bundle",
+            ));
+        }
+        response
+            .error_for_status()
             .and_then(|r| r.json())
             .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))
     }
@@ -389,7 +405,7 @@ impl Verifier {
         // Callers obtained this id through `run`, which rejects path separators.
         let response = self
             .client
-            .get(format!("{}/v1/runs/{id}/evidence", self.url))
+            .get(self.endpoint(&format!("/v1/runs/{id}/evidence"))?)
             .send()
             .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -409,23 +425,67 @@ impl Verifier {
         sealed: &[u8],
     ) -> Result<String, crate::failure::Failure> {
         use base64::Engine;
-        let response = self.client.post(format!("{}/v1/runs", self.url))
+        let response = self.client.post(self.endpoint("/v1/runs")?)
             .json(&json!({"gate": gate, "proposal_id": proposal_id, "sealed_bundle_b64": base64::engine::general_purpose::STANDARD.encode(sealed)}))
             .send().map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
         if response.status() != reqwest::StatusCode::ACCEPTED {
-            return Err(Self::failure(format!(
-                "POST /v1/runs returned {}",
-                response.status()
-            )));
+            use crate::failure::Failure;
+            let status = response.status();
+            let retry_after = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok());
+            let code = response
+                .text()
+                .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
+            return Err(match (status.as_u16(), code.trim()) {
+                (400, "bad_bundle") => Failure::new(
+                    "verifier bad_bundle: sealed bundle is invalid or differs from the proposal's source commitment; no run was created",
+                    "check the original canonical source bundle, then re-seal with the current verifier identity using `constitution verifier run --proposal <id> --bundle <bundle>` after 10 seconds",
+                ),
+                (400, "wrong_gate") => Failure::new(
+                    "verifier wrong_gate: this verifier serves a different gate; no run was created",
+                    "correct --gate or --verifier-url to match the protected gate, then use `constitution verifier run --proposal <id> --bundle <bundle>`",
+                ),
+                (400, "unsupported_proposal") => Failure::new(
+                    "verifier unsupported_proposal: proposal state or rule set is not supported; no run was created",
+                    "inspect `constitution status <id>`; use a Pending proposal and a verifier serving its committed rule set",
+                ),
+                (502, "rpc_unavailable") => Failure::retry_verifier(
+                    "verifier rpc_unavailable: chain RPC could not be read; no run was created; the proposal is still Pending",
+                    10,
+                ),
+                (429, "rate_limited" | "queue_full") => {
+                    let cause = if code.trim() == "rate_limited" {
+                        "verifier rate_limited: admission rate limit reached; no run was created"
+                    } else {
+                        "verifier queue_full: verifier worker is busy; no run was created"
+                    };
+                    match retry_after {
+                        Some(seconds) => Failure::retry_verifier(cause, seconds),
+                        None => Failure::new(
+                            cause,
+                            "the verifier omitted a valid Retry-After; ask the operator for the retry delay before using `constitution verifier run --proposal <id> --bundle <bundle>`",
+                        ),
+                    }
+                }
+                (409, "run_in_progress") => Failure::new(
+                    "verifier run_in_progress: this proposal is already running; no new run was created",
+                    "watch the existing run with `constitution status <id> --run <run_id> --watch <seconds>`; do not start a duplicate run",
+                ),
+                _ => Self::failure(format!(
+                    "POST /v1/runs returned {status} with an undocumented error code"
+                )),
+            });
         }
         let value: Value = response
             .json()
             .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
         value["run_id"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .ok_or_else(|| Self::failure("POST /v1/runs returned no run_id".into()))
+            .as_u64()
+            .map(|id| id.to_string())
+            .ok_or_else(|| Self::failure("POST /v1/runs returned no numeric run_id".into()))
     }
 }
 

@@ -63,6 +63,7 @@ fn help_never_prints_rpc_defaults_or_keyed_environment_values() {
         vec!["propose", "--help"],
         vec!["govern", "--help"],
         vec!["verifier", "appraise", "--help"],
+        vec!["verifier", "run", "--help"],
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_constitution"))
             .args(&args)

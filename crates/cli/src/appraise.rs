@@ -53,7 +53,7 @@ impl Check {
                     name,
                     ok: false,
                     detail: failure.cause,
-                    next: Some(failure.next),
+                    next: Some(RECOVER),
                 }
             }
         }

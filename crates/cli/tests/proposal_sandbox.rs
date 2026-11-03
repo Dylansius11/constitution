@@ -162,10 +162,7 @@ async fn submit(
         .decode(request["sealed_bundle_b64"].as_str().unwrap())
         .unwrap();
     *stub.bundle.lock().unwrap() = Some(stub.key.unseal(&sealed).unwrap());
-    (
-        axum::http::StatusCode::ACCEPTED,
-        Json(json!({"run_id":"local-run-0"})),
-    )
+    (axum::http::StatusCode::ACCEPTED, Json(json!({"run_id":7})))
 }
 async fn run_status() -> Json<Value> {
     Json(json!({"stage":"queued", "started_at":1, "stages":[]}))
@@ -218,7 +215,7 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
     let router = Router::new()
         .route("/v1/identity", get(identity))
         .route("/v1/runs", post(submit))
-        .route("/v1/runs/local-run-0", get(run_status))
+        .route("/v1/runs/7", get(run_status))
         .with_state(stub.clone());
     let server = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
@@ -262,7 +259,7 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
     assert!(text(&output).contains("depositing credit: 60 yoctoNEAR"));
     assert!(text(&output).contains("proposal 0"));
     assert!(text(&output).contains("NOT APPRAISED"));
-    assert!(text(&output).contains("verifier run: local-run-0"));
+    assert!(text(&output).contains("verifier run: 7"));
     let bytes = stub
         .bundle
         .lock()
@@ -294,14 +291,7 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
         .json()?;
     assert_eq!(credit.0, 0);
     let mut status = Command::new(env!("CARGO_BIN_EXE_constitution"));
-    status.args([
-        "status",
-        "0",
-        "--run",
-        "local-run-0",
-        "--verifier",
-        &verifier,
-    ]);
+    status.args(["status", "0", "--run", "7", "--verifier", &verifier]);
     common(&mut status);
     let status = status.output()?;
     assert!(status.status.success(), "{}", text(&status));
@@ -320,7 +310,7 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
         "0",
         "--json",
         "--run",
-        "local-run-0",
+        "7",
         "--verifier",
         &verifier,
     ]);

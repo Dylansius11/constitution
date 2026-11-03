@@ -181,6 +181,28 @@ enum VerifierCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Re-seal the committed source for an existing Pending proposal; no on-chain write.
+    Run {
+        #[arg(long)]
+        proposal: u64,
+        /// Source directory (requires --contract), or canonical Borsh SourceBundle file.
+        #[arg(long)]
+        bundle: PathBuf,
+        #[arg(long)]
+        contract: Option<String>,
+        #[arg(long, env = "GATE_ACCOUNT_ID")]
+        gate: String,
+        #[arg(
+            long,
+            env = "NEAR_RPC_URL",
+            hide_env_values = true,
+            hide_default_value = true,
+            default_value = "https://test.rpc.fastnear.com"
+        )]
+        near_rpc: String,
+        #[arg(long, env = "VERIFIER_URL", hide_env_values = true)]
+        verifier_url: String,
+    },
 }
 
 #[derive(Args)]
@@ -301,6 +323,24 @@ fn run(cli: Cli) -> Result<(), Failure> {
                     json,
                 },
         } => appraise::appraise(&url, &pccs_url, expect_compose_hash, json),
+        Command::Verifier {
+            command:
+                VerifierCommand::Run {
+                    proposal,
+                    bundle,
+                    contract,
+                    gate,
+                    near_rpc,
+                    verifier_url,
+                },
+        } => propose::verifier_run(
+            &bundle,
+            contract.as_deref(),
+            &gate,
+            proposal,
+            &rpc::Near::new(&near_rpc),
+            &rpc::Verifier::new(&verifier_url)?,
+        ),
         Command::Propose {
             signer,
             bundle,

@@ -40,6 +40,7 @@ pub fn status(
         if let Some(hash) = observed["evm"]["tx_hash"].as_str() {
             println!("EVM tx: {hash}");
         }
+        let mut run_terminal = false;
         if let Some(run) = run_value {
             println!(
                 "verifier stage: {}",
@@ -57,14 +58,48 @@ pub fn status(
                 };
                 println!("  {name}: {status} - {detail}");
             }
+            run_terminal = matches!(run["stage"].as_str(), Some("done" | "failed"));
+            if run["stage"] == "failed" {
+                return Err(Failure::verifier_failed(
+                    run["error_code"].as_str().unwrap_or(""),
+                ));
+            }
+            if run["stage"] == "done" {
+                if run["stages"]
+                    .as_array()
+                    .expect("validated stages")
+                    .iter()
+                    .any(|stage| stage["name"] == "submit" && stage["status"] == "Incomplete")
+                {
+                    return Err(Failure::new(
+                        "verifier submission incomplete; certificate retained; the submission may have landed",
+                        "inspect relay transactions before retrying; check the gate with `constitution status <id>`; do not automatically resubmit or start another run",
+                    ));
+                }
+                if run
+                    .get("certificate_b64")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none()
+                {
+                    return Err(Failure::retry_verifier(
+                        "verifier withheld: AI review incomplete; no certificate; the proposal is still Pending",
+                        10,
+                    ));
+                }
+                println!(
+                    "verifier run done; certificate issued; gate state and relay inclusion are reported separately"
+                );
+            }
         }
         let Some(timeout) = watch else {
             return Ok(());
         };
-        if matches!(
-            proposal.state,
-            ProposalState::Rejected | ProposalState::Expired | ProposalState::Signed
-        ) {
+        if run_terminal
+            || matches!(
+                proposal.state,
+                ProposalState::Rejected | ProposalState::Expired | ProposalState::Signed
+            )
+        {
             return Ok(());
         }
         let remaining = timeout.saturating_sub(start.elapsed());
