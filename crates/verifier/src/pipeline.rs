@@ -91,7 +91,7 @@ fn empty_rule() -> RuleEvidence {
         detail_code: 0,
     }
 }
-fn evidence(p: &LocalProposal, m: &RuleSetManifest) -> EvidenceManifest {
+fn evidence(p: &LocalProposal, m: &RuleSetManifest, archive_provider: &str) -> EvidenceManifest {
     EvidenceManifest {
         certificate_fields_digest: Hex32([0; 32]),
         compile: CompileEvidence {
@@ -126,7 +126,7 @@ fn evidence(p: &LocalProposal, m: &RuleSetManifest) -> EvidenceManifest {
             number: p.evidence_block_number,
             hash: p.evidence_block_hash,
         },
-        archive_provider: "local registry, not chain observed".into(),
+        archive_provider: archive_provider.into(),
     }
 }
 pub fn execute(
@@ -136,9 +136,20 @@ pub fn execute(
     p: &LocalProposal,
     sealed: &[u8],
     attempt: u32,
+    archive_provider: &str,
 ) -> Run {
-    execute_observed(repo, m, identity, p, sealed, attempt, None)
+    execute_observed(
+        repo,
+        m,
+        identity,
+        p,
+        sealed,
+        attempt,
+        archive_provider,
+        None,
+    )
 }
+#[allow(clippy::too_many_arguments)]
 pub fn execute_observed(
     repo: &Path,
     m: &RuleSetManifest,
@@ -146,12 +157,13 @@ pub fn execute_observed(
     p: &LocalProposal,
     sealed: &[u8],
     attempt: u32,
+    archive_provider: &str,
     observer: Option<Observer>,
 ) -> Run {
     let start = Instant::now();
     let mut run = Run::queued();
     run.observer = observer;
-    let mut ev = evidence(p, m);
+    let mut ev = evidence(p, m, archive_provider);
     run.record("queued", StageStatus::Pass, "run started", Instant::now());
     let rejection = run_stages(repo, m, identity, p, sealed, &mut run, &mut ev);
     if let Some((rule, reason)) = rejection {
@@ -323,7 +335,7 @@ fn run_stages(
         run.record(
             "compiling",
             StageStatus::Fail,
-            "current implementation changed (local registry)",
+            "current implementation changed",
             start,
         );
         return Some((0, 3));

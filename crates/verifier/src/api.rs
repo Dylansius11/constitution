@@ -2,6 +2,7 @@ use crate::{
     identity::Identity,
     pipeline::{self, Run},
     proposals::ProposalSource,
+    submit::{SubmittedRun, VerdictSubmitter},
 };
 use axum::{
     Json, Router,
@@ -25,7 +26,8 @@ pub struct Service {
     pub manifest: RuleSetManifest,
     pub repo: PathBuf,
     pub proposals: Box<dyn ProposalSource>,
-    runs: Mutex<BTreeMap<u64, Run>>,
+    submitter: Option<Box<dyn VerdictSubmitter>>,
+    runs: Mutex<BTreeMap<u64, SubmittedRun>>,
     active: Mutex<Option<(AccountId, u64)>>,
     attempts: Mutex<BTreeMap<(AccountId, u64), u32>>,
 }
@@ -36,12 +38,31 @@ impl Service {
         repo: PathBuf,
         proposals: Box<dyn ProposalSource>,
     ) -> Result<Arc<Self>, String> {
+        Self::build(identity, manifest, repo, proposals, None)
+    }
+    pub fn with_submitter(
+        identity: Identity,
+        manifest: RuleSetManifest,
+        repo: PathBuf,
+        proposals: Box<dyn ProposalSource>,
+        submitter: Box<dyn VerdictSubmitter>,
+    ) -> Result<Arc<Self>, String> {
+        Self::build(identity, manifest, repo, proposals, Some(submitter))
+    }
+    fn build(
+        identity: Identity,
+        manifest: RuleSetManifest,
+        repo: PathBuf,
+        proposals: Box<dyn ProposalSource>,
+        submitter: Option<Box<dyn VerdictSubmitter>>,
+    ) -> Result<Arc<Self>, String> {
         constitution_types::manifest::validate_rule_set(&manifest)?;
         Ok(Arc::new(Self {
             identity,
             manifest,
             repo,
             proposals,
+            submitter,
             runs: Mutex::new(BTreeMap::new()),
             active: Mutex::new(None),
             attempts: Mutex::new(BTreeMap::new()),
@@ -102,10 +123,13 @@ async fn start(
     Json(request): Json<StartRun>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
     let bad = |e: String| (StatusCode::BAD_REQUEST, e);
-    let p = s
-        .proposals
-        .get(&request.gate, request.proposal_id)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+    let source = Arc::clone(&s);
+    let gate = request.gate.clone();
+    let proposal_id = request.proposal_id;
+    let p = tokio::task::spawn_blocking(move || source.proposals.get(&gate, proposal_id))
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?
         .ok_or((StatusCode::NOT_FOUND, "proposal_not_found".into()))?;
     if p.rule_set_hash.0 != rule_set_hash(&s.manifest).map_err(|e| bad(e.to_string()))?
         || p.expires_at_s <= pipeline::now()
@@ -127,7 +151,7 @@ async fn start(
         return Err((StatusCode::TOO_MANY_REQUESTS, "queue_full".into()));
     }
     let id = runs.len() as u64 + 1;
-    runs.insert(id, Run::queued());
+    runs.insert(id, Run::queued().into());
     *active = Some((request.gate.clone(), request.proposal_id));
     let mut attempts = s.attempts.lock().expect("attempt mutex");
     let attempt = attempts
@@ -142,11 +166,15 @@ async fn start(
         let weak = Arc::downgrade(&s);
         let observer = Arc::new(move |run: &Run| {
             if let Some(service) = weak.upgrade() {
+                let mut snapshot = run.snapshot();
+                if snapshot.stage == "done" && service.submitter.is_some() {
+                    snapshot.stage = "submitting".into();
+                }
                 service
                     .runs
                     .lock()
                     .expect("runs mutex")
-                    .insert(id, run.snapshot());
+                    .insert(id, snapshot.into());
             }
         });
         let result = pipeline::execute_observed(
@@ -156,8 +184,20 @@ async fn start(
             &p,
             &request.sealed_bundle_b64.0,
             attempt,
+            &s.proposals.archive_provider(),
             Some(observer),
         );
+        let result = if let Some(submitter) = &s.submitter {
+            let mut submitting = result.snapshot();
+            submitting.stage = "submitting".into();
+            s.runs
+                .lock()
+                .expect("runs mutex")
+                .insert(id, submitting.into());
+            SubmittedRun::submit(result, &p.gate, submitter.as_ref())
+        } else {
+            result.into()
+        };
         s.runs.lock().expect("runs mutex").insert(id, result);
         *s.active.lock().expect("active mutex") = None;
     });
@@ -169,7 +209,7 @@ async fn start(
 async fn status(
     State(s): State<Arc<Service>>,
     Path(id): Path<u64>,
-) -> Result<Json<Run>, StatusCode> {
+) -> Result<Json<SubmittedRun>, StatusCode> {
     s.runs
         .lock()
         .expect("runs mutex")
@@ -186,7 +226,7 @@ async fn evidence(
         .lock()
         .expect("runs mutex")
         .get(&id)
-        .and_then(|r| r.evidence.clone())
+        .and_then(|r| r.run.evidence.clone())
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)
 }

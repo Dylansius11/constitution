@@ -1,7 +1,9 @@
-//! [I] Local registry is trusted operator input, never supplied to POST /v1/runs.
+//! Proposal observations consumed by the pipeline; POST never supplies these fields.
 use constitution_types::{AccountId, Hex20, Hex32, HexBytes};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
+// Kept as LocalProposal because the existing pipeline consumes this interface.
+// GateSource populates it from chain reads; LocalRegistry is explicitly local-only.
 pub struct LocalProposal {
     pub gate: AccountId,
     pub proposal_id: u64,
@@ -22,6 +24,7 @@ pub struct LocalProposal {
 }
 pub trait ProposalSource: Send + Sync {
     fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String>;
+    fn archive_provider(&self) -> String;
 }
 pub struct LocalRegistry {
     entries: Vec<LocalProposal>,
@@ -41,6 +44,9 @@ impl LocalRegistry {
     }
 }
 impl ProposalSource for LocalRegistry {
+    fn archive_provider(&self) -> String {
+        "local registry, not chain observed".into()
+    }
     fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String> {
         Ok(self
             .entries

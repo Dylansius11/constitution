@@ -141,7 +141,15 @@ fn precheck_tamper_and_runtime_mismatch_sign_decodable_rejects() {
     let mut p = proposal(&m, &b);
     p.source_commitment = Hex32([9; 32]);
     for (p, reason) in [(p, 1), (proposal(&m, &b), 2)] {
-        let run = pipeline::execute(&repo(), &m, &identity, &p, &sealed, 1);
+        let run = pipeline::execute(
+            &repo(),
+            &m,
+            &identity,
+            &p,
+            &sealed,
+            1,
+            "local registry, not chain observed",
+        );
         assert_eq!(
             run.verdict,
             Some(Verdict::Reject {

@@ -25,3 +25,7 @@ revm.workspace = true
 reqwest.workspace = true
 hex.workspace = true
 rlp.workspace = true
+near-api.workspace = true
+
+[dev-dependencies]
+near-workspaces.workspace = true

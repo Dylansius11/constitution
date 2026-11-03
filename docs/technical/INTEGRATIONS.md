@@ -42,7 +42,7 @@ One convention for the whole repo. `.env.example` will list these names with emp
 | `DEMO_GOVERNOR_ACCOUNT_ID` | page, cli | public demo account (D17) | public |
 | `PUBLIC_DEMO_GOVERNOR_KEY` | page | function-call key shown as QR; public by design, testnet only | public by design |
 | `VERIFIER_RELAY_ACCOUNT_ID` | verifier | submits verdicts | public id |
-| `VERIFIER_RELAY_PRIVATE_KEY` | verifier (CVM encrypted secret) | function-call key for `submit_verdict` only | secret |
+| `VERIFIER_RELAY_KEY_FILE` | verifier (key file mounted as a CVM encrypted secret) | path to the near-cli key file of a function-call key for `submit_verdict` only | secret file |
 | `BASE_SEPOLIA_RPC_URL` | cli, verifier | `https://sepolia.base.org` | public |
 | `BASE_SEPOLIA_SEND_URL` | cli, verifier relay loop | `https://sepolia-sequencer.base.org` | public |
 | `BASE_SEPOLIA_ARCHIVE_RPC_URL` | verifier (CVM secret), cli dev | Validation Cloud endpoint, contains key | secret |

@@ -1327,6 +1327,8 @@ dependencies = [
  "crypto_box",
  "ed25519-dalek 3.0.0",
  "hex",
+ "near-api",
+ "near-workspaces",
  "reqwest 0.13.5",
  "revm",
  "rlp 0.6.1",

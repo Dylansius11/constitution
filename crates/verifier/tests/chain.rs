@@ -1,0 +1,190 @@
+use axum::{Json, Router, extract::State, routing::post};
+use constitution_types::{
+    AccountId, Hex20, Hex32, HexBytes,
+    manifest::{RuleSetManifest, rule_set_hash},
+};
+use constitution_verifier::{chain::GateSource, proposals::ProposalSource};
+use serde_json::{Value, json};
+use std::sync::{Arc, Mutex};
+
+fn manifest() -> RuleSetManifest {
+    let mut m: RuleSetManifest =
+        serde_json::from_str(include_str!("../../../rules/manifest.json")).unwrap();
+    m.r5.confirmations = 5;
+    m
+}
+#[derive(Clone)]
+struct Stub {
+    fault: &'static str,
+    hash: Hex32,
+    calls: Arc<Mutex<Vec<Value>>>,
+}
+async fn rpc(State(s): State<Stub>, Json(q): Json<Value>) -> Json<Value> {
+    s.calls.lock().unwrap().push(q.clone());
+    if s.fault == "rpc" || (s.fault == "base_rpc" && q["method"] != "query") {
+        return Json(
+            json!({"jsonrpc":"2.0","id":q["id"],"error":{"code":-1,"message":"unavailable"}}),
+        );
+    }
+    let result = match q["method"].as_str().unwrap() {
+        "query" => {
+            assert_eq!(q["params"]["finality"], "final");
+            assert_eq!(q["params"]["request_type"], "call_function");
+            assert_eq!(q["params"]["account_id"], "gate.testnet");
+            let v = match q["params"]["method_name"].as_str().unwrap() {
+                "get_config" => {
+                    json!({"chain_id":84532,"executor":Hex20([2;20]),"proxy":Hex20([1;20]),"proxy_admin":Hex20([8;20]),"derived_eoa":Hex20([9;20]),"mpc_account":"mpc.testnet","mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0})
+                }
+                "get_proposal" => {
+                    use base64::Engine;
+                    let args = base64::engine::general_purpose::STANDARD
+                        .decode(q["params"]["args_base64"].as_str().unwrap())
+                        .unwrap();
+                    assert_eq!(
+                        serde_json::from_slice::<Value>(&args).unwrap(),
+                        json!({"id":7})
+                    );
+                    if s.fault == "absent" {
+                        Value::Null
+                    } else {
+                        let mut p = json!({"id":7,"proposer":"alice.testnet","created_at_ns":1000000000u64,"expires_at_ns":1234567890123456789u64,"rule_set_hash":if s.fault == "hash" {Hex32([0;32])} else {s.hash},"new_impl":Hex20([4;20]),"new_impl_codehash":Hex32([5;32]),"expected_current_impl":Hex20([3;20]),"init_calldata":"0x0102","source_commitment":Hex32([6;32]),"reserved":"100","state":if s.fault == "state" {"Rejected"} else {"Pending"},"certificate_hash":null,"rejection":null,"evm":null});
+                        if s.fault == "missing" {
+                            p.as_object_mut().unwrap().remove("source_commitment");
+                        }
+                        p
+                    }
+                }
+                _ => panic!("unexpected view"),
+            };
+            json!({"result":serde_json::to_vec(&v).unwrap()})
+        }
+        "eth_blockNumber" => json!(if s.fault == "underflow" {
+            "0x0"
+        } else {
+            "0x64"
+        }),
+        "eth_getBlockByNumber" => {
+            if s.fault == "block_null" {
+                Value::Null
+            } else {
+                let changed = s.fault == "reorg" && s.calls.lock().unwrap().len() > 6;
+                json!({"number":if s.fault == "block_number" {json!("0x60")} else {q["params"][0].clone()},"hash":Hex32([if changed {8} else {7};32])})
+            }
+        }
+        "eth_getStorageAt" => {
+            assert_eq!(q["params"][0], json!(Hex20([1; 20])));
+            assert_eq!(
+                q["params"][1],
+                "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+            );
+            let mut word = [0; 32];
+            word[12..].fill(3);
+            if s.fault == "slot" {
+                word[0] = 1;
+            }
+            json!(Hex32(word))
+        }
+        "eth_getCode" => {
+            assert_eq!(q["params"][0], json!(Hex20([3; 20])));
+            json!(if s.fault == "empty_code" {
+                "0x"
+            } else {
+                "0x60016000"
+            })
+        }
+        other => panic!("unexpected method {other}"),
+    };
+    Json(json!({"jsonrpc":"2.0","id":q["id"],"result":result}))
+}
+async fn observe(
+    fault: &'static str,
+) -> (
+    Result<Option<constitution_verifier::proposals::LocalProposal>, String>,
+    Vec<Value>,
+) {
+    let m = manifest();
+    let s = Stub {
+        fault,
+        hash: Hex32(rule_set_hash(&m).unwrap()),
+        calls: Default::default(),
+    };
+    let calls = s.calls.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, Router::new().route("/", post(rpc)).with_state(s))
+            .await
+            .unwrap()
+    });
+    let source = GateSource::new(&url, &url, &m).unwrap();
+    let result = tokio::task::spawn_blocking(move || {
+        source.get(&"gate.testnet".parse::<AccountId>().unwrap(), 7)
+    })
+    .await
+    .unwrap();
+    server.abort();
+    let calls = calls.lock().unwrap().clone();
+    (result, calls)
+}
+#[tokio::test]
+async fn gate_source_observes_every_field_at_confirmed_block() {
+    let (result, calls) = observe("").await;
+    let p = result.unwrap().unwrap();
+    assert_eq!(p.gate.as_str(), "gate.testnet");
+    assert_eq!(p.proposal_id, 7);
+    assert_eq!(p.chain_id, 84532);
+    assert_eq!(p.proxy, Hex20([1; 20]));
+    assert_eq!(p.executor, Hex20([2; 20]));
+    assert_eq!(p.expected_current_impl, Hex20([3; 20]));
+    assert_eq!(p.observed_current_impl, Hex20([3; 20]));
+    assert_eq!(
+        p.current_impl_codehash,
+        Hex32(constitution_verifier::keccak(&[0x60, 1, 0x60, 0]))
+    );
+    assert_eq!(p.new_impl, Hex20([4; 20]));
+    assert_eq!(p.new_impl_codehash, Hex32([5; 32]));
+    assert_eq!(p.init_calldata, HexBytes(vec![1, 2]));
+    assert_eq!(p.source_commitment, Hex32([6; 32]));
+    assert_eq!(p.rule_set_hash, Hex32(rule_set_hash(&manifest()).unwrap()));
+    assert_eq!(p.evidence_block_number, 95);
+    assert_eq!(p.evidence_block_hash, Hex32([7; 32]));
+    assert_eq!(p.expires_at_s, 1234567890);
+    let tag = "0x5f";
+    assert_eq!(calls[3]["params"], json!([tag, false]));
+    assert_eq!(calls[4]["params"][2], tag);
+    assert_eq!(calls[5]["params"][1], tag);
+}
+#[tokio::test]
+async fn gate_source_refuses_invalid_or_incomplete_observations() {
+    for (fault, error) in [
+        ("state", "Pending"),
+        ("hash", "rule_set_hash"),
+        ("slot", "high 12"),
+        ("rpc", "RPC"),
+        ("base_rpc", "RPC"),
+        ("missing", "source_commitment"),
+        ("underflow", "confirmations"),
+        ("empty_code", "empty"),
+        ("block_null", "RPC"),
+        ("block_number", "number mismatch"),
+        ("reorg", "changed"),
+    ] {
+        let (result, _) = observe(fault).await;
+        assert!(result.unwrap_err().contains(error), "{fault}");
+    }
+    assert!(observe("absent").await.0.unwrap().is_none());
+}
+
+#[test]
+fn chain_provenance_exposes_hosts_not_rpc_credentials() {
+    let source = GateSource::new(
+        "https://alice:password@near.example/api/secret?key=hidden",
+        "https://bob:password@base.example/secret?key=hidden",
+        &manifest(),
+    )
+    .unwrap();
+    assert_eq!(
+        source.archive_provider(),
+        "NEAR near.example final + Base base.example at latest-5"
+    );
+}
