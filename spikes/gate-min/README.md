@@ -272,6 +272,39 @@ raw signed transaction bytes, receipts, events, duplicate error and revert
 data. It is sufficient to independently recover both senders and recompute
 the unsigned and signed transaction hashes.
 
+### Stage B observed result (live Base Sepolia)
+
+[V] 2026-11-03 UTC, founder-authorized. The deployer (funded through the
+official Base bridge, OPEN-DECISIONS B2) sent 0.002 ETH to the spike-derived
+EOA (`0x2b52e1407a2da2d82ee7b93321cfd5e2f19542183ed78b3b624edf86409685c2`),
+then `driver.py --mode testnet` ran both cases with real NEAR MPC signatures
+and relayed through `sepolia-sequencer.base.org`. Complete inputs, preimages,
+MPC responses, raw transactions, receipts and RPC responses:
+`base-sepolia-evidence.json`.
+
+- Deploy (forge, keystore signer): MockToken `0xe92ae79ea060f027804e11687b1ac2546cf570a2`
+  (`0x16d577ab…54de1`), VaultV1 `0xfb842dfa1fca052fecf02ed8b31822a403c44e2f`
+  (`0x8b90cf0a…7409f`), ConstitutionExecutor
+  `0xf26e7a09f0b4b22ec964f7cf23fd1b8a543851e8` (`0xccaddd37…fcbc3`) with signer
+  `0x8221c9477886cc456d7e1cccc0866e0401b81070`; proxy
+  `0xef855da4d6f2e1c7814f1898fc5771e3bba8b569`, ProxyAdmin
+  `0xe1531f314cf21ca10ec0a93fbd167bf17b791316`; VaultV2Honest
+  `0x92aba426dc77a914b07dfefbed3f57e020436e96` (`0xf87b4fc0…351c5`).
+- Honest upgrade: NEAR signing `55bekU9mqsWr8VP5TQp5xzViHxGLTUH5b55mduo3azSy`;
+  Base `0xc232188629763bec4eb9a72be7fd08f66ab5690a2ad997ac6ed20697ff0729d8`,
+  block 53766464, status 1, 105,159 gas, 3 logs, nonce 0 to 1. Resending the
+  same raw transaction returned `-32000 nonce too low: next nonce 1, tx nonce 0`.
+- Expired deadline: NEAR signing `5m3wpnxMQQTenexs5yCmPF1WEUMC43oiBMj4WWVwX36i`;
+  Base `0x4e095a6be399e32cd5e72dc5140a433c128716e6dfe6f2c92191f4ca2c0afee3`,
+  block 53766644, status 0, 28,900 gas, nonce 1 to 2; replay at the inclusion
+  block returns `DeadlinePassed` (`0x3dee80f2`); implementation unchanged.
+- Independent re-read with cast after the run: ERC-1967 implementation slot =
+  VaultV2Honest, `ProxyAdmin.owner()` = executor, spike EOA nonce 2, honest
+  receipt sender `0x8221…1070`, `depositCap()` = 1000e18.
+- D14 observation (one run): base fee 5,000,000 wei, suggested priority fee
+  1,000,000 wei, max fee 11,000,000 wei, effective gas price 6,000,000 wei,
+  L1 data fee 501 wei (honest) and 455 wei (expired). Not a worst-case bound.
+
 ### D14 fee observations, not activation caps
 
 [V] The public source RPC at Base Sepolia block 53612404 reported base fee

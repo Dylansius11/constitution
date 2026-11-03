@@ -479,12 +479,12 @@ NOT DEPLOYED. Fill only with observed values:
 | Gate account id | NEAR testnet | `constitution-gate.testnet` (created, no code; keys deleted at activation) | `Ehjsjb6HGLcWmg5v2ehGHUgMcSK27LTfN5FFR3G4eErf` | 2026-11-02 |
 | Gate wasm code hash | NEAR testnet | not built | | |
 | Derived EOA | Base Sepolia | `0x3b20f46860d27d81917a45221c594fc051af7e94` for (`constitution-gate.testnet`, `constitution/base-sepolia/v1`), live `derived_public_key` view at block 275927720 equals the offline derivation (`vectors/mpc-derivation.json`) | view call | 2026-11-02 |
-| Executor | Base Sepolia | not deployed | | |
-| Proxy / ProxyAdmin | Base Sepolia | not deployed | | |
+| Executor | Base Sepolia | production: not deployed (activation P2.8). Spike: `0xf26e7a09f0b4b22ec964f7cf23fd1b8a543851e8`, signer = spike-derived EOA `0x8221c9477886cc456d7e1cccc0866e0401b81070` | spike `0xccaddd37f3a08b3f05b1a74db2138bee58e326496eac88dc885f21bdb2ffcbc3` | 2026-11-03 |
+| Proxy / ProxyAdmin | Base Sepolia | production: not deployed. Spike: proxy `0xef855da4d6f2e1c7814f1898fc5771e3bba8b569`, ProxyAdmin `0xe1531f314cf21ca10ec0a93fbd167bf17b791316`, `owner()` = spike executor (cast re-read) | `spikes/gate-min/base-sepolia-evidence.json` | 2026-11-03 |
 | Rule-set hash | n/a | not committed | | |
 | Verifier public key and release hash | n/a | not generated | | |
 | MPC sign gas consumed | NEAR testnet | one spike observation: MPC sign receipt 4.28 Tgas, MPC completion 3.47 Tgas, spike callback 1.36 Tgas burnt, with 15 Tgas + 1 yoctoNEAR attached to `sign` and 20 Tgas to the callback (`spikes/gate-min/online-evidence.json`) | `FNd6BUDznLA3wwmdtiCE2F8auBaJmfQMTCDS4g4ro6Rz` | 2026-11-02 |
-| Upgrade gas used | Base Sepolia | not measured | | |
+| Upgrade gas used | Base Sepolia | spike, live: honest `execute` upgrade 105,159 gas at effective gas price 6,000,000 wei (base fee 5,000,000, priority 1,000,000) plus 501 wei L1 data fee; expired-deadline revert 28,900 gas | `0xc232188629763bec4eb9a72be7fd08f66ab5690a2ad997ac6ed20697ff0729d8`, `0x4e095a6be399e32cd5e72dc5140a433c128716e6dfe6f2c92191f4ca2c0afee3` | 2026-11-03 |
 
 ## Sources (all opened 2026-10-26)
 
