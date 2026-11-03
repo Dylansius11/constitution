@@ -1310,6 +1310,7 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "omni-transaction",
+ "proptest",
  "rlp 0.6.1",
  "serde",
  "serde_json",
