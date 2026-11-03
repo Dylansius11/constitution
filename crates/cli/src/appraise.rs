@@ -319,20 +319,43 @@ fn observe(url: &str, pccs: &str, expected: Option<Hex32>) -> Result<Vec<Check>,
     let identity: Identity = client
         .get(format!("{}/v1/identity", url.trim_end_matches('/')))
         .send()
-        .map_err(|e| format!("identity fetch: {e}"))?
+        .map_err(|e| {
+            format!(
+                "identity fetch: {}",
+                crate::rpc::safe_error(url, e.without_url())
+            )
+        })?
         .error_for_status()
-        .map_err(|e| format!("identity HTTP: {e}"))?
+        .map_err(|e| {
+            format!(
+                "identity HTTP: {}",
+                crate::rpc::safe_error(url, e.without_url())
+            )
+        })?
         .json()
-        .map_err(|e| format!("identity JSON: {e}"))?;
+        .map_err(|e| {
+            format!(
+                "identity JSON: {}",
+                crate::rpc::safe_error(url, e.without_url())
+            )
+        })?;
     let raw = hex_bytes(&identity.quote_hex)?;
     Quote::parse(&raw)
         .map_err(|e| format!("identity is NOT ATTESTED or quote is invalid: {e:#}"))?;
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     let collateral = runtime.block_on(async {
-        let client = dcap_qvl::collateral::CollateralClient::with_default_http(pccs)
-            .map_err(|e| format!("PCCS client: {e:#}"))?;
+        let client =
+            dcap_qvl::collateral::CollateralClient::with_default_http(pccs).map_err(|e| {
+                format!(
+                    "PCCS client: {}",
+                    crate::rpc::safe_error(pccs, format!("{e:#}"))
+                )
+            })?;
         client.fetch(&raw).await.map_err(|e| {
-            format!("PCCS collateral fetch: {e:#}; check --pccs-url/PCCS_URL and connectivity")
+            format!(
+                "PCCS collateral fetch: {}; check --pccs-url/PCCS_URL and connectivity",
+                crate::rpc::safe_error(pccs, format!("{e:#}"))
+            )
         })
     })?;
     let now = std::time::SystemTime::now()

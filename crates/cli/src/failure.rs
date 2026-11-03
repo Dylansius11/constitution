@@ -10,7 +10,7 @@ pub struct Failure {
 impl Failure {
     pub fn new(cause: impl Into<String>, next: &'static str) -> Self {
         Self {
-            cause: cause.into(),
+            cause: crate::rpc::strip_urls(&cause.into()),
             next,
         }
     }
