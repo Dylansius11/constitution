@@ -1,9 +1,11 @@
 # Local verifier plumbing
 
-[I] The verifier never emits a Pass certificate while AI review/reproduction remain
-unavailable. Without a dstack socket, identity is explicitly NOT ATTESTED: boot
-keys are ephemeral, release hash is `[0; 32]`, and quote/event-log claims are absent.
-Never register this local identity on testnet. Chain connectivity is not attestation.
+[I] A Pass certificate requires R1–R5 Pass, AI Clean with a verified `provider_tee`
+response, complete candidate replay, and a socket-attested signing identity with
+a nonzero release hash. Without a dstack socket, identity remains NOT ATTESTED:
+ephemeral boot keys, zero release hash, absent quote/event-log claims, and the
+unchanged refusal `local verifier never signs Pass`. Never register a local
+identity on testnet. Chain connectivity and protocol fakes are not attestation.
 
 ## Start
 
@@ -63,7 +65,7 @@ With the prebuilt real gate at
 `~/.foundry/bin`, and the existing Docker image, run:
 
 ```text
-CARGO_BUILD_JOBS=6 cargo test -p constitution-verifier --test chain_e2e -- --nocapture
+CARGO_BUILD_JOBS=4 cargo test -p constitution-verifier --test chain_e2e -- --nocapture --test-threads=1
 ```
 
 If the wasm is absent, build it from `crates/gate` with
@@ -71,11 +73,16 @@ If the wasm is absent, build it from `crates/gate` with
 and anvil (`chain_id=84532`) and runs `Deploy.s.sol`. The R2 Fail fixture must
 produce Reject rule 2 reason 20 on the gate. The honest proposal seeds the corpus
 actor before pinning the evidence block, passes R1 through R5, and stays Pending:
-AI review is not integrated, so no certificate or submission is produced.
+without a running verified sidecar, AI is Incomplete and no certificate is issued.
 Both tests POST sealed bundles over HTTP and check the proxy is unchanged.
 They print exact local runtimes and final gate proposal JSON; a NEAR hash is
 printed only when observed. Allow ten minutes per run; R2 uses one CPU.
 This is local evidence, never testnet or attestation evidence.
+
+The suite uses the shared local dstack socket simulator solely to obtain a
+nonzero release hash for the gate's strict initialization checks. The fixture
+quote is rebound to local ephemeral keys and is **not cryptographically valid
+DCAP evidence**; this does not turn the test into an attested deployment.
 
 ## R5 replay stage
 
@@ -98,9 +105,11 @@ rejection policy. Evidence hashes JSON witness bytes for a complete observation,
 or the sanitized error message for Incomplete; status exposes only `reason N`
 and, for Incomplete, the sanitized message.
 
-After all deterministic rules pass, the outcome remains
-`withheld: AI review not integrated; no Pass without AI`.
-AI review, reproduction and signing remain NotRun; no verdict is submitted.
+After all deterministic rules pass, the verifier calls the loopback AI sidecar.
+An unavailable sidecar, gateway signature, timeout, malformed response or incomplete
+candidate replay produces `withheld: AI review incomplete; no Pass without provider_tee Clean`.
+AI doubt alone never produces a rejection. A reproduced R2 violation produces
+`Reject { rule_id: 2, reason_code: 22 }` with `AiReview::Vetoed` and a candidate hash.
 
 [I] The committed two-successor-block lag is a minimal demo evidence policy,
 not a Base finality claim. The corpus actor is a public anvil account; testnet
@@ -110,6 +119,128 @@ Rule-set hash (CLI observed locally, 2026-11-03):
 
 Library witness policy and limits:
 [`rules/r5/README.md`](../../../rules/r5/README.md).
+
+## AI sidecar (F6, local-provable integration)
+
+[I] Node 24 and the already specified `@nearai/inference-sdk` **0.1.0** are pinned
+in `verifier-image/ai-sidecar/package.json`; the pnpm lock pins transitive packages.
+No key is passed to Rust or tool containers. Start the sidecar separately, in the
+same network namespace as the verifier:
+
+```sh
+corepack pnpm@12.15.0 --dir verifier-image/ai-sidecar install --frozen-lockfile --ignore-scripts
+node verifier-image/ai-sidecar/server.mjs
+```
+
+It binds only `127.0.0.1:8788`, exposes only `POST /review`, refuses browser Origin
+requests, and never logs prompts, source, model output, endpoint credentials or
+the API key. It reads `NEARAI_API_KEY`, `NEARAI_BASE_URL` (default
+`https://cloud-api.near.ai/v1`) and `NEARAI_MODEL` (only `z-ai/glm-5.3-flash`).
+The SDK Node entry point enforces E2EE, gateway/model TCB `UpToDate`, and
+`x-no-aliasing: true`. It calls `verifyResponse(completion.id)` before releasing
+validated candidates; only `provider_tee` is complete. A missing key, error,
+truncated/malformed JSON, timeout or non-provider signature returns structured
+Incomplete with no candidates. The timeout covers completion and verification.
+
+Source comments and model text remain untrusted data. Requests are capped at
+4 MiB, source at 2 MiB, output candidates at 64 KiB, candidates at the committed
+manifest count (currently 4), and steps at 16 per candidate. The only accepted
+calls are zero-value `deposit(uint256)` and `withdraw(uint256)` to the proxy,
+with uint128 decimal arguments. `attacker` is the first committed R5 corpus actor;
+`victim` is address `0x0000000000000000000000000000000000000002`; explicit addresses
+must be witnessed EOAs; successful token transfers require their real evidence-block
+token balances and approvals. As in R5, gas charging is disabled for property replay;
+this does not establish that a sequence could pay current network fees.
+The prompt cannot seed balances, alter approvals, execute host code or select
+another callee. Transactions use R5's 3,000,000 gas cap and strict revm database.
+
+The verifier authenticates candidate access witnesses against the **same pinned
+block hash/state root as R5**, then reuses the R5 upgraded-fork preparation and
+transaction engine. Missing accounts/slots/proofs fail closed, never become zero.
+Predicate discovery always includes the ERC-7201 token and total-deposits slots,
+the token account, and its `balanceOf(proxy)` accesses—even for a candidate that
+reverts before touching a token. Initializer discovery and execution use the
+committed R5 actor, not the model's first caller.
+The R2 predicate is the same aggregate rule as `rules/r2`:
+`totalDeposits() <= token.balanceOf(proxy)`, checked before and after every step.
+An already-insolvent prestate is incomplete, not an AI veto. Predicate getters run
+on discarded fork clones, so their state changes cannot seed candidate execution.
+Creation/destruction is refused by R5's strict commit path; upgraded code has
+already passed the R3 opcode/slot filter in the pipeline.
+
+AI evidence keeps the exact shared `AiEvidence` type: model, completion id,
+informational plaintext prompt/content SHA-256, signature kind, sanitized protocol
+receipt digest (`preflight_digest`), and candidate hashes/reproduced flags.
+`signature` contains UTF-8 JSON bytes of the bounded, normalized SDK receipt:
+`{kind, signingAlgo, signingAddress, signedText, signature}`. No quote, arbitrary
+SDK object, source or completion body is published. The provider's **wire-byte**
+hashes are in `signedText`; they are distinct from the informational plaintext
+prompt/content digests. Provider/outcome/count appear in the AI stage detail.
+The protocol response digest also commits to usage and cost metadata. Usage is
+returned only when numeric; `costUsd` is null because no documented billed-cost
+field is available. Record actual console billing separately, never call an estimate billed.
+
+[V, source inspection, 2026-11-03] Installed SDK 0.1.0 `dist/node.js:4141–4154`
+looks up retained completion bytes, `4205–4222` passes those exact request/response
+bytes to verification, and `2641–2673` verifies the signature over
+`model:hash(request):hash(response)` and binds its signer to verified attestation.
+The successful receipt fields are declared in `dist/index-BeV3pihr.d.ts:769–784`.
+The sidecar requires the matching completion id and `provider_tee`, and preserves
+only allowlisted hex/bounded-text receipt fields. It does not equate the local
+content digest with a provider-signed wire hash.
+
+[I] Remaining operational limits: each archive RPC request has R5's 30-second
+timeout, but the complete multi-candidate replay has no overall wall-clock limit
+or per-proposal AI spending quota. The one-active-run queue is not account-level
+abuse prevention. Independent later appraisal of the signer still needs the
+provider's attestation evidence; the normalized receipt alone is not a DCAP proof.
+The existing `--insecure-dev-identity` path still attempts socket attestation when
+available; its registry has no archive RPC, so R5 withholds Pass independently.
+
+### Deterministic checks and authorized real probe
+
+```sh
+node --test verifier-image/ai-sidecar/*.test.mjs
+cargo test -p constitution-verifier --test ai --test replay --test attest_guest --lib -- --test-threads=1
+cargo test -p constitution-verifier --test chain_e2e local_honest_r1_to_r5_pass_withheld_without_ai -- --nocapture --test-threads=1
+```
+
+Local protocol fakes test schema, signature gating, prompt-injection comments,
+timeout, and a real proof-authenticated revm reproduction against the **R2 Fail
+fixture**. The socket simulator test exercises the attested signing branch but
+is not real DCAP or provider evidence.
+
+[V, local, 2026-11-03] Final Rust checks: 16 targeted tests passed
+(`--lib`, `--test ai`, `--test replay`, `--test attest_guest`, `--test http`),
+`cargo clippy -p constitution-verifier --all-targets -- -D warnings` and
+`cargo fmt -p constitution-verifier --check` succeeded. Both serialized
+`--test chain_e2e` cases passed: honest R1–R5 Pass/AI Incomplete remained Pending
+without certificate/submission (120,008 ms); the deterministic R2 Fail fixture
+was rejected on the local real gate (84,767 ms). This is sandbox/anvil/simulator
+evidence, not testnet or real AI/TEE evidence.
+
+[V, local, 2026-11-03] `node --test` passed 10 tests on the available WSL Node
+24.16.0, including an offline import/strict-constructor check of SDK 0.1.0.
+The architecture's Node 24.22.1 pin was not installed locally; no inference,
+attestation request, API key or billed-cost observation was used for these tests.
+
+[U] Real NEAR AI completion/receipt and billed cost require founder-authorized B4
+credentials. No live inference is performed by the local tests. Once the key is
+already exported securely into the environment (never echo or put it on a command
+line), the exact opt-in, potentially billable probe is:
+
+```sh
+node verifier-image/ai-sidecar/live-review.mjs
+```
+
+Expected observation, not yet exercised: exit 0, `status: complete`,
+`signatureKind: provider_tee`, an observed completion id and numeric token usage.
+This probe supplies no private vault source and cannot issue a verifier Pass.
+Keep its timestamp, completion id, request/response hashes and actual billing
+observation. Any nonzero exit is incomplete; gateway-only is never sufficient.
+SDK integration reference: https://docs.near.ai/cloud/inference-sdk/javascript.md
+(read 2026-11-03); constructor/request types also inspected in installed SDK 0.1.0.
+
 
 ## Commitments and limits
 

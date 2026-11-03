@@ -26,6 +26,7 @@ pub struct Service {
     pub manifest: RuleSetManifest,
     pub repo: PathBuf,
     pub proposals: Box<dyn ProposalSource>,
+    pub ai_transport: Box<dyn crate::ai::Transport>,
     submitter: Option<Box<dyn VerdictSubmitter>>,
     runs: Mutex<BTreeMap<u64, SubmittedRun>>,
     active: Mutex<Option<(AccountId, u64)>>,
@@ -62,6 +63,7 @@ impl Service {
             manifest,
             repo,
             proposals,
+            ai_transport: Box::new(crate::ai::LocalSidecar),
             submitter,
             runs: Mutex::new(BTreeMap::new()),
             active: Mutex::new(None),
@@ -186,6 +188,7 @@ async fn start(
             attempt,
             &s.proposals.archive_provider(),
             s.proposals.archive_rpc().as_deref(),
+            s.ai_transport.as_ref(),
             Some(observer),
         );
         let result = if let Some(submitter) = &s.submitter {

@@ -392,6 +392,149 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
             );
         }
     }
+    // Local protocol fake only: real revm/proof replay, no model or TEE claim.
+    let review_actor = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
+    send(token, "mint(address,uint256)", &[review_actor, "10"]);
+    run(Command::new(foundry("cast")).args([
+        "send",
+        &token.to_string(),
+        "approve(address,uint256)",
+        &proxy.to_string(),
+        "10",
+        "--rpc-url",
+        &url,
+        "--unlocked",
+        "--from",
+        review_actor,
+    ]));
+    let header = rpc(&url, "eth_getBlockByNumber", json!(["latest", false]));
+    let ai_block = EvidenceBlock {
+        number: u64::from_str_radix(
+            header["number"].as_str().unwrap().trim_start_matches("0x"),
+            16,
+        )
+        .unwrap(),
+        hash: header["hash"].as_str().unwrap().parse().unwrap(),
+    };
+    rpc(&url, "anvil_mine", json!(["0x2"]));
+    let candidate_json = json!({"candidates":[{"rule":"R2", "rationale":"local R2 Fail fixture regression", "steps":[
+        {"from":review_actor,"call":"deposit(uint256)","args":["1"],"value":"0"},
+        {"from":review_actor,"call":"withdraw(uint256)","args":["1"],"value":"0"},
+        {"from":review_actor,"call":"deposit(uint256)","args":["1"],"value":"0"},
+        {"from":review_actor,"call":"withdraw(uint256)","args":["101"],"value":"0"}
+    ]}]});
+    let candidates = constitution_verifier::ai::parse_candidates(
+        &serde_json::to_vec(&candidate_json).unwrap(),
+        4,
+    )
+    .unwrap();
+    let calls =
+        constitution_verifier::ai::candidate_corpus(&candidates[0], actor.parse().unwrap(), 2)
+            .unwrap();
+    let ai_witness = constitution_verifier::ai::fetch_candidate_witness(
+        &url,
+        ai_block,
+        &calls,
+        proxy,
+        negative_address,
+        negative_hash,
+        &init,
+        actor.parse().unwrap(),
+    )
+    .unwrap();
+    struct LocalProtocolFake(Vec<u8>);
+    impl constitution_verifier::ai::Transport for LocalProtocolFake {
+        fn review(&self, _: Vec<u8>, _: u32) -> Result<Vec<u8>, &'static str> {
+            Ok(self.0.clone())
+        }
+    }
+    let fake = LocalProtocolFake(
+        serde_json::to_vec(&json!({
+            "status":"complete", "reason":"verified_provider_response", "provider":"near",
+            "signatureKind":"provider_tee", "completionId":"chatcmpl-local-protocol-fake",
+            "requestSha256":"ab".repeat(32), "responseSha256":"cd".repeat(32),
+            "usage":null, "costUsd":null, "candidates":candidate_json["candidates"],
+            "receipt":{"kind":"provider_tee","signingAlgo":"ed25519","signingAddress":"11".repeat(32),"signature":"22".repeat(64),"signedText":format!("z-ai/glm-5.3-flash:{}:{}","aa".repeat(32),"bb".repeat(32))}
+        }))
+        .unwrap(),
+    );
+    let request = constitution_verifier::ai::ReviewRequest {
+        files: vec![],
+        rules: vec![],
+        nonce: "ab".repeat(32),
+        max_candidates: 4,
+        timeout_s: 1,
+    };
+    let report = constitution_verifier::ai::review(&fake, &request, |_| {
+        Ok(constitution_verifier::ai::reproduce(
+            &ai_witness,
+            &calls,
+            &current,
+            &negative_r2,
+            &init,
+            actor.parse().unwrap(),
+        )
+        .expect("local candidate replay must be complete"))
+    });
+    assert_eq!(
+        report.verdict(),
+        Some(constitution_types::Verdict::Reject {
+            rule_id: 2,
+            reason_code: 22
+        }),
+        "{}",
+        report.detail
+    );
+    assert!(
+        matches!(report.review, constitution_types::AiReview::Vetoed { counterexample_hash, .. } if counterexample_hash != [0;32])
+    );
+    assert!(report.evidence.candidates[0].reproduced);
+    assert!(
+        !constitution_verifier::ai::reproduce(
+            &ai_witness,
+            &calls,
+            &current,
+            &honest,
+            &init,
+            actor.parse().unwrap()
+        )
+        .unwrap()
+    );
+    // A non-reproducing, early-reverting candidate still needs a complete R2
+    // baseline witness. It must not become Incomplete just because no token
+    // transfer was reached by the candidate tracer.
+    let mut withdraw_only = candidates[0].clone();
+    withdraw_only.steps = vec![withdraw_only.steps[3].clone()];
+    for from in [review_actor, "0x1111111111111111111111111111111111111111"] {
+        withdraw_only.steps[0].from = from.into();
+        let bounded =
+            constitution_verifier::ai::candidate_corpus(&withdraw_only, actor.parse().unwrap(), 2)
+                .unwrap();
+        let outcome = constitution_verifier::ai::fetch_candidate_witness(
+            &url,
+            ai_block,
+            &bounded,
+            proxy,
+            honest_address,
+            honest_hash,
+            &init,
+            actor.parse().unwrap(),
+        )
+        .map_err(|e| e.to_string())
+        .and_then(|predicate_witness| {
+            constitution_verifier::ai::reproduce(
+                &predicate_witness,
+                &bounded,
+                &current,
+                &honest,
+                &init,
+                actor.parse().unwrap(),
+            )
+        });
+        // R5's sandbox disables gas charging. Even an unfunded witnessed EOA can
+        // execute a reverting call; neither caller has a token balance to withdraw.
+        assert!(!outcome.unwrap());
+    }
 }
 
 #[test]

@@ -1,4 +1,5 @@
-//! [I] Local deterministic verifier plumbing. No attestation or Pass issuance.
+//! Verifier: deterministic rules, authenticated AI veto replay and attestation-gated signing.
+pub mod ai;
 pub mod api;
 pub mod bundle;
 pub mod chain;

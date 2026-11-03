@@ -202,6 +202,38 @@ impl Identity {
             },
         }
     }
+    /// Local identities retain their Reject-only policy. Pass requires socket-bound
+    /// attestation and provider-verified Clean; independent appraisal is still required.
+    pub fn sign_certificate(
+        &self,
+        certificate: &Certificate,
+    ) -> Result<([u8; 64], Vec<u8>), String> {
+        if matches!(
+            certificate.verdict,
+            constitution_types::Verdict::Reject { .. }
+        ) {
+            return self.sign_reject(certificate);
+        }
+        if self.attestation.is_none() || self.release_hash() == [0; 32] {
+            return Err("local verifier never signs Pass".into());
+        }
+        if certificate.verifier_pubkey != self.pubkey()
+            || certificate.verifier_release_hash != self.release_hash()
+            || !matches!(
+                certificate.ai,
+                constitution_types::AiReview::Clean {
+                    signature_kind: 1,
+                    ..
+                }
+            )
+        {
+            return Err("Pass requires bound attested identity and provider_tee Clean".into());
+        }
+        let bytes = certificate
+            .to_canonical_bytes()
+            .map_err(|e| e.to_string())?;
+        Ok((self.signing.sign(&crate::sha256(&bytes)).to_bytes(), bytes))
+    }
     pub fn sign_reject(&self, certificate: &Certificate) -> Result<([u8; 64], Vec<u8>), String> {
         if !matches!(
             certificate.verdict,
