@@ -5,6 +5,7 @@ pub mod identity;
 pub mod manifest;
 pub mod pipeline;
 pub mod proposals;
+pub mod replay;
 pub mod rules;
 pub mod solvency;
 pub mod tools;

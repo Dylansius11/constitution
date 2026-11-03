@@ -21,3 +21,7 @@ crypto_box.workspace = true
 ed25519-dalek.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["net", "sync", "time"] }
+revm.workspace = true
+reqwest.workspace = true
+hex.workspace = true
+rlp.workspace = true
