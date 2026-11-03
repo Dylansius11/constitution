@@ -4,6 +4,7 @@ import type { Proposal } from "./gate-types.ts";
 import { implementationUnchanged } from "./receipt.ts";
 import {
   isVerifierStage,
+  type RunErrorCode,
   type RunVerdict,
   type VerifierRun,
   type VerifierStage,
@@ -25,6 +26,14 @@ import {
  *   decided by the `previous` state kind the caller passes back in; later observations are `signing`.
  * - `executed` needs all of: gate `Signed`, an included successful transaction, and a read of the
  *   ERC-1967 slot at or after the inclusion block equal to the proposal's `new_impl`.
+ * - A run in stage `failed` ends that run, never the proposal: while the gate is `Pending` the
+ *   state is `verifier_failed` (retryable) and carries no verdict and no certificate. A later run
+ *   replaces it, and the gate's own state always wins once it moves past `Pending`. It is kept
+ *   apart from `review_incomplete` (a `done` run whose AI review is Incomplete) and from `error`
+ *   `verifier_incomplete` (for example a `done` run whose `submit` stage is Incomplete).
+ * - `runId` is the run the page started or remembered. With it set, a verifier that no longer
+ *   knows the run (404, observed as `ok(null)`) means the run was evicted: an `error` state with
+ *   cause `run_evicted`, not a network outage. The proposal stays `Pending` and may be retried.
  */
 
 export type Source<T> =
@@ -47,6 +56,8 @@ export type SurfaceErrorCause =
   | "proposal_not_found"
   | "implementation_mismatch"
   | "verifier_incomplete"
+  | "run_refused"
+  | "run_evicted"
   | "other";
 
 /** The page's own write path: sealing the bundle, sending `propose`, posting the run. */
@@ -61,6 +72,8 @@ export interface SurfaceInput {
   /** Gate view `get_proposal`; `null` means the gate has no such proposal. */
   proposal: Source<Proposal | null>;
   run: Source<VerifierRun | null>;
+  /** The verifier run id the page holds, if any. See the module note on eviction. */
+  runId?: number | null;
   /** Lookup of the gate's signed transaction on Base Sepolia. */
   evm: Source<TxObservation>;
   proxy: Source<ProxyReads>;
@@ -76,6 +89,13 @@ export type SurfaceState =
       stage: VerifierStage | null;
       runObserved: boolean;
       pendingVerdict: RunVerdict | null;
+    }
+  | {
+      kind: "verifier_failed";
+      /** `null` when the verifier named no cause. */
+      errorCode: RunErrorCode | null;
+      /** Always true: the proposal is still Pending at the gate and a new run may be started. */
+      retryable: true;
     }
   | { kind: "ai_review"; stage: "ai_review" | "reproducing" }
   | { kind: "certified"; certificateHash: string }
@@ -149,9 +169,21 @@ function proxyEvidence(input: SurfaceInput): {
 }
 
 function fromPending(input: SurfaceInput, proposal: Proposal): SurfaceState {
-  const run = lastValue(input.run)?.value ?? null;
-  if (run === null)
+  const observed = lastValue(input.run);
+  const run = observed?.value ?? null;
+  if (run === null) {
+    if (observed !== undefined && input.runId !== undefined && input.runId !== null) {
+      return {
+        kind: "error",
+        cause: "run_evicted",
+        detail: `the verifier no longer has run ${input.runId}; the proposal is still Pending and a new run may be started`,
+      };
+    }
     return { kind: "verifying", stage: null, runObserved: false, pendingVerdict: null };
+  }
+  if (run.stage === "failed") {
+    return { kind: "verifier_failed", errorCode: run.error_code, retryable: true };
+  }
   const incomplete = run.stages.find((s) => s.status === "Incomplete");
   if (incomplete !== undefined) {
     const ai = AI_STAGES.find((stage) => stage === incomplete.name);
@@ -294,6 +326,7 @@ function relevantSources(kind: SurfaceKind): readonly OutageSource[] {
     case "signing_retry":
       return ["near"];
     case "verifying":
+    case "verifier_failed":
     case "ai_review":
     case "review_incomplete":
       return ["near", "verifier"];

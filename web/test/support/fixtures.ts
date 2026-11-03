@@ -64,6 +64,7 @@ export function run(over: Partial<VerifierRun> = {}): VerifierRun {
     near_tx_hash: null,
     evidence_root: null,
     elapsed_ms: null,
+    error_code: null,
     ...over,
   };
 }

@@ -20,6 +20,7 @@ export const VERIFIER_STAGES = [
   "signing",
   "submitting",
   "done",
+  "failed",
 ] as const;
 export type VerifierStage = (typeof VERIFIER_STAGES)[number];
 
@@ -56,9 +57,27 @@ export type RunVerdict =
   | { kind: "Reject"; rule_id: number; reason_code: number };
 
 /**
+ * Stable `error_code` values a `failed` run carries (LOCAL.md, outcome classification). A code this
+ * page does not know becomes `unknown_code`: a newer verifier must not break the page.
+ */
+export const RUN_ERROR_CODES = [
+  "worker_panic",
+  "sandbox_unavailable",
+  "storage_error",
+  "tool_unavailable",
+  "tool_output_invalid",
+  "infrastructure_timeout",
+  "rpc_unavailable",
+  "committed_data_unavailable",
+  "bad_bundle",
+] as const;
+export type RunErrorCode = (typeof RUN_ERROR_CODES)[number] | "unknown_code";
+
+/**
  * A verifier run as reported over HTTP. `stage` stays a plain string: a stage this page does not
  * know is a fact to surface (state `unknown`), not a parse failure. A run is never an authority:
  * its certificate counts only after its bytes hash to the gate's stored `certificate_hash`.
+ * A `failed` run has no certificate, signature, verdict or submission; the parser enforces it.
  */
 export interface VerifierRun {
   stage: string;
@@ -71,6 +90,8 @@ export interface VerifierRun {
   near_tx_hash: string | null;
   evidence_root: string | null;
   elapsed_ms: number | null;
+  /** Present on `failed` runs when the verifier names a cause. */
+  error_code: RunErrorCode | null;
 }
 
 export interface RuleEvidence {
@@ -103,7 +124,15 @@ export interface EvidenceManifest {
   archive_provider: string;
 }
 
-export type RunRefusalCode = "bad_bundle" | "proposal_not_found" | "run_in_progress" | "queue_full";
+export type RunRefusalCode =
+  | "bad_bundle"
+  | "wrong_gate"
+  | "unsupported_proposal"
+  | "proposal_not_found"
+  | "rpc_unavailable"
+  | "rate_limited"
+  | "queue_full"
+  | "run_in_progress";
 
 /** `POST /v1/runs` was refused with one of the documented statuses. */
 export class RunRefusedError extends Error {
@@ -111,21 +140,49 @@ export class RunRefusedError extends Error {
   readonly status: number;
   /** The verifier's plain-text reason, bounded. */
   readonly detail: string;
-  constructor(code: RunRefusalCode, status: number, detail: string) {
-    super(`verifier refused the run: ${code}${detail ? ` (${detail})` : ""}`);
+  /** Whole seconds from a `Retry-After` header; `null` when the header is absent or not seconds. */
+  readonly retryAfterSeconds: number | null;
+  constructor(
+    code: RunRefusalCode,
+    status: number,
+    detail: string,
+    retryAfterSeconds: number | null = null,
+  ) {
+    super(
+      `verifier refused the run: ${code}${detail ? ` (${detail})` : ""}${
+        retryAfterSeconds === null ? "" : `; retry after ${retryAfterSeconds}s`
+      }`,
+    );
     this.name = "RunRefusedError";
     this.code = code;
     this.status = status;
     this.detail = detail;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
-const REFUSALS: Readonly<Record<number, RunRefusalCode>> = {
-  400: "bad_bundle",
-  404: "proposal_not_found",
-  409: "run_in_progress",
-  429: "queue_full",
+/**
+ * Codes the verifier emits per status, as the plain-text body. The first entry is the default when
+ * the body names none of them (for example a free-text unseal error on 400).
+ */
+const REFUSALS: Readonly<Record<number, readonly RunRefusalCode[]>> = {
+  400: ["bad_bundle", "wrong_gate", "unsupported_proposal"],
+  404: ["proposal_not_found"],
+  409: ["run_in_progress"],
+  429: ["queue_full", "rate_limited"],
+  502: ["rpc_unavailable"],
 };
+
+function refusalCode(status: number, body: string): RunRefusalCode | undefined {
+  const candidates = REFUSALS[status];
+  return candidates?.find((code) => code === body.trim()) ?? candidates?.[0];
+}
+
+/** `Retry-After` in delta-seconds form; the HTTP-date form is not used by the verifier. */
+function parseRetryAfter(header: string | null): number | null {
+  if (header === null || !/^\d{1,9}$/.test(header.trim())) return null;
+  return Number(header.trim());
+}
 
 export interface VerifierClientOptions extends HttpOptions {
   /** Verifier origin, for example `https://verifier.example`. */
@@ -201,7 +258,7 @@ function parseVerdict(value: unknown, path: string): RunVerdict {
 
 export function parseRun(value: unknown): VerifierRun {
   const o = new Obj(value, "run");
-  return {
+  const run: VerifierRun = {
     stage: o.str("stage"),
     started_at: o.safe("started_at"),
     stages: o.arr("stages").map((entry, i) => {
@@ -230,7 +287,20 @@ export function parseRun(value: unknown): VerifierRun {
     near_tx_hash: o.maybe("near_tx_hash", asString) ?? null,
     evidence_root: nullableHash(o, "evidence_root"),
     elapsed_ms: o.maybe("elapsed_ms", (v, p) => asSafeUint(v, p)) ?? null,
+    error_code:
+      o.maybe("error_code", (v, p) => {
+        const code = asString(v, p);
+        return RUN_ERROR_CODES.find((known) => known === code) ?? "unknown_code";
+      }) ?? null,
   };
+  if (run.stage === "failed") {
+    // `failed` has no certificate, signature, verdict or submission: a run claiming both is not trusted.
+    for (const key of ["certificate_b64", "signature_b64", "verdict", "near_tx_hash"] as const) {
+      if (run[key] !== null)
+        throw new WireError(`run.${key}`, "a failed run carries no such field");
+    }
+  }
+  return run;
 }
 
 function parseRule(value: unknown, path: string): RuleEvidence {
@@ -335,19 +405,27 @@ export function createVerifierClient(options: VerifierClientOptions): VerifierCl
         proposal_id: proposalId,
         sealed_bundle_b64: bytesToBase64(sealedBundle),
       });
+      let retryAfter: string | null = null;
+      const impl = options.fetch ?? globalThis.fetch;
+      const observing: typeof fetch = async (input, init) => {
+        const response = await impl(input, init);
+        retryAfter = response.headers.get("retry-after");
+        return response;
+      };
       try {
         const { text } = await requestText(
           endpoint("/v1/runs"),
           { method: "POST", headers: { "content-type": "application/json" }, body },
-          options,
+          { ...options, fetch: observing },
           "verifier run",
         );
         const o = new Obj(parseJson(text), "run_started");
         return { runId: o.safe("run_id"), label: o.maybe("label", asString) ?? null };
       } catch (error) {
-        const code = error instanceof HttpStatusError ? REFUSALS[error.status] : undefined;
+        const code =
+          error instanceof HttpStatusError ? refusalCode(error.status, error.body) : undefined;
         if (error instanceof HttpStatusError && code !== undefined) {
-          throw new RunRefusedError(code, error.status, error.body);
+          throw new RunRefusedError(code, error.status, error.body, parseRetryAfter(retryAfter));
         }
         throw error;
       }
