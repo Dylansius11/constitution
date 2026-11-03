@@ -4,6 +4,24 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-03: An unbounded Halmos branch timeout makes depth 4 look infeasible
+
+- What happened: the first R2 probes classified VaultV2Honest Incomplete at depth 3 and 4; a one-actor depth-3 run took 100 s with `--solver-timeout-branching 0` and 11 s with `1ms`.
+- Root cause: cProfile put 79 of 95 s in `Z3_solver_check_assumptions`; `0` means "no timeout", and branch checks go to z3 even with `--solver yices`. Halmos 0.3.3's own default is `1ms`, and an undecided branch stays feasible (source `config.py`, `sevm.py`), so the short timeout adds paths instead of hiding them. Per-actor balance asserts added assertion-solver timeouts.
+- Rule: use the tool's default branch timeout unless a measurement says otherwise, keep the invariant to one aggregate assert, and measure depth on the target CPU before committing a bound (`crates/verifier/evidence/depth/`).
+
+### 2026-11-03: A one-character slot typo survives review; derive constants in tests
+
+- What happened: the CLI audit's ERC-1967 admin slot constant had `f8fa` instead of `f8a`; anvil rejected the 65-digit slot only when the smoke test ran.
+- Root cause: the constant was retyped by hand instead of derived; the docs and Solidity tests had the correct value.
+- Rule: every protocol constant (slots, selectors) gets a test that derives it (`keccak(label) - 1`, `cast sig`), not one that compares it with another hand-copied string.
+
+### 2026-11-03: Laptop sleep kills long WSL jobs silently
+
+- What happened: a 175 s Halmos test ran for 5.8 hours of wall time and returned no output; WSL uptime showed it had restarted.
+- Root cause: the host slept; WSL and its Docker containers were torn down mid-run.
+- Rule: write long test output to a log file under `scratch/` and check `uptime` in WSL before trusting a missing result; rerun rather than infer.
+
 ### 2026-11-02: Codex workers are blocked on exploit-fixture content
 
 - What happened: two GPT 6.1 Sol workers stopped with `Codex error event: This content was flagged for possible cybersecurity risk (code=cyber_policy)`: the contracts worker while writing the hidden-drain fixture, the verifier worker while probing the solvency harness against it.
