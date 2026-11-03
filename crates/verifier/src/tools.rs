@@ -221,13 +221,18 @@ impl Sandbox {
             r.solver_timeout_assertion_s.ok_or("missing timeout")?
         );
         let fuzz = r.fuzz_runs.ok_or("missing fuzz runs")?.to_string();
+        let fuzz_depth = r.fuzz_depth.ok_or("missing fuzz depth")?.to_string();
         let seed = serde_json::to_value(r.fuzz_seed.ok_or("missing seed")?)
             .map_err(|e| e.to_string())?
             .as_str()
             .ok_or("seed")?
             .to_owned();
         let arrays = r.array_lengths.as_deref().ok_or("missing array lengths")?;
-        let out=self.run("halmos --contract Solvency --function invariant_solvency --solver yices --solver-threads 1 --invariant-depth \"$1\" --loop \"$2\" --array-lengths \"$3\" --solver-timeout-branching 0 --solver-timeout-assertion \"$4\" --json-output halmos.json; status=$?; printf '%s' \"$status\" > halmos.exit; [ \"$status\" = 0 ] && FOUNDRY_INVARIANT_RUNS=\"$5\" FOUNDRY_INVARIANT_DEPTH=\"$1\" forge test --offline --match-contract Solvency --fuzz-seed \"$6\" > fuzz.log 2>&1",&[&depth,&loops,arrays,&seconds,&fuzz,&seed])?;
+        // [V] Halmos 0.3.3 source (config.py, sevm.py ~L2838): 1ms is the branching default and an
+        // undecided branch stays feasible, so it adds paths, never hides one. An unbounded branch
+        // timeout (0) made depth 4 miss 300 s (crates/verifier/evidence/depth/README.md).
+        // --early-exit stops at the first counterexample.
+        let out=self.run("halmos --contract Solvency --function invariant_solvency --solver yices --solver-threads 1 --invariant-depth \"$1\" --loop \"$2\" --array-lengths \"$3\" --solver-timeout-branching 1ms --solver-timeout-assertion \"$4\" --early-exit --no-status --json-output halmos.json; status=$?; printf '%s' \"$status\" > halmos.exit; [ \"$status\" = 0 ] && FOUNDRY_INVARIANT_RUNS=\"$5\" FOUNDRY_INVARIANT_DEPTH=\"$7\" forge test --offline --match-contract Solvency --fuzz-seed \"$6\" > fuzz.log 2>&1",&[&depth,&loops,arrays,&seconds,&fuzz,&seed,&fuzz_depth])?;
         let mut log = out.stdout;
         log.extend(out.stderr);
         let data = std::fs::read(self.root.path().join("halmos.json")).unwrap_or_default();

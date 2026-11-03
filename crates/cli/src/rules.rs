@@ -39,6 +39,7 @@ mod tests {
             "array_lengths": "default",
             "solver_timeout_assertion_s": 60,
             "fuzz_runs": 1000,
+            "fuzz_depth": 128,
             "fuzz_seed": format!("0x{}", "22".repeat(32)),
         });
         m

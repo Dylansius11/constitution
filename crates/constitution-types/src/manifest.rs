@@ -22,7 +22,7 @@ record!(LayoutRule { pub unsafe_allow: Vec<String> });
 record!(SolvencyRule {
     pub harness_sha256: Option<Hex32>, pub invariant_depth: Option<u32>, pub loop_bound: Option<u32>,
     pub array_lengths: Option<String>, pub solver_timeout_assertion_s: Option<u32>,
-    pub fuzz_runs: Option<u32>, pub fuzz_seed: Option<Hex32>,
+    pub fuzz_runs: Option<u32>, pub fuzz_depth: Option<u32>, pub fuzz_seed: Option<Hex32>,
 });
 record!(FilterRule { pub forbidden_opcodes: Vec<u8>, pub forbidden_constants: Vec<Hex32> });
 record!(InitializerRule { pub allowlist: Vec<Initializer>, pub allow_empty: bool });
@@ -76,6 +76,7 @@ pub fn validate_rule_set(m: &RuleSetManifest) -> Result<(), &'static str> {
         || r.array_lengths.is_none()
         || r.solver_timeout_assertion_s.is_none()
         || r.fuzz_runs.is_none()
+        || r.fuzz_depth.is_none()
         || r.fuzz_seed.is_none()
     {
         return Err("R2 commitment unresolved: null fields refuse startup");
@@ -88,6 +89,8 @@ pub fn validate_rule_set(m: &RuleSetManifest) -> Result<(), &'static str> {
         || m.tools.upgrades_core != "1.47.0"
         || r.solver_timeout_assertion_s == Some(0)
         || r.fuzz_runs == Some(0)
+        || r.fuzz_depth == Some(0)
+        || r.invariant_depth == Some(0)
         || m.max_cert_ttl_s == 0
     {
         return Err("unsupported compiler, tool version or zero safety bound");

@@ -22,8 +22,8 @@ The listener is loopback-only. Registry observations are explicitly local input,
 not chain evidence. POST accepts only gate, proposal id and sealed bundle. The
 operator registry supplies all proposal commitments and local chain observations.
 All R2 manifest fields must be resolved before startup. Null never becomes a bound
-or a successful result. The committed manifest remains unresolved until the lead
-receives measured parameters from the harness owner.
+or a successful result. The committed values were measured on 2026-11-02
+(`crates/verifier/evidence/depth/README.md`).
 
 ## Commitments and limits
 

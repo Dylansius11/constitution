@@ -78,7 +78,7 @@ fn unresolved_r2_manifest_refuses_startup() {
     baseline["r2"] = serde_json::json!({
         "harness_sha256":format!("0x{}","01".repeat(32)),
         "invariant_depth":2,"loop_bound":2,"array_lengths":"xs=2",
-        "solver_timeout_assertion_s":10,"fuzz_runs":16,
+        "solver_timeout_assertion_s":10,"fuzz_runs":16,"fuzz_depth":8,
         "fuzz_seed":format!("0x{}","02".repeat(32))
     });
     std::fs::write(&path, serde_json::to_vec(&baseline).unwrap()).unwrap();
@@ -90,6 +90,7 @@ fn unresolved_r2_manifest_refuses_startup() {
         "array_lengths",
         "solver_timeout_assertion_s",
         "fuzz_runs",
+        "fuzz_depth",
         "fuzz_seed",
     ] {
         let mut json = baseline.clone();

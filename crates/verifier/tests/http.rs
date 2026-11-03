@@ -21,9 +21,9 @@ fn test_policy() -> RuleSetManifest {
     let mut json: serde_json::Value =
         serde_json::from_slice(&std::fs::read(repo().join("rules/manifest.json")).unwrap())
             .unwrap();
-    // [I] This policy exercises prechecks only; no symbolic proof is claimed from it.
-    // The committed unresolved manifest is not modified and still refuses startup.
-    json["r2"] = serde_json::json!({"harness_sha256":format!("0x{}","01".repeat(32)),"invariant_depth":2,"loop_bound":2,"array_lengths":"xs=2","solver_timeout_assertion_s":10,"fuzz_runs":16,"fuzz_seed":format!("0x{}","02".repeat(32))});
+    // [I] This policy exercises prechecks only, with a shallow R2 so the HTTP test stays fast;
+    // the committed depth-4 R2 is exercised by tests/sandbox.rs.
+    json["r2"] = serde_json::json!({"harness_sha256":format!("0x{}","01".repeat(32)),"invariant_depth":2,"loop_bound":2,"array_lengths":"xs=2","solver_timeout_assertion_s":10,"fuzz_runs":16,"fuzz_depth":8,"fuzz_seed":format!("0x{}","02".repeat(32))});
     serde_json::from_value(json).unwrap()
 }
 async fn request(

@@ -18,7 +18,7 @@ b+=b''.join(s(m['tools'][k]) for k in ['foundry','halmos','upgrades_core','z3','
 b+=s(m['reference']['contract_name'])+v(sorted(m['reference']['source_sha256s'].items()),lambda x:s(x[0])+h(x[1]))
 b+=v(m['r1']['unsafe_allow'],s)
 r=m['r2']
-b+=o(r['harness_sha256'],h)+o(r['invariant_depth'],u32)+o(r['loop_bound'],u32)+o(r['array_lengths'],s)+o(r['solver_timeout_assertion_s'],u32)+o(r['fuzz_runs'],u32)+o(r['fuzz_seed'],h)
+b+=o(r['harness_sha256'],h)+o(r['invariant_depth'],u32)+o(r['loop_bound'],u32)+o(r['array_lengths'],s)+o(r['solver_timeout_assertion_s'],u32)+o(r['fuzz_runs'],u32)+o(r['fuzz_depth'],u32)+o(r['fuzz_seed'],h)
 b+=v(m['r3']['forbidden_opcodes'],lambda x:bytes([x]))+v(m['r3']['forbidden_constants'],h)
 b+=v(m['r4']['allowlist'],lambda x:v(list(h(x['selector'])),lambda y:bytes([y]))+v(x['args'],lambda a:s(a['type'])+s(a['max'])))+bytes([m['r4']['allow_empty']])
 r=m['r5'];b+=h(r['corpus_sha256'])+u32(r['max_txs'])+u32(r['confirmations'])

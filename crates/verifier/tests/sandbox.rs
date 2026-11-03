@@ -72,6 +72,38 @@ fn t_rule_1_and_3_real_pinned_compiler_pass_and_fail_fixtures() {
         );
     }
 }
+#[test]
+fn t_rule_2_committed_depth_four_harness_passes_honest_and_fails_drain() {
+    let m = manifest();
+    let mut b = bundle();
+    b.files.push((
+        "src/demo/VaultV2Drain.sol".into(),
+        std::fs::read(repo().join("contracts/src/demo/VaultV2Drain.sol")).unwrap(),
+    ));
+    for (name, want, reason) in [
+        (
+            "src/demo/VaultV2Honest.sol:VaultV2Honest",
+            StageStatus::Pass,
+            0,
+        ),
+        (
+            "src/demo/VaultV2Drain.sol:VaultV2Drain",
+            StageStatus::Fail,
+            20,
+        ),
+    ] {
+        b.contract_name = name.into();
+        let sandbox = Sandbox::new(&repo(), &b, &m).unwrap();
+        let start = std::time::Instant::now();
+        let (status, code, log) = sandbox.solvency(&m, &b).unwrap();
+        let log = String::from_utf8_lossy(&log);
+        eprintln!(
+            "r2 {name}: {status:?} {code} in {}s",
+            start.elapsed().as_secs()
+        );
+        assert_eq!((status, code), (want, reason), "{name}: {log}");
+    }
+}
 fn proposal(m: &RuleSetManifest, b: &SourceBundle) -> LocalProposal {
     LocalProposal {
         gate: "local.testnet".parse().unwrap(),

@@ -21,13 +21,14 @@
     "unsafe_allow": ["constructor", "missing-initializer", "delegatecall", "selfdestruct"]
   },
   "r2": {
-    "harness_sha256": null,
-    "invariant_depth": null,
-    "loop_bound": null,
-    "array_lengths": null,
-    "solver_timeout_assertion_s": null,
-    "fuzz_runs": null,
-    "fuzz_seed": null
+    "harness_sha256": "0xcf2652a7125cdef0816d83ceba4f267a6ae23cfedd527d57af82b1406587bf66",
+    "invariant_depth": 4,
+    "loop_bound": 2,
+    "array_lengths": "",
+    "solver_timeout_assertion_s": 10,
+    "fuzz_runs": 2000,
+    "fuzz_depth": 128,
+    "fuzz_seed": "0x0000000000000000000000000000000000000000000000000000000000000001"
   },
   "r3": {
     "forbidden_opcodes": [
