@@ -4,6 +4,12 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-03: Orca's WSL relay restarts the VM, so the vhdx stays locked
+
+- What happened: three attempts to compact `ext4.vhdx` with diskpart after `wsl --shutdown` failed with "being used by another process"; the founder had quit Docker Desktop and ran the script as Administrator. `wsl --shutdown` itself worked, but `vmmemWSL` and `vmwp` were back within seconds.
+- Root cause: a helper process of the Orca terminal app (`Orca.exe ... --max-old-space-size=384`) keeps launching `wsl.exe -d Ubuntu ... opencode-sqlite-reader.cjs`, which boots the distro again. The lock came from that VM, not from Docker. `docker_data.vhdx` is NTFS-sparse, which diskpart refuses for another reason.
+- Rule: before compacting, stop the Orca relay helper (and any `wsl.exe` it started), then `wsl --shutdown` and run diskpart at once. `scratch/compact-admin.ps1` does this in a retry loop; it took `ext4.vhdx` from 45.9 GB to 26.9 GB and freed 19 GB on C:. Never kill the Orca daemon host that carries the agent session.
+
 ### 2026-11-03: A trailing slash in .gitignore does not ignore symlinks
 
 - What happened: a temporary worktree linked `web/node_modules` to the main tree with a Windows junction; `git add web` committed the junction because `.gitignore` said `node_modules/`.
