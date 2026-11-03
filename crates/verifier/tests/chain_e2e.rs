@@ -64,6 +64,14 @@ fn logged_address(text: &str, label: &str) -> [u8; 20] {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn std::error::Error>> {
+    local_chain_flow(false).await
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_honest_r1_to_r5_pass_withheld_without_ai() -> Result<(), Box<dyn std::error::Error>>
+{
+    local_chain_flow(true).await
+}
+async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let worker = near_workspaces::sandbox().await?;
     let wasm = std::fs::read(repo().join("target/near/constitution_gate/constitution_gate.wasm"))?;
@@ -72,6 +80,7 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
     let proposer = worker.dev_create_account().await?;
     let identity = Identity::new();
     let manifest = load_manifest(repo().join("rules/manifest.json"))?;
+    let confirmations = manifest.r5.confirmations;
     let socket = std::net::TcpListener::bind("127.0.0.1:0")?;
     let port = socket.local_addr()?.port();
     drop(socket);
@@ -105,7 +114,7 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     let rpc_deploy = rpc.clone();
-    let (config, new_impl) = tokio::task::spawn_blocking(move || {
+    let (config, new_impl, init) = tokio::task::spawn_blocking(move || {
         // Disposable well-known anvil key, never a real wallet.
         let key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
         let output = Command::new(foundry("forge"))
@@ -142,11 +151,36 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
             mpc_path: "constitution/base-sepolia/v1".into(),
             mpc_domain_id: 0,
         };
+        let init = if honest {
+            let actor = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+            let token = json!(Hex20(logged_address(&logs, "token")));
+            let token = token.as_str().unwrap();
+            let proxy = json!(Hex20(config.proxy));
+            let proxy = proxy.as_str().unwrap();
+            for (to, sig, args) in [
+                (token, "mint(address,uint256)", vec![actor, "1000"]),
+                (token, "approve(address,uint256)", vec![proxy, "1000"]),
+                (proxy, "deposit(uint256)", vec!["100"]),
+            ] {
+                let mut command_args = vec!["send", to, sig];
+                command_args.extend(args);
+                command_args.extend(["--rpc-url", &rpc_deploy, "--unlocked", "--from", actor]);
+                command("cast", &command_args);
+            }
+            let text = command("cast", &["calldata", "initializeV2(uint256)", "1000000"]);
+            serde_json::from_value::<HexBytes>(json!(text.trim())).unwrap()
+        } else {
+            HexBytes(vec![])
+        };
         let output = command(
             "forge",
             &[
                 "create",
-                "src/demo/VaultV2Drain.sol:VaultV2Drain",
+                if honest {
+                    "src/demo/VaultV2Honest.sol:VaultV2Honest"
+                } else {
+                    "src/demo/VaultV2Drain.sol:VaultV2Drain"
+                },
                 "--rpc-url",
                 &rpc_deploy,
                 "--broadcast",
@@ -161,7 +195,7 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
             .trim();
         let implementation: Hex20 =
             serde_json::from_value(json!(address.to_ascii_lowercase())).unwrap();
-        (config, implementation)
+        (config, implementation, init)
     })
     .await?;
     let constitution = Constitution {
@@ -195,7 +229,12 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
         ));
     }
     let bundle = SourceBundle {
-        contract_name: "src/demo/VaultV2Drain.sol:VaultV2Drain".into(),
+        contract_name: if honest {
+            "src/demo/VaultV2Honest.sol:VaultV2Honest"
+        } else {
+            "src/demo/VaultV2Drain.sol:VaultV2Drain"
+        }
+        .into(),
         files,
         foundry_profile: "default".into(),
     };
@@ -233,7 +272,7 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
         .transact()
         .await?
         .into_result()?;
-    let id:u64=proposer.call(gate.id(),"propose").args_json(json!({"args":ProposeArgs {new_impl,new_impl_codehash:Hex32(constitution_verifier::keccak(&code.0)),expected_current_impl:Hex20(current),init_calldata:HexBytes(vec![]),source_commitment:Hex32(sha256(&bytes))}})).transact().await?.into_result()?.json()?;
+    let id:u64=proposer.call(gate.id(),"propose").args_json(json!({"args":ProposeArgs {new_impl,new_impl_codehash:Hex32(constitution_verifier::keccak(&code.0)),expected_current_impl:Hex20(current),init_calldata:init,source_commitment:Hex32(sha256(&bytes))}})).transact().await?.into_result()?.json()?;
     // Workspaces transact returns before this proposal reaches finality.
     // GateSource deliberately reads only final views, so advance the local chain.
     worker.fast_forward(3).await?;
@@ -297,12 +336,6 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
         assert!(Instant::now() < deadline, "verifier timeout: {run}");
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
-    assert_eq!(
-        run["verdict"],
-        json!({"Reject":{"rule_id":2,"reason_code":20}}),
-        "{run}"
-    );
-    assert!(!run["near_tx_hash"].as_str().unwrap().is_empty(), "{run}");
     let evidence: EvidenceManifest = client
         .get(format!("{base}/v1/runs/{run_id}/evidence"))
         .send()
@@ -314,25 +347,79 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
         evidence.archive_provider,
         format!(
             "NEAR 127.0.0.1 final + Base 127.0.0.1 at latest-{}",
-            load_manifest(repo().join("rules/manifest.json"))?
-                .r5
-                .confirmations
+            confirmations
         )
-    );
-    let certificate: Base64Bytes = serde_json::from_value(run["certificate_b64"].clone())?;
-    assert_eq!(
-        Certificate::from_canonical_bytes(&certificate.0)?.evidence_root,
-        constitution_types::manifest::evidence_root(&evidence)?
     );
     let proposal: Value = gate
         .view("get_proposal")
         .args_json(json!({"id":id}))
         .await?
         .json()?;
-    assert_eq!(proposal["state"], "Rejected");
-    assert_eq!(proposal["rejection"]["rule_id"], 2);
-    assert_eq!(proposal["rejection"]["reason_code"], 20);
-    assert!(proposal["evm"].is_null());
+    if honest {
+        for name in [
+            "r1_layout",
+            "r2_solvency",
+            "r3_filter",
+            "r4_initializer",
+            "r5_replay",
+        ] {
+            let stage = run["stages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["name"] == name)
+                .unwrap();
+            assert_eq!(stage["status"], "Pass", "{run}");
+            eprintln!("HONEST_CHAIN_STAGE_{name}_MS={}", stage["elapsed_ms"]);
+        }
+        assert_eq!(
+            evidence.r5.status,
+            constitution_types::manifest::StageStatus::Pass
+        );
+        assert_eq!(evidence.r5.detail_code, 0);
+        assert_eq!(
+            run["outcome"],
+            "withheld: AI review not integrated; no Pass without AI"
+        );
+        for field in [
+            "verdict",
+            "certificate_b64",
+            "signature_b64",
+            "near_tx_hash",
+        ] {
+            assert!(run.get(field).is_none(), "{field}: {run}");
+        }
+        assert_eq!(proposal["state"], "Pending");
+        assert!(proposal["rejection"].is_null());
+        assert!(proposal["evm"].is_null());
+        assert_eq!(
+            run["evidence_root"],
+            json!(Hex32(constitution_types::manifest::evidence_root(
+                &evidence
+            )?))
+        );
+        eprintln!(
+            "HONEST_CHAIN_E2E_RUNTIME_MS={}",
+            start.elapsed().as_millis()
+        );
+    } else {
+        assert_eq!(
+            run["verdict"],
+            json!({"Reject":{"rule_id":2,"reason_code":20}}),
+            "{run}"
+        );
+        assert!(!run["near_tx_hash"].as_str().unwrap().is_empty(), "{run}");
+        let certificate: Base64Bytes = serde_json::from_value(run["certificate_b64"].clone())?;
+        assert_eq!(
+            Certificate::from_canonical_bytes(&certificate.0)?.evidence_root,
+            constitution_types::manifest::evidence_root(&evidence)?
+        );
+        assert_eq!(proposal["state"], "Rejected");
+        assert_eq!(proposal["rejection"]["rule_id"], 2);
+        assert_eq!(proposal["rejection"]["reason_code"], 20);
+        assert!(proposal["evm"].is_null());
+        eprintln!("LOCAL_CHAIN_E2E_RUNTIME_MS={}", start.elapsed().as_millis());
+    }
     let after: Value = client
         .post(&rpc)
         .json(&call(
@@ -348,8 +435,9 @@ async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn st
         .json()
         .await?;
     assert_eq!(after["result"], json!(slot));
-    eprintln!("LOCAL_CHAIN_E2E_RUNTIME_MS={}", start.elapsed().as_millis());
-    eprintln!("LOCAL_CHAIN_E2E_NEAR_TX={}", run["near_tx_hash"]);
+    if let Some(hash) = run.get("near_tx_hash") {
+        eprintln!("LOCAL_CHAIN_E2E_NEAR_TX={hash}");
+    }
     eprintln!("LOCAL_CHAIN_E2E_FINAL_PROPOSAL={proposal}");
     server.abort();
     Ok(())

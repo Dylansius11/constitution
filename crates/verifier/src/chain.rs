@@ -92,6 +92,9 @@ fn quantity(text: &str) -> Result<u64, String> {
     u64::from_str_radix(digits, 16).map_err(|e| format!("invalid hex quantity: {e}"))
 }
 impl ProposalSource for GateSource {
+    fn archive_rpc(&self) -> Option<String> {
+        Some(self.base_rpc.as_str().to_owned())
+    }
     fn archive_provider(&self) -> String {
         format!(
             "NEAR {} final + Base {} at latest-{}",

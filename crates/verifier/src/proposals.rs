@@ -25,6 +25,8 @@ pub struct LocalProposal {
 pub trait ProposalSource: Send + Sync {
     fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String>;
     fn archive_provider(&self) -> String;
+    /// Used only for archive calls; never include this credential-bearing URL in evidence.
+    fn archive_rpc(&self) -> Option<String>;
 }
 pub struct LocalRegistry {
     entries: Vec<LocalProposal>,
@@ -44,6 +46,9 @@ impl LocalRegistry {
     }
 }
 impl ProposalSource for LocalRegistry {
+    fn archive_rpc(&self) -> Option<String> {
+        None
+    }
     fn archive_provider(&self) -> String {
         "local registry, not chain observed".into()
     }

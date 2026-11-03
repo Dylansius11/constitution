@@ -1,11 +1,9 @@
 # Local verifier plumbing
 
-[I] This service is not attested and never emits a Pass certificate. Chain reads
-and verdict submission are implemented, but chain connectivity is not attestation.
-AI review and AI reproduction remain unavailable; missing stages never produce Pass.
-Deterministic rejection certificates use a fresh in-memory Ed25519 key on each boot
-and the pipeline's local release hash `[0; 32]`. Never register this identity on
-testnet. Quote, event log, compose and release claims are absent, not fabricated.
+[I] The verifier never emits a Pass certificate while AI review/reproduction remain
+unavailable. Without a dstack socket, identity is explicitly NOT ATTESTED: boot
+keys are ephemeral, release hash is `[0; 32]`, and quote/event-log claims are absent.
+Never register this local identity on testnet. Chain connectivity is not attestation.
 
 ## Start
 
@@ -29,6 +27,11 @@ is required and the file defaults to
 `.secrets/near-credentials/<NEAR_NETWORK_ID>/<VERIFIER_RELAY_ACCOUNT_ID>.json`.
 The credential contains `account_id`, `public_key`, and `private_key`; never
 publish it. Missing required environment variables stop startup with their name.
+
+When `/var/run/dstack.sock` exists, startup obtains `GetQuote` and `Info` for the
+boot-generated keys/nonce. RPC or quote errors stop startup instead of downgrading
+to an unattested identity. Certificates use `Identity::release_hash()` (zero only
+in NOT ATTESTED mode). The socket is never mounted into tool containers.
 
 Explicit offline mode instead requires `LOCAL_PROPOSAL_REGISTRY` pointing to an
 operator-controlled JSON array of `LocalProposal` records, and makes no submission:
@@ -64,16 +67,49 @@ CARGO_BUILD_JOBS=6 cargo test -p constitution-verifier --test chain_e2e -- --noc
 ```
 
 If the wasm is absent, build it from `crates/gate` with
-`cargo near build non-reproducible-wasm`. The test starts its own NEAR sandbox
-and anvil (`chain_id=84532`), runs `Deploy.s.sol`, proposes the R2 Fail fixture,
-POSTs a sealed bundle over HTTP, and checks Reject rule 2 reason 20 lands on the
-gate with the proxy unchanged. It prints exact local runtime, observed NEAR hash,
-and final gate proposal JSON. Allow ten minutes for the run; R2 uses one CPU.
+`cargo near build non-reproducible-wasm`. Each test starts its own NEAR sandbox
+and anvil (`chain_id=84532`) and runs `Deploy.s.sol`. The R2 Fail fixture must
+produce Reject rule 2 reason 20 on the gate. The honest proposal seeds the corpus
+actor before pinning the evidence block, passes R1 through R5, and stays Pending:
+AI review is not integrated, so no certificate or submission is produced.
+Both tests POST sealed bundles over HTTP and check the proxy is unchanged.
+They print exact local runtimes and final gate proposal JSON; a NEAR hash is
+printed only when observed. Allow ten minutes per run; R2 uses one CPU.
 This is local evidence, never testnet or attestation evidence.
 
-R5 library contract, witness policy and local checks are documented in
-[`rules/r5/README.md`](../../../rules/r5/README.md). It is not wired into the
-pipeline by this chain-edge change.
+## R5 replay stage
+
+R5 runs after R4 with the current/candidate runtimes already reproduced by the
+compiling stage. It parses `rules/r5/corpus.json`, enforces the manifest's seven-call
+bound and exact corpus SHA-256, fetches proof-authenticated witness data at the
+observed block, then executes the bounded differential replay.
+
+The stage requires an RPC supporting `debug_traceCall` / `prestateTracer`,
+`eth_getProof`, and historical code/storage reads. `GateSource` passes its Base
+endpoint internally through `ProposalSource::archive_rpc()`; prefer
+`BASE_SEPOLIA_ARCHIVE_RPC_URL` for an archive provider. The full URL is never
+included in evidence or run details. LocalRegistry has no archive endpoint:
+reaching R5 in offline mode produces Incomplete 51, not a pass.
+
+R5 records Pass 0, divergence Fail 50, or Incomplete 51. Missing RPC/corpus,
+commitment mismatch, unreadable observations, or an incomplete replay all fail
+closed. Codes 50/51 produce signed Reject rule 5 certificates under the existing
+rejection policy. Evidence hashes JSON witness bytes for a complete observation,
+or the sanitized error message for Incomplete; status exposes only `reason N`
+and, for Incomplete, the sanitized message.
+
+After all deterministic rules pass, the outcome remains
+`withheld: AI review not integrated; no Pass without AI`.
+AI review, reproduction and signing remain NotRun; no verdict is submitted.
+
+[I] The committed two-successor-block lag is a minimal demo evidence policy,
+not a Base finality claim. The corpus actor is a public anvil account; testnet
+activation requires a deliberately seeded testnet actor and a new corpus commitment.
+Rule-set hash (CLI observed locally, 2026-11-03):
+`0x0707c9b79926d02204b74fe9c67d840b7ed6a3b8d73862b8a37ae1ecd5a2e1b1`.
+
+Library witness policy and limits:
+[`rules/r5/README.md`](../../../rules/r5/README.md).
 
 ## Commitments and limits
 
@@ -101,7 +137,8 @@ pipeline by this chain-edge change.
 
 [I] The local queue allows one active run and retains a bounded in-memory history.
 Restart clears history and changes both keys. This is not durable production
-storage, rate limiting for a public deployment, or an attestation implementation.
+storage or rate limiting for a public deployment. Socket identity publication is
+not, by itself, independent attestation appraisal.
 
 ## Direct dependency evidence
 

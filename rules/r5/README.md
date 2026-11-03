@@ -45,7 +45,7 @@ The integration test starts disposable anvil with chain id 84532, deploys via `c
 - Changed withdrawal logs and an initializer changing pre-existing state: Fail 50. Missing account/slot, changed unproved storage value, invalid account proof, altered code/header/environment and an eighth corpus entry: Incomplete 51. The corpus was independently sent to local anvil: six successful calls, observed balances/totals 110 then 106, and the final reverting withdrawal.
 - `cargo clippy -p constitution-verifier --all-targets -- -D warnings` and `cargo fmt -p constitution-verifier -- --check`: exit 0. No workspace-wide test suite or testnet transaction was run by this worker.
 
-## Proposed manifest values [I]
+## Committed manifest values [I]
 
 ```json
 {
@@ -57,6 +57,6 @@ The integration test starts disposable anvil with chain id 84532, deploys via `c
 }
 ```
 
-The hash commits to the exact 1,276-byte file, including its final newline. Seven entries preserve state observations before and after the successful withdrawal and include an explicit revert without pretending to cover arbitrary sequences. Two successor blocks are a minimal demo evidence-lag policy, not a Base finality claim. The fetcher checks this lag and rechecks the pinned block hash after proof collection. These values are proposals only; `rules/manifest.json` is intentionally unchanged.
+The hash commits to the exact 1,276-byte file, including its final newline. Seven entries preserve state observations before and after the successful withdrawal and include an explicit revert without pretending to cover arbitrary sequences. Two successor blocks are a minimal demo evidence-lag policy, not a Base finality claim. The fetcher checks this lag and rechecks the pinned block hash after proof collection. These values are in `rules/manifest.json`; the pipeline runs R5 after R4 and maps Fail to Reject{5,50} and any incomplete step, including a missing archive RPC, to Reject{5,51}.
 
 Dependency: `revm = 43.0.3`, non-yanked, MSRV 1.91.0, verified from the official [sparse index](https://index.crates.io/re/vm/revm) on 2026-11-03. Existing workspace pins provide reqwest 0.13.5, hex 0.4.3 and rlp 0.6.1; no additional versions are introduced.

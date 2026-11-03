@@ -185,6 +185,7 @@ async fn start(
             &request.sealed_bundle_b64.0,
             attempt,
             &s.proposals.archive_provider(),
+            s.proposals.archive_rpc().as_deref(),
             Some(observer),
         );
         let result = if let Some(submitter) = &s.submitter {

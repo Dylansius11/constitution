@@ -129,6 +129,7 @@ fn evidence(p: &LocalProposal, m: &RuleSetManifest, archive_provider: &str) -> E
         archive_provider: archive_provider.into(),
     }
 }
+#[allow(clippy::too_many_arguments)]
 pub fn execute(
     repo: &Path,
     m: &RuleSetManifest,
@@ -137,6 +138,7 @@ pub fn execute(
     sealed: &[u8],
     attempt: u32,
     archive_provider: &str,
+    archive_rpc: Option<&str>,
 ) -> Run {
     execute_observed(
         repo,
@@ -146,6 +148,7 @@ pub fn execute(
         sealed,
         attempt,
         archive_provider,
+        archive_rpc,
         None,
     )
 }
@@ -158,6 +161,7 @@ pub fn execute_observed(
     sealed: &[u8],
     attempt: u32,
     archive_provider: &str,
+    archive_rpc: Option<&str>,
     observer: Option<Observer>,
 ) -> Run {
     let start = Instant::now();
@@ -165,7 +169,7 @@ pub fn execute_observed(
     run.observer = observer;
     let mut ev = evidence(p, m, archive_provider);
     run.record("queued", StageStatus::Pass, "run started", Instant::now());
-    let rejection = run_stages(repo, m, identity, p, sealed, &mut run, &mut ev);
+    let rejection = run_stages(repo, m, identity, p, sealed, archive_rpc, &mut run, &mut ev);
     if let Some((rule, reason)) = rejection {
         for (name, evidence) in [
             ("r1_layout", &mut ev.r1),
@@ -213,7 +217,7 @@ pub fn execute_observed(
             source_commitment: p.source_commitment.0,
             rule_set_hash: p.rule_set_hash.0,
             verifier_pubkey: identity.pubkey(),
-            verifier_release_hash: [0; 32],
+            verifier_release_hash: identity.release_hash(),
             evidence_block_number: p.evidence_block_number,
             evidence_block_hash: p.evidence_block_hash.0,
             evidence_root: [0; 32],
@@ -252,15 +256,9 @@ pub fn execute_observed(
         }
     } else {
         run.record(
-            "r5_replay",
-            StageStatus::NotRun,
-            "required stage not implemented",
-            Instant::now(),
-        );
-        run.record(
             "ai_review",
             StageStatus::NotRun,
-            "required stage not implemented",
+            "AI review not integrated (P2.6)",
             Instant::now(),
         );
         run.record(
@@ -269,7 +267,7 @@ pub fn execute_observed(
             "AI not run",
             Instant::now(),
         );
-        run.outcome = "withheld: required stages not implemented".into();
+        run.outcome = "withheld: AI review not integrated; no Pass without AI".into();
         run.evidence_root = Some(Hex32(evidence_root(&ev).expect("evidence serialize")));
         run.record(
             "signing",
@@ -302,6 +300,7 @@ fn run_stages(
     identity: &Identity,
     p: &LocalProposal,
     sealed: &[u8],
+    archive_rpc: Option<&str>,
     run: &mut Run,
     ev: &mut EvidenceManifest,
 ) -> Option<(u8, u16)> {
@@ -391,19 +390,18 @@ fn run_stages(
         );
         return Some((0, 2));
     }
-    let current = sandbox.runtime(&m.reference.contract_name).ok();
-    if current
-        .as_ref()
-        .is_none_or(|v| keccak(v) != p.current_impl_codehash.0)
-    {
-        run.record(
-            "compiling",
-            StageStatus::Fail,
-            "current source runtime mismatch",
-            start,
-        );
-        return Some((0, 4));
-    }
+    let current = match sandbox.runtime(&m.reference.contract_name) {
+        Ok(current) if keccak(&current) == p.current_impl_codehash.0 => current,
+        _ => {
+            run.record(
+                "compiling",
+                StageStatus::Fail,
+                "current source runtime mismatch",
+                start,
+            );
+            return Some((0, 4));
+        }
+    };
     ev.current.reproduced = true;
     run.record(
         "compiling",
@@ -503,5 +501,166 @@ fn run_stages(
     if code != 0 {
         return Some((4, code));
     }
+    run.begin("r5_replay");
+    let start = Instant::now();
+    let (evidence, detail) = replay_evidence(repo, m, p, archive_rpc, &current, &runtime);
+    let code = evidence.detail_code;
+    run.record("r5_replay", evidence.status, detail, start);
+    ev.r5 = evidence;
+    if code != 0 {
+        return Some((5, code));
+    }
     None
+}
+
+fn replay_evidence(
+    repo: &Path,
+    m: &RuleSetManifest,
+    p: &LocalProposal,
+    archive_rpc: Option<&str>,
+    current: &[u8],
+    candidate: &[u8],
+) -> (RuleEvidence, String) {
+    use crate::replay::{Corpus, EvidenceBlock, fetch_witness, replay};
+    let result = (|| -> Result<(StageStatus, u16, [u8; 32]), String> {
+        let rpc = archive_rpc.ok_or("no archive RPC configured")?;
+        let bytes = std::fs::read(repo.join("rules/r5/corpus.json"))
+            .map_err(|_| "cannot read committed R5 corpus")?;
+        let corpus = Corpus::from_json(&bytes, m.r5.max_txs, m.r5.confirmations)
+            .map_err(|e| e.to_string())?;
+        if corpus.sha256 != m.r5.corpus_sha256.0 {
+            return Err("R5 corpus commitment mismatch".into());
+        }
+        let witness = fetch_witness(
+            rpc,
+            EvidenceBlock {
+                number: p.evidence_block_number,
+                hash: p.evidence_block_hash.0.into(),
+            },
+            &corpus,
+            p.proxy.0.into(),
+            p.new_impl.0.into(),
+            p.new_impl_codehash.0.into(),
+            &p.init_calldata.0,
+        )
+        .map_err(|e| e.to_string())?;
+        let (status, code) = replay(&witness, &corpus, current, candidate, &p.init_calldata.0);
+        if status == StageStatus::Incomplete {
+            return Err("differential replay incomplete".into());
+        }
+        let bytes = serde_json::to_vec(&witness).map_err(|_| "cannot encode R5 witness")?;
+        Ok((status, code, sha256(&bytes)))
+    })();
+    match result {
+        Ok((status, detail_code, hash)) => (
+            RuleEvidence {
+                status,
+                detail_code,
+                artifact_sha256: Hex32(hash),
+            },
+            format!("reason {detail_code}"),
+        ),
+        Err(error) => (
+            RuleEvidence {
+                status: StageStatus::Incomplete,
+                detail_code: 51,
+                artifact_sha256: Hex32(sha256(error.as_bytes())),
+            },
+            format!("reason 51; {error}"),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod replay_stage_tests {
+    use super::*;
+
+    fn manifest() -> RuleSetManifest {
+        serde_json::from_str(include_str!("../../../rules/manifest.json")).unwrap()
+    }
+    #[test]
+    fn committed_replay_policy_matches_corpus() {
+        let m = manifest();
+        constitution_types::manifest::validate_rule_set(&m).unwrap();
+        let corpus = crate::replay::Corpus::from_json(
+            include_bytes!("../../../rules/r5/corpus.json"),
+            m.r5.max_txs,
+            m.r5.confirmations,
+        )
+        .unwrap();
+        assert_eq!(corpus.sha256, m.r5.corpus_sha256.0);
+    }
+    fn proposal() -> LocalProposal {
+        LocalProposal {
+            gate: "local.testnet".parse().unwrap(),
+            proposal_id: 0,
+            chain_id: 84532,
+            proxy: Hex20([1; 20]),
+            executor: Hex20([2; 20]),
+            expected_current_impl: Hex20([3; 20]),
+            observed_current_impl: Hex20([3; 20]),
+            current_impl_codehash: Hex32([4; 32]),
+            new_impl: Hex20([5; 20]),
+            new_impl_codehash: Hex32([6; 32]),
+            init_calldata: HexBytes(vec![]),
+            source_commitment: Hex32([7; 32]),
+            rule_set_hash: Hex32([8; 32]),
+            evidence_block_number: 1,
+            evidence_block_hash: Hex32([9; 32]),
+            expires_at_s: 1,
+        }
+    }
+    fn assert_incomplete(repo: &Path, m: &RuleSetManifest, rpc: Option<&str>, expected: &str) {
+        let (evidence, detail) = replay_evidence(repo, m, &proposal(), rpc, &[], &[]);
+        assert_eq!(evidence.status, StageStatus::Incomplete);
+        assert_eq!(evidence.detail_code, 51);
+        assert_eq!(detail, format!("reason 51; {expected}"));
+        assert_eq!(evidence.artifact_sha256, Hex32(sha256(expected.as_bytes())));
+    }
+    #[test]
+    fn replay_stage_requires_rpc_and_readable_committed_corpus() {
+        let repo = tempfile::tempdir().unwrap();
+        let m = manifest();
+        assert_incomplete(repo.path(), &m, None, "no archive RPC configured");
+        assert_incomplete(
+            repo.path(),
+            &m,
+            Some("http://unused.invalid"),
+            "cannot read committed R5 corpus",
+        );
+        std::fs::create_dir_all(repo.path().join("rules/r5")).unwrap();
+        std::fs::write(repo.path().join("rules/r5/corpus.json"), b"not JSON").unwrap();
+        assert_incomplete(
+            repo.path(),
+            &m,
+            Some("http://unused.invalid"),
+            "invalid corpus JSON",
+        );
+    }
+    #[test]
+    fn replay_stage_refuses_wrong_commitment_before_any_rpc() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut m = manifest();
+        m.r5.max_txs = 7;
+        m.r5.corpus_sha256 = Hex32([0; 32]);
+        assert_incomplete(
+            &repo,
+            &m,
+            Some("http://unused.invalid"),
+            "R5 corpus commitment mismatch",
+        );
+    }
+    #[test]
+    fn replay_stage_rpc_failure_never_exposes_endpoint_credentials() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut m = manifest();
+        m.r5.max_txs = 7;
+        m.r5.corpus_sha256 = Hex32(sha256(include_bytes!("../../../rules/r5/corpus.json")));
+        assert_incomplete(
+            &repo,
+            &m,
+            Some("http://relay:password@127.0.0.1:0/secret-key"),
+            "eth_chainId: transport failure",
+        );
+    }
 }

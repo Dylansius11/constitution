@@ -149,6 +149,7 @@ fn precheck_tamper_and_runtime_mismatch_sign_decodable_rejects() {
             &sealed,
             1,
             "local registry, not chain observed",
+            None,
         );
         assert_eq!(
             run.verdict,

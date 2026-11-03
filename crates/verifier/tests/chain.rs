@@ -187,4 +187,13 @@ fn chain_provenance_exposes_hosts_not_rpc_credentials() {
         source.archive_provider(),
         "NEAR near.example final + Base base.example at latest-5"
     );
+    assert_eq!(
+        source.archive_rpc().as_deref(),
+        Some("https://bob:password@base.example/secret?key=hidden"),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("registry.json");
+    std::fs::write(&file, b"[]").unwrap();
+    let local = constitution_verifier::proposals::LocalRegistry::load(file).unwrap();
+    assert!(local.archive_rpc().is_none());
 }
