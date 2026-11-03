@@ -33,6 +33,7 @@ impl Gate {
             env::log_str("Ignoring stale signing callback");
             return None;
         }
+        self.flush_storage();
         let result = if env::promise_results_count() != 1 {
             Err("expected one MPC result")
         } else {
@@ -41,6 +42,18 @@ impl Gate {
                 .and_then(|bytes| {
                     self.target_transaction(&target)
                         .and_then(|tx| crate::evm::assemble_signed(&tx, &bytes))
+                })
+                .and_then(|raw| {
+                    // A signed transaction adds bytes to an existing record. Fail
+                    // closed without panicking if the gate needs an operating top-up.
+                    let extra = u128::try_from(raw.len() + 128)
+                        .unwrap_or(u128::MAX)
+                        .saturating_mul(env::storage_byte_cost().as_yoctonear());
+                    if !self.has_liquid_backing(extra) {
+                        Err("insufficient operating storage balance")
+                    } else {
+                        Ok(raw)
+                    }
                 })
         };
         match target {
@@ -71,7 +84,6 @@ impl Gate {
                     }
                 }
                 self.proposals.insert(id, proposal);
-                self.outstanding_signatures.insert(id);
                 self.proposals.get(&id)
             }
             SignTarget::Change(id) => {
@@ -105,9 +117,16 @@ impl Gate {
             .get(&proposal_id)
             .unwrap_or_else(|| env::panic_str(GateError::ProposalNotFound.code()));
         check(
-            proposal.state == ProposalState::SignFailed,
+            proposal.state == ProposalState::SignFailed
+                || (proposal.state == ProposalState::SignRequested
+                    && self
+                        .sign_requested_at
+                        .get(&proposal_id)
+                        .is_some_and(|started| {
+                            env::block_timestamp().saturating_sub(*started) >= SIGN_REQUEST_TIMEOUT
+                        })),
             GateError::WrongState,
-            "retry requires SignFailed",
+            "retry requires SignFailed or timed-out SignRequested",
         );
         self.check_resigning(proposal);
         let attempt = proposal
@@ -121,27 +140,57 @@ impl Gate {
         proposal.evm.as_mut().unwrap().attempts = attempt;
         proposal.state = ProposalState::SignRequested;
         self.outstanding_signatures.insert(proposal_id);
+        self.sign_requested_at
+            .insert(proposal_id, env::block_timestamp());
+        self.assert_solvent(1);
         self.request_signature(SignTarget::Proposal(proposal_id))
     }
 
-    pub fn bump_fee(&mut self, proposal_id: u64) -> Promise {
-        let proposal = self
-            .proposals
-            .get(&proposal_id)
-            .unwrap_or_else(|| env::panic_str(GateError::ProposalNotFound.code()));
-        check(
-            proposal.state == ProposalState::Signed,
-            GateError::WrongState,
-            "fee bump requires Signed",
-        );
-        self.check_resigning(proposal);
-        let bumps = self.fee_bumps.get(&proposal_id).copied().unwrap_or(0);
+    pub fn bump_fee(&mut self, target: SignTarget) -> Promise {
+        let (evm, bumps) = match &target {
+            SignTarget::Proposal(id) => {
+                let proposal = self
+                    .proposals
+                    .get(id)
+                    .unwrap_or_else(|| env::panic_str(GateError::ProposalNotFound.code()));
+                check(
+                    proposal.state == ProposalState::Signed,
+                    GateError::WrongState,
+                    "fee bump requires Signed",
+                );
+                self.check_resigning(proposal);
+                (
+                    proposal.evm.as_ref().unwrap(),
+                    self.fee_bumps.get(id).copied().unwrap_or(0),
+                )
+            }
+            SignTarget::Change(id) => {
+                let change = self
+                    .changes
+                    .get(id)
+                    .unwrap_or_else(|| env::panic_str(GateError::ChangeNotFound.code()));
+                check(
+                    self.migration_signing.get(id) == Some(&MigrationSigning::Signed),
+                    GateError::WrongState,
+                    "fee bump requires Signed migration",
+                );
+                check(
+                    !self.signing_paused,
+                    GateError::SigningPaused,
+                    "signing paused",
+                );
+                (
+                    change.evm.as_ref().unwrap(),
+                    self.migration_fee_bumps.get(id).copied().unwrap_or(0),
+                )
+            }
+        };
         check(
             bumps < 8,
             GateError::TooManyBumps,
             "eight fee bumps maximum",
         );
-        let mut evm = proposal.evm.as_ref().unwrap().clone();
+        let mut evm = evm.clone();
         let bump = |fee: u128| {
             fee.checked_add(fee.div_ceil(4))
                 .unwrap_or_else(|| env::panic_str(GateError::FeeCap.code()))
@@ -157,17 +206,48 @@ impl Gate {
             .attempts
             .checked_add(1)
             .unwrap_or_else(|| env::panic_str(GateError::TooManyBumps.code()));
-        evm.signing_hash = env::keccak256_array(
-            crate::evm::proposal_transaction(&self.config, proposal, &evm)
-                .unwrap()
-                .build_for_signing(),
-        );
-        let proposal = self.proposals.get_mut(&proposal_id).unwrap();
-        proposal.evm = Some(evm);
-        proposal.state = ProposalState::SignRequested;
-        self.fee_bumps.insert(proposal_id, bumps + 1);
-        self.outstanding_signatures.insert(proposal_id);
-        self.request_signature(SignTarget::Proposal(proposal_id))
+        let tx = match &target {
+            SignTarget::Proposal(id) => crate::evm::proposal_transaction(
+                &self.config,
+                self.proposals.get(id).unwrap(),
+                &evm,
+            )
+            .unwrap(),
+            SignTarget::Change(id) => {
+                let ChangeKind::MigrateAuthority { new_signer } =
+                    self.changes.get(id).unwrap().kind
+                else {
+                    env::panic_str(GateError::WrongState.code());
+                };
+                crate::evm::rotate_transaction(
+                    &self.config,
+                    &evm,
+                    new_signer,
+                    constitution_types::change_id_hash(&env::current_account_id(), *id),
+                )
+            }
+        };
+        evm.signing_hash = env::keccak256_array(tx.build_for_signing());
+        match &target {
+            SignTarget::Proposal(id) => {
+                let proposal = self.proposals.get_mut(id).unwrap();
+                proposal.evm = Some(evm);
+                proposal.state = ProposalState::SignRequested;
+                self.fee_bumps.insert(*id, bumps + 1);
+                self.outstanding_signatures.insert(*id);
+                self.sign_requested_at.insert(*id, env::block_timestamp());
+            }
+            SignTarget::Change(id) => {
+                self.changes.get_mut(id).unwrap().evm = Some(evm);
+                self.migration_fee_bumps.insert(*id, bumps + 1);
+                self.migration_signing
+                    .insert(*id, MigrationSigning::InFlight);
+                self.migration_requested_at
+                    .insert(*id, env::block_timestamp());
+            }
+        }
+        self.assert_solvent(1);
+        self.request_signature(target)
     }
 
     pub fn signing_preimage(&self, proposal_id: u64) -> HexBytes {
@@ -230,7 +310,10 @@ impl Gate {
         if change.status == ChangeStatus::Applied {
             check(
                 self.migration_signing.get(&id) == Some(&MigrationSigning::Failed)
-                    && change.evm.as_ref().is_some_and(|e| e.signed_tx.is_none()),
+                    || (self.migration_signing.get(&id) == Some(&MigrationSigning::InFlight)
+                        && self.migration_requested_at.get(&id).is_some_and(|started| {
+                            env::block_timestamp().saturating_sub(*started) >= SIGN_REQUEST_TIMEOUT
+                        })),
                 GateError::NotPending,
                 "migration is not retryable",
             );
@@ -251,8 +334,7 @@ impl Gate {
             change.evm = Some(evm);
             change.status = ChangeStatus::Applied;
             let hash = env::keccak256_array(
-                self
-                    .target_transaction(&SignTarget::Change(id))
+                self.target_transaction(&SignTarget::Change(id))
                     .unwrap()
                     .build_for_signing(),
             );
@@ -264,10 +346,14 @@ impl Gate {
                 .unwrap()
                 .signing_hash = hash;
             self.next_evm_nonce = next;
+            self.pending_changes.retain(|pending| *pending != id);
             emit("change_applied", json!({"change_id":id}));
         }
         self.migration_signing
             .insert(id, MigrationSigning::InFlight);
+        self.migration_requested_at
+            .insert(id, env::block_timestamp());
+        self.assert_solvent(1);
         PromiseOrValue::Promise(self.request_signature(SignTarget::Change(id)))
     }
 }

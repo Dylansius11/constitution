@@ -1,6 +1,6 @@
 //! Local sandbox only. No testnet or MPC writes.
 use constitution_types::{Base64, Config, Constitution, Params, Roles, VerifierRecord};
-use near_workspaces::types::NearToken;
+use near_workspaces::types::{AccountDetailsPatch, NearToken};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -29,16 +29,20 @@ fn exported_abi_is_exactly_the_allowed_surface() {
         "new",
         "deposit_credit",
         "withdraw_credit",
+        "on_withdraw_credit",
         "propose",
         "expire",
         "schedule_change",
         "apply_change",
         "cancel_change",
+        "cancel_changes",
         "pause_signing",
         "remove_verifier_now",
         "get_config",
         "get_constitution",
         "get_roles",
+        "is_signing_paused",
+        "get_total_liabilities",
         "list_verifiers",
         "get_proposal",
         "list_proposals",
@@ -159,5 +163,48 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
     assert_eq!(proposals.len(), 1);
     let cfg: Config = contract.view("get_config").await?.json()?;
     assert_eq!(cfg, config);
+    // Local sandbox storage staking, not just the unit host's byte accounting:
+    // leave exactly the current storage stake plus the two users' liabilities.
+    let second = worker.dev_create_account().await?;
+    second
+        .call(contract.id(), "deposit_credit")
+        .args_json(json!({"account":null}))
+        .deposit(NearToken::from_yoctonear(100))
+        .transact()
+        .await?
+        .into_result()?;
+    let details = contract.view_account().await?;
+    let solvent_balance = u128::from(details.storage_usage) * 10u128.pow(19) + 250;
+    worker
+        .patch(contract.id())
+        .account(
+            AccountDetailsPatch::from(details).balance(NearToken::from_yoctonear(solvent_balance)),
+        )
+        .transact()
+        .await?;
+    let denied = second.call(contract.id(), "propose").args_json(json!({"args":{
+        "new_impl":format!("0x{}","08".repeat(20)),"new_impl_codehash":format!("0x{}","09".repeat(32)),
+        "expected_current_impl":format!("0x{}","0a".repeat(20)),"init_calldata":"0x","source_commitment":format!("0x{}","0b".repeat(32))
+    }})).max_gas().transact().await?;
+    assert!(denied.is_failure());
+    assert!(
+        format!("{:?}", denied.failures()).contains("E12_STORAGE_INSOLVENT"),
+        "{denied:?}"
+    );
+    let missing: Option<Value> = contract
+        .view("get_proposal")
+        .args_json(json!({"id":1}))
+        .await?
+        .json()?;
+    assert!(
+        missing.is_none(),
+        "failed storage write must roll back the proposal"
+    );
+    let credit: String = contract
+        .view("get_credit")
+        .args_json(json!({"account":second.id()}))
+        .await?
+        .json()?;
+    assert_eq!(credit, "100");
     Ok(())
 }

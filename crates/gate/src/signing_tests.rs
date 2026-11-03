@@ -213,10 +213,11 @@ fn t_gate_5_rejection_while_paused_releases_without_mpc_or_nonce() {
     assert_eq!(p.rejection.as_ref().unwrap().evidence_root, [3; 32]);
     assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, 100);
     assert_eq!(g.get_active("alice.testnet".parse().unwrap()), None);
-    assert!(
-        !g.active_by_key
-            .contains_key(&crate::credit::active_key(&[9; 32], &[]))
-    );
+    assert!(!g.active_by_key.contains_key(&crate::credit::active_key(
+        &"alice.testnet".parse().unwrap(),
+        &[9; 32],
+        &[]
+    )));
     assert_eq!(last_event("verdict_rejected")["proposal_id"], 0);
 }
 #[test]
@@ -322,7 +323,7 @@ fn t_gate_9_fee_bumps_round_up_keep_nonce_and_stop_at_eight() {
     g.constitution.params.fee_cap = u128::MAX;
     for bump in 1..=8 {
         context("relay.testnet", 1_000_000_000, 0);
-        drop(g.bump_fee(0));
+        drop(g.bump_fee(SignTarget::Proposal(0)));
         let e = g.get_proposal(0).unwrap().evm.as_ref().unwrap();
         assert_eq!(e.nonce, original.nonce);
         assert_eq!(e.deadline_s, original.deadline_s);
@@ -335,7 +336,7 @@ fn t_gate_9_fee_bumps_round_up_keep_nonce_and_stop_at_eight() {
         callback(&mut g, 0, attempt, captured());
     }
     fails("E49_TOO_MANY_BUMPS", || {
-        drop(g.bump_fee(0));
+        drop(g.bump_fee(SignTarget::Proposal(0)));
     });
 }
 #[test]
@@ -345,15 +346,15 @@ fn fee_cap_and_superseded_rules_fail_before_state_mutation() {
     callback(&mut g, 0, 1, captured());
     g.constitution.params.fee_cap = 12;
     fails("E48_FEE_CAP", || {
-        drop(g.bump_fee(0));
+        drop(g.bump_fee(SignTarget::Proposal(0)));
     });
     g.constitution.params.fee_cap = 100;
     g.constitution.rule_set_hash = [99; 32];
     fails("E45_BINDING_MISMATCH", || {
-        drop(g.bump_fee(0));
+        drop(g.bump_fee(SignTarget::Proposal(0)));
     });
     context("relay.testnet", 1_801_000_000_000, 0);
-    drop(g.bump_fee(0));
+    drop(g.bump_fee(SignTarget::Proposal(0)));
 }
 #[test]
 fn failed_bump_preserves_prior_raw_and_never_releases_a_new_active_proposal() {
@@ -373,7 +374,7 @@ fn failed_bump_preserves_prior_raw_and_never_releases_a_new_active_proposal() {
     let mut a = args();
     a.new_impl_codehash = Hex32([88; 32]);
     let next = g.propose(a);
-    drop(g.bump_fee(0));
+    drop(g.bump_fee(SignTarget::Proposal(0)));
     callback(&mut g, 0, 2, PromiseResult::Failed);
     assert_eq!(
         g.get_proposal(0)
@@ -400,7 +401,7 @@ fn retry_and_bump_require_their_states_and_respect_pause() {
         drop(g.retry_sign(0));
     });
     fails("E31_WRONG_STATE", || {
-        drop(g.bump_fee(0));
+        drop(g.bump_fee(SignTarget::Proposal(0)));
     });
     submit(&mut g, &c);
     callback(&mut g, 0, 1, PromiseResult::Failed);
@@ -413,7 +414,7 @@ fn retry_and_bump_require_their_states_and_respect_pause() {
     callback(&mut g, 0, 2, captured());
     g.signing_paused = true;
     fails("E20_SIGNING_PAUSED", || {
-        drop(g.bump_fee(0));
+        drop(g.bump_fee(SignTarget::Proposal(0)));
     });
 }
 #[test]
@@ -609,4 +610,156 @@ fn migration_signs_rotate_signer_and_retries_failed_request_without_new_nonce() 
             .is_some()
     );
     fails("E54_NOT_PENDING", || g.apply_change(id));
+}
+
+#[test]
+fn lost_callback_can_be_retried_at_timeout_and_late_original_is_ignored() {
+    let (mut g, c) = setup();
+    submit(&mut g, &c);
+    let original = g.get_proposal(0).unwrap().evm.clone().unwrap();
+    context("relay.testnet", 1_200_999_999_999, 0);
+    fails("E31_WRONG_STATE", || drop(g.retry_sign(0)));
+    context("relay.testnet", 1_201_000_000_000, 0);
+    drop(g.retry_sign(0));
+    let retried = g.get_proposal(0).unwrap().evm.as_ref().unwrap();
+    assert_eq!(retried.signing_hash, original.signing_hash);
+    assert_eq!(retried.nonce, original.nonce);
+    assert_eq!(retried.attempts, 2);
+    callback(&mut g, 0, 1, captured());
+    assert_eq!(
+        g.get_proposal(0).unwrap().state,
+        ProposalState::SignRequested
+    );
+    callback(&mut g, 0, 2, captured());
+    callback(&mut g, 0, 1, captured());
+    assert_eq!(g.get_proposal(0).unwrap().state, ProposalState::Signed);
+    assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, 100);
+}
+
+#[test]
+fn expired_lost_callback_does_not_block_rule_change_forever() {
+    let (mut g, c) = setup();
+    submit(&mut g, &c);
+    let id = schedule(&mut g, rule_change());
+    context("relay.testnet", 604_801_000_000_000, 0);
+    drop(g.apply_change(id));
+    assert_eq!(g.get_constitution().rule_set_hash, [12; 32]);
+    drop(g.retry_sign(0));
+    assert_eq!(g.get_proposal(0).unwrap().evm.as_ref().unwrap().nonce, 42);
+}
+
+#[test]
+fn clean_review_requires_provider_tee_even_when_ai_optional() {
+    let (mut g, mut c) = setup();
+    for required in [true, false] {
+        g.constitution.ai_required = required;
+        for kind in [0, 2, 255] {
+            c.ai = AiReview::Clean {
+                evidence_hash: [4; 32],
+                signature_kind: kind,
+            };
+            fails("E58_AI_SIGNATURE_KIND", || submit(&mut g, &c));
+            assert_eq!(g.next_evm_nonce, 42);
+        }
+    }
+}
+
+#[test]
+fn migration_fee_bump_preserves_nonce_deadline_and_calldata_and_caps() {
+    let mut g = gate();
+    let id = schedule(
+        &mut g,
+        ChangeKind::MigrateAuthority {
+            new_signer: [0x77; 20],
+        },
+    );
+    context("relay.testnet", 604_801_000_000_000, 0);
+    drop(g.apply_change(id));
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id("gate.testnet".parse().unwrap())
+            .predecessor_account_id("gate.testnet".parse().unwrap())
+            .build(),
+        near_sdk::test_vm_config(),
+        near_sdk::RuntimeFeesConfig::test(),
+        Default::default(),
+        vec![captured()]
+    );
+    g.on_signed(SignTarget::Change(id), 1);
+    let before = g.get_change(id).unwrap().evm.clone().unwrap();
+    let old_tx = g
+        .target_transaction(&SignTarget::Change(id))
+        .unwrap()
+        .build_for_signing();
+    g.constitution.params.fee_cap = 12;
+    fails("E48_FEE_CAP", || drop(g.bump_fee(SignTarget::Change(id))));
+    g.constitution.params.fee_cap = 1000;
+    drop(g.bump_fee(SignTarget::Change(id)));
+    let after = g.get_change(id).unwrap().evm.as_ref().unwrap();
+    assert_eq!(after.nonce, before.nonce);
+    assert_eq!(after.deadline_s, before.deadline_s);
+    assert_eq!(after.max_fee_per_gas, 13);
+    assert_eq!(after.max_priority_fee_per_gas, 2);
+    assert_eq!(after.signed_tx, before.signed_tx);
+    let new_tx = g
+        .target_transaction(&SignTarget::Change(id))
+        .unwrap()
+        .build_for_signing();
+    assert_eq!(
+        rlp::Rlp::new(&old_tx[1..]).at(7).unwrap().as_raw(),
+        rlp::Rlp::new(&new_tx[1..]).at(7).unwrap().as_raw()
+    );
+    assert_eq!(g.next_evm_nonce, 43);
+}
+
+#[test]
+fn signed_max_calldata_storage_measurement() {
+    let (template, mut c) = setup();
+    drop(template);
+    let mut g = gate();
+    g.verifiers.clear();
+    g.verifiers
+        .insert(key().verifying_key().to_bytes(), verifier());
+    fund(&mut g, "alice.testnet", 100);
+    g.flush_storage();
+    let before = env::storage_usage();
+    let mut a = args();
+    a.init_calldata.0 = vec![0x55; 1024];
+    c.init_calldata_hash = env::keccak256_array(&a.init_calldata.0);
+    g.propose(a);
+    submit(&mut g, &c);
+    let usage = env::storage_usage();
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id("gate.testnet".parse().unwrap())
+            .predecessor_account_id("gate.testnet".parse().unwrap())
+            .storage_usage(usage)
+            .block_timestamp(1_000_000_000)
+            .build(),
+        near_sdk::test_vm_config(),
+        near_sdk::RuntimeFeesConfig::test(),
+        Default::default(),
+        vec![captured()]
+    );
+    g.on_signed(SignTarget::Proposal(0), 1);
+    g.flush_storage();
+    assert_eq!(g.get_proposal(0).unwrap().state, ProposalState::Signed);
+    println!(
+        "signed_max_calldata_proposal_storage_bytes={}",
+        env::storage_usage() - before
+    );
+    assert_eq!(g.total_liabilities, 100);
+}
+
+#[test]
+fn late_failed_callback_after_rule_cleanup_does_not_allocate_outstanding_entry() {
+    let (mut g, c) = setup();
+    submit(&mut g, &c);
+    let id = schedule(&mut g, rule_change());
+    context("relay.testnet", 604_801_000_000_000, 0);
+    drop(g.apply_change(id));
+    assert!(g.outstanding_signatures.is_empty());
+    callback(&mut g, 0, 1, PromiseResult::Failed);
+    assert_eq!(g.get_proposal(0).unwrap().state, ProposalState::SignFailed);
+    assert!(g.outstanding_signatures.is_empty());
 }

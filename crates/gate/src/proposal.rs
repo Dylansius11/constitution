@@ -27,11 +27,11 @@ impl Gate {
             GateError::ZeroAddress,
             "implementation",
         );
-        let key = active_key(&args.new_impl_codehash.0, &args.init_calldata.0);
+        let key = active_key(&proposer, &args.new_impl_codehash.0, &args.init_calldata.0);
         check(
             !self.active_by_key.contains_key(&key),
             GateError::DuplicateActive,
-            "codehash and calldata active",
+            "proposer, codehash and calldata active",
         );
         let now = env::block_timestamp();
         let expires_at_ns = s_to_ns(self.constitution.params.proposal_ttl_s)
@@ -68,6 +68,7 @@ impl Gate {
         self.active_by_key.insert(key, id);
         self.proposals.insert(id, proposal);
         self.next_proposal_id = next;
+        self.assert_solvent(0);
         id
     }
 
@@ -90,6 +91,7 @@ impl Gate {
         self.release_reservation(&mut proposal);
         proposal.state = ProposalState::Expired;
         self.proposals.insert(proposal_id, proposal);
+        self.assert_solvent(0);
         emit("proposal_expired", json!({"proposal_id": proposal_id}));
     }
 }

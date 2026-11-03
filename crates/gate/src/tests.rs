@@ -66,6 +66,7 @@ fn verifier() -> VerifierRecord {
     }
 }
 fn gate() -> Gate {
+    near_sdk::mock::with_mocked_blockchain(|b| b.take_storage());
     context("alice.testnet", 1_000_000_000, 0);
     Gate::new(
         config(),
@@ -160,7 +161,7 @@ fn credit_funding_recipient_and_withdrawal_effects() {
     drop(g.withdraw_credit(U128(50)));
     assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, 0);
     let receipts = get_created_receipts();
-    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts.len(), 2);
     assert_eq!(receipts[0].receiver_id.as_str(), "alice.testnet");
     assert!(
         matches!(receipts[0].actions[0], near_sdk::mock::MockAction::Transfer { deposit, .. } if deposit.as_yoctonear()==50)
@@ -191,12 +192,11 @@ fn proposals_reject_insufficient_credit_long_calldata_zero_addresses_and_duplica
     });
     g.propose(args());
     fund(&mut g, "bob.testnet", 100);
-    fails("E24_DUPLICATE_ACTIVE", || {
-        g.propose(args());
-    });
+    assert_eq!(g.propose(args()), 1);
+    fund(&mut g, "carol.testnet", 100);
     let mut a = args();
     a.init_calldata.0 = vec![0; 1024];
-    assert_eq!(g.propose(a), 1);
+    assert_eq!(g.propose(a), 2);
 }
 #[test]
 fn expire_boundary_releases_once_and_reopens_duplicate_slot_while_paused() {
@@ -470,7 +470,9 @@ fn views_paginate_and_events_have_canonical_hashes() {
     assert!(g.list_proposals(u64::MAX, 50).is_empty());
     assert!(g.list_proposals(0, 0).is_empty());
     for _ in 0..51 {
-        schedule(&mut g, ChangeKind::Unpause);
+        let id = schedule(&mut g, ChangeKind::Unpause);
+        context("guardian.testnet", 1_000_000_000, 0);
+        g.cancel_change(id);
     }
     assert_eq!(g.list_changes(0, 51).len(), 50);
     assert_eq!(g.list_changes(50, 50)[0].id, 50);
@@ -548,6 +550,199 @@ fn queued_verifier_changes_revalidate_after_guardian_removal() {
     context("anyone.testnet", 604_801_000_000_000, 0);
     fails("E51_INVALID_CHANGE", || g.apply_change(id));
     assert_eq!(g.get_change(id).unwrap().status, ChangeStatus::Pending);
+}
+
+#[test]
+fn unsafe_params_and_zero_release_are_rejected_at_both_boundaries() {
+    let mut g = gate();
+    let mut invalid = Vec::new();
+    for (callback, sign) in [(9, 15), (101, 15), (20, 14), (100, 201)] {
+        let mut p = params();
+        p.callback_gas_tgas = callback;
+        p.sign_gas_tgas = sign;
+        invalid.push(p);
+    }
+    for field in 0..8 {
+        let mut p = params();
+        match field {
+            0 => p.max_cert_ttl_s = 29,
+            1 => p.max_cert_ttl_s = 86401,
+            2 => p.sign_validity_s = 59,
+            3 => p.sign_validity_s = 86401,
+            4 => p.proposal_ttl_s = 299,
+            5 => p.proposal_ttl_s = 604801,
+            6 => p.gas_limit = 0,
+            _ => p.max_priority_fee_per_gas = 11,
+        }
+        invalid.push(p);
+    }
+    let mut p = params();
+    p.max_fee_per_gas = 101;
+    invalid.push(p);
+    for p in invalid {
+        let mut c = constitution();
+        c.params = p.clone();
+        fails("E51_INVALID_CHANGE", || {
+            Gate::new(config(), c, roles(), vec![(Base64([7; 32]), verifier())], 0)
+        });
+        context("governor.testnet", 1_000_000_000, 0);
+        fails("E51_INVALID_CHANGE", || {
+            g.schedule_change(ChangeKind::SetParams { params: p })
+        });
+    }
+    let mut v = verifier();
+    v.release_hash = [0; 32];
+    fails("E51_INVALID_CHANGE", || {
+        Gate::new(
+            config(),
+            constitution(),
+            roles(),
+            vec![(Base64([7; 32]), v)],
+            0,
+        )
+    });
+    fails("E51_INVALID_CHANGE", || {
+        g.schedule_change(ChangeKind::AddVerifier {
+            pubkey: [8; 32],
+            release_hash: [0; 32],
+            attestation_uri: "ipfs://quote".into(),
+        })
+    });
+    let mut p = params();
+    p.gas_limit = 300000;
+    p.max_priority_fee_per_gas = 1000000;
+    p.max_fee_per_gas = 50000000;
+    p.fee_cap = 1000000000;
+    assert_eq!(g.schedule_change(ChangeKind::SetParams { params: p }), 0);
+}
+
+#[test]
+fn pending_queue_is_bounded_unique_and_guardian_can_cancel_batch() {
+    let mut g = gate();
+    for kind in [
+        ChangeKind::MigrateAuthority {
+            new_signer: [1; 20],
+        },
+        ChangeKind::SetGuardian {
+            account: "next.testnet".parse().unwrap(),
+        },
+        ChangeKind::SetGovernor {
+            account: "next.testnet".parse().unwrap(),
+        },
+    ] {
+        let id = schedule(&mut g, kind.clone());
+        fails("E60_DUPLICATE_AUTHORITY_CHANGE", || g.schedule_change(kind));
+        assert_eq!(id, g.next_change_id - 1);
+    }
+    for _ in 3..8 {
+        schedule(&mut g, ChangeKind::Unpause);
+    }
+    fails("E59_PENDING_CHANGE_LIMIT", || {
+        g.schedule_change(ChangeKind::Unpause)
+    });
+    fails("E56_NOT_GUARDIAN", || g.cancel_changes(vec![0, 1, 2]));
+    context("guardian.testnet", 1_000_000_000, 0);
+    fails("E59_PENDING_CHANGE_LIMIT", || g.cancel_changes(vec![0; 9]));
+    fails("E52_NOT_FOUND", || g.cancel_changes(vec![0, 99]));
+    assert_eq!(g.get_change(0).unwrap().status, ChangeStatus::Pending);
+    g.cancel_changes((0..8).collect());
+    assert!(
+        g.list_changes(0, 50)
+            .iter()
+            .all(|c| c.status == ChangeStatus::Cancelled)
+    );
+    assert_eq!(
+        schedule(
+            &mut g,
+            ChangeKind::MigrateAuthority {
+                new_signer: [2; 20]
+            }
+        ),
+        8
+    );
+}
+
+#[test]
+fn proposal_storage_growth_is_the_solvency_limiter_and_measurement() {
+    let mut g = gate();
+    fund(&mut g, "alice.testnet", 100);
+    g.flush_storage();
+    let before = env::storage_usage();
+    let mut a = args();
+    a.init_calldata.0 = vec![0x55; 1024];
+    g.propose(a);
+    let delta = env::storage_usage() - before;
+    println!("max_calldata_proposal_storage_bytes={delta}");
+    assert!(delta > 1024);
+    assert_eq!(g.total_liabilities, 100);
+    // Free the active slot, then leave exactly enough liquid backing for credit.
+    context("alice.testnet", 7_201_000_000_001, 0);
+    g.expire(0);
+    let storage = env::storage_usage();
+    let balance = u128::from(storage) * env::storage_byte_cost().as_yoctonear() + 100;
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id("gate.testnet".parse().unwrap())
+            .predecessor_account_id("alice.testnet".parse().unwrap())
+            .block_timestamp(7_201_000_000_002)
+            .account_balance(NearToken::from_yoctonear(balance))
+            .storage_usage(storage)
+            .build()
+    );
+    fails("E12_STORAGE_INSOLVENT", || g.propose(args()));
+}
+
+#[test]
+fn failed_withdrawal_restores_credit_and_liabilities_success_does_not() {
+    let mut g = gate();
+    fund(&mut g, "alice.testnet", 150);
+    drop(g.withdraw_credit(U128(50)));
+    assert_eq!(g.total_liabilities, 100);
+    for (result, expected) in [
+        (near_sdk::PromiseResult::Failed, 150),
+        (near_sdk::PromiseResult::Successful(vec![]), 100),
+    ] {
+        testing_env!(
+            VMContextBuilder::new()
+                .current_account_id("gate.testnet".parse().unwrap())
+                .predecessor_account_id("gate.testnet".parse().unwrap())
+                .build(),
+            near_sdk::test_vm_config(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![result]
+        );
+        g.on_withdraw_credit("alice.testnet".parse().unwrap(), U128(50));
+        assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, expected);
+        assert_eq!(g.total_liabilities, expected);
+        if expected == 150 {
+            context("alice.testnet", 1_000_000_000, 0);
+            drop(g.withdraw_credit(U128(50)));
+        }
+    }
+}
+
+#[test]
+fn refunded_withdrawal_cannot_be_spent_before_failure_callback() {
+    let mut g = gate();
+    let amount = 10u128.pow(24);
+    fund(&mut g, "alice.testnet", amount);
+    drop(g.withdraw_credit(U128(amount)));
+    let storage = env::storage_usage();
+    // Transfer failed, its refund has arrived, but callback has not run.
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id("gate.testnet".parse().unwrap())
+            .predecessor_account_id("governor.testnet".parse().unwrap())
+            .account_balance(NearToken::from_yoctonear(
+                u128::from(storage) * env::storage_byte_cost().as_yoctonear() + amount
+            ))
+            .storage_usage(storage)
+            .build()
+    );
+    fails("E12_STORAGE_INSOLVENT", || {
+        g.schedule_change(ChangeKind::Unpause)
+    });
 }
 
 #[path = "signing_tests.rs"]
