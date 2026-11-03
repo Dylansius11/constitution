@@ -12,6 +12,8 @@ scratch/
 target/
 contracts/out/
 contracts/cache/
-contracts/broadcast/*/31337/
+# Foundry broadcast logs: local tests also run anvil as chain 84532, so live and
+# local runs share a folder. Live addresses and tx hashes are recorded in docs and deployments/.
+contracts/broadcast/
 web/dist/
 node_modules/
