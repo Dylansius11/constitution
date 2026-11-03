@@ -3,6 +3,68 @@
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+/// Endpoint diagnostics expose host names only, never userinfo, path or query credentials.
+pub fn host(url: &str) -> String {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_else(|| "invalid endpoint".into())
+}
+
+/// Scrub endpoint echoes from upstream errors, including a provider echoing a path key alone.
+pub fn safe_error(url: &str, error: impl std::fmt::Display) -> String {
+    let mut text = error.to_string().replace(url, &host(url));
+    if let Ok(parsed) = reqwest::Url::parse(url) {
+        let mut secrets: Vec<_> = parsed
+            .path_segments()
+            .into_iter()
+            .flatten()
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        secrets.extend(
+            parsed
+                .query_pairs()
+                .map(|(_, value)| value.into_owned())
+                .filter(|s| !s.is_empty()),
+        );
+        if let Some(password) = parsed.password() {
+            secrets.push(password.to_owned());
+        }
+        if !parsed.username().is_empty() {
+            secrets.push(parsed.username().to_owned());
+        }
+        secrets.sort_unstable_by_key(|s| std::cmp::Reverse(s.len()));
+        for secret in secrets {
+            text = text.replace(&secret, "[redacted]");
+        }
+    }
+    strip_urls(&text)
+}
+
+pub fn strip_urls(text: &str) -> String {
+    let mut rest = text;
+    let mut result = String::new();
+    while let Some(start) = rest
+        .find("http://")
+        .into_iter()
+        .chain(rest.find("https://"))
+        .min()
+    {
+        result.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let end = rest
+            .find(|c: char| {
+                c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | ')' | ']' | '}')
+            })
+            .unwrap_or(rest.len());
+        result.push_str(&host(&rest[..end]));
+        rest = &rest[end..];
+    }
+    result.push_str(rest);
+    result
+}
+
 fn post(
     client: &reqwest::blocking::Client,
     url: &str,
@@ -17,14 +79,24 @@ fn post(
         .send()
         .and_then(|r| r.error_for_status())
         .and_then(|r| r.json())
-        .map_err(|e| format!("{method} via {url}: {e}"))?;
+        .map_err(|e| {
+            format!(
+                "{method} via {}: {}",
+                host(url),
+                safe_error(url, e.without_url())
+            )
+        })?;
     if let Some(error) = response.get("error") {
-        return Err(format!("{method} via {url}: {error}"));
+        return Err(format!(
+            "{method} via {}: {}",
+            host(url),
+            safe_error(url, error)
+        ));
     }
     response
         .get("result")
         .cloned()
-        .ok_or_else(|| format!("{method} via {url}: response has no result"))
+        .ok_or_else(|| format!("{method} via {}: response has no result", host(url)))
 }
 
 pub struct Near {
@@ -44,7 +116,11 @@ impl Near {
         let result = post(&self.client, &self.url, "query", params)?;
         // nearcore reports some query failures inside `result.error`.
         if let Some(error) = result.get("error") {
-            return Err(format!("query via {}: {error}", self.url));
+            return Err(format!(
+                "query via {}: {}",
+                host(&self.url),
+                safe_error(&self.url, error)
+            ));
         }
         Ok(result)
     }
@@ -63,8 +139,12 @@ impl Near {
         }))?;
         let bytes: Vec<u8> = serde_json::from_value(result["result"].clone())
             .map_err(|e| format!("{account}.{method}: result is not bytes: {e}"))?;
-        serde_json::from_slice(&bytes)
-            .map_err(|e| format!("{account}.{method}: unexpected JSON: {e}"))
+        serde_json::from_slice(&bytes).map_err(|e| {
+            format!(
+                "{account}.{method}: unexpected JSON: {}",
+                safe_error(&self.url, e)
+            )
+        })
     }
 
     pub fn access_key_count(&self, account: &str) -> Result<usize, String> {
@@ -281,7 +361,7 @@ impl Verifier {
             .send()
             .and_then(|r| r.error_for_status())
             .and_then(|r| r.json())
-            .map_err(|e| Self::failure(e.to_string()))
+            .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))
     }
 
     pub fn run(&self, id: &str) -> Result<Value, crate::failure::Failure> {
@@ -311,7 +391,7 @@ impl Verifier {
             .client
             .get(format!("{}/v1/runs/{id}/evidence", self.url))
             .send()
-            .map_err(|e| Self::failure(e.to_string()))?;
+            .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -319,7 +399,7 @@ impl Verifier {
             .error_for_status()
             .and_then(|r| r.json())
             .map(Some)
-            .map_err(|e| Self::failure(e.to_string()))
+            .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))
     }
 
     pub fn start(
@@ -331,14 +411,16 @@ impl Verifier {
         use base64::Engine;
         let response = self.client.post(format!("{}/v1/runs", self.url))
             .json(&json!({"gate": gate, "proposal_id": proposal_id, "sealed_bundle_b64": base64::engine::general_purpose::STANDARD.encode(sealed)}))
-            .send().map_err(|e| Self::failure(e.to_string()))?;
+            .send().map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
         if response.status() != reqwest::StatusCode::ACCEPTED {
             return Err(Self::failure(format!(
                 "POST /v1/runs returned {}",
                 response.status()
             )));
         }
-        let value: Value = response.json().map_err(|e| Self::failure(e.to_string()))?;
+        let value: Value = response
+            .json()
+            .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
         value["run_id"]
             .as_str()
             .filter(|s| !s.is_empty())

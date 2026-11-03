@@ -3,6 +3,8 @@
 mod appraise;
 #[path = "../src/failure.rs"]
 mod failure;
+#[path = "../src/rpc.rs"]
+mod rpc;
 
 use dcap_qvl::{QuoteCollateralV3, verify::QuoteVerifier};
 
