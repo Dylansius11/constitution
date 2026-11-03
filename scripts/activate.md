@@ -39,12 +39,21 @@ Deleting the gate's last access key is irreversible: after step 7 nobody can red
    `{"config":{"chain_id":84532,"executor":"0x..","proxy":"0x..","proxy_admin":"0x..","derived_eoa":"0x3b20f46860d27d81917a45221c594fc051af7e94","mpc_account":"v1.signer-prod.testnet","mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0},"constitution":{"rule_set_hash":"0x..","manifest_uri":"https://raw.githubusercontent.com/Dylansius11/constitution/<sha>/rules/manifest.json","ai_required":true,"params":{...D14...}},"roles":{"governor":"constitution-governor.testnet","guardian":"constitution-guardian.testnet"},"verifiers":[["<base64 pubkey>",{"release_hash":"0x..","attestation_uri":"<quote URL>","added_at_ns":0}]],"initial_evm_nonce":0}`
    Record the NEAR tx hash and `view_account` code hash; the code hash must equal precondition E.
 4. **Fund the derived EOA** with the D14 amount from the deployer: `cast send 0x3b20f46860d27d81917a45221c594fc051af7e94 --value <D14> ...`. Record the tx hash.
-5. **Deployment record**: write `deployments/testnet.json` in the audit format (`chain_id`, `gate`, `gate_code_hash`, `mpc_account`, `executor`, `proxy`, `verifiers[{pubkey, release_hash}]`; lowercase hex) and commit it.
-6. **Audit before key deletion**: `constitution audit --deployment deployments/testnet.json`. Expected: exactly one FAIL, `gate_has_no_access_keys`; every other line PASS. Anything else stops the ceremony.
+5. **Deployment record** (planned, not run): build the executor artifact from the intended committed source with the pinned tools, then compute its immutable-masked runtime commitment from the repo root:
+   ```sh
+   forge build --root contracts --offline
+   cargo run -p constitution-cli -- executor-runtime-hash --executor-artifact contracts/out/ConstitutionExecutor.sol/ConstitutionExecutor.json
+   ```
+   Copy the final lowercase `0x` hash into `executor_runtime_hash`. Write `deployments/testnet.json` only once real deployment values have been observed, following [`deployments/testnet.schema.json`](../deployments/testnet.schema.json) and the [field guide](../deployments/README.md). Required audit inputs: `chain_id`, `gate`, `gate_code_hash`, `mpc_account`, `executor`, `executor_runtime_hash`, `proxy`, `verifiers[{pubkey, release_hash}]`; `planned_changes` is optional and defaults to `[]`. `gate_code_hash` is the NEAR base58 hash, not hex; EVM addresses and hashes are lowercase `0x` hex; verifier public keys are 32-byte base64. Do not substitute spike addresses or fixture values. Commit the observed record before key deletion.
+6. **Audit before key deletion** (planned, not run), from the repo root with the public RPC endpoints configured in the environment:
+   ```sh
+   cargo run -p constitution-cli -- audit --deployment deployments/testnet.json --manifest rules/manifest.json --executor-artifact contracts/out/ConstitutionExecutor.sol/ConstitutionExecutor.json --near-rpc "$NEAR_RPC_URL" --evm-rpc "$BASE_SEPOLIA_RPC_URL"
+   ```
+   Expected exit **1**, with exactly one named failure: `FAIL gate_has_no_access_keys` (this is the only expected exception to the pre-step-7 checks). The other **10 preconditions PASS**, plus `PASS gate_roles`, `PASS signing_paused: signing_paused=false`, and `PASS pending_governance_changes: 0 pending change(s)`. The summary names only `audit failed: gate_has_no_access_keys`. No WARN is expected; any additional FAIL, WARN, missing view or unexpected role stops the ceremony.
 7. **Founder deletes every gate access key** (explicit founder authorization at that moment):
    `./.tools/bin/near account list-keys constitution-gate.testnet network-config testnet now`, then
    `./.tools/bin/near account delete-keys constitution-gate.testnet public-keys <every key> network-config testnet sign-with-legacy-keychain send`.
-8. **Audit after deletion**: same command; expected `audit passed: 10 of 10 preconditions hold`. Save the full output as the activation receipt.
+8. **Audit after deletion** (planned, not run): repeat the exact step-6 command. Expected exit **0**, all **11 named preconditions PASS**, the same three governance information lines PASS, no WARN/FAIL, and exactly `audit passed: 14 named checks/information lines`. There must be no pending authority change. Save the full observed output as the activation receipt; the expected text here is not evidence.
 9. **F11 change**: the governor schedules the harmless `SetParams` change (same params, documented in PRD F11):
    `constitution govern --account constitution-governor.testnet --gate constitution-gate.testnet schedule --kind '{"SetParams":{...}}'`. Record change id and `eta_ns`.
 10. **Record**: every address, tx hash, code hash and the audit output in SMART-CONTRACT "Deployment"; note the CVM uptime start (D18).
