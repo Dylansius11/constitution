@@ -17,7 +17,6 @@ pub struct NearSubmitter {
     network: NetworkConfig,
     account: near_api::AccountId,
     signer: Arc<Signer>,
-    rpc_url: String,
 }
 impl NearSubmitter {
     pub fn new(rpc_url: &str, account: &str, key_file: &Path) -> Result<Self, String> {
@@ -31,7 +30,6 @@ impl NearSubmitter {
         let signer = Signer::from_access_keyfile(key_file.to_path_buf())
             .map_err(|_| format!("cannot load VERIFIER_RELAY_KEY_FILE {}", key_file.display()))?;
         Ok(Self {
-            rpc_url: url.as_str().to_owned(),
             network: NetworkConfig::from_rpc_url("constitution-verifier", url),
             account,
             signer,
@@ -50,13 +48,13 @@ impl VerdictSubmitter for NearSubmitter {
             .build()
             .map_err(|e| e.to_string())?;
         let sent=runtime.block_on(Contract(gate.clone()).call_function("submit_verdict",serde_json::json!({"certificate":certificate,"signature":signature})).transaction().gas(NearGas::from_tgas(300)).with_signer(self.account.clone(),self.signer.clone()).send_to(&self.network))
-            .map_err(|e|format!("submit_verdict was not confirmed: {}; inspect relay account transactions before starting another run",e.to_string().replace(&self.rpc_url,"<NEAR_RPC_URL>")))?;
+            .map_err(|_| "submit_verdict was not confirmed; inspect relay account transactions before starting another run")?;
         let full = sent
             .into_full()
             .ok_or("submit_verdict still pending; inspect relay account transactions")?;
         let tx_hash = full.outcome().transaction_hash.to_string();
         full.into_result()
-            .map_err(|e| format!("submit_verdict failed in tx {tx_hash}: {e}"))?;
+            .map_err(|_| format!("submit_verdict failed in observed tx {tx_hash}; inspect its public execution outcome"))?;
         Ok(tx_hash)
     }
 }
@@ -87,7 +85,7 @@ impl SubmittedRun {
             .retain(|s| s.name != "submitting" && s.name != "done");
         let (near_tx_hash, status, detail) = match submitter.submit(gate, certificate, signature) {
             Ok(hash) => {
-                run.outcome = "verdict submitted (not attested)".into();
+                run.outcome = "verdict submitted; independent identity appraisal required".into();
                 (
                     Some(hash),
                     StageStatus::Pass,

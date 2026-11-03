@@ -1,0 +1,653 @@
+Compiling 13 files with Solc 0.8.38
+Solc 0.8.38 finished in 1.02s
+Compiler run successful with warnings:
+Warning (8506): Experimental pragma ABIEncoderV2 is deprecated and will be removed in a future release.
+ --> lib/forge-std/src/StdInvariant.sol:4:1:
+  |
+4 | pragma experimental ABIEncoderV2;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (8506): Experimental pragma ABIEncoderV2 is deprecated and will be removed in a future release.
+ --> lib/forge-std/src/Vm.sol:5:1:
+  |
+5 | pragma experimental ABIEncoderV2;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1313:9:
+     |
+1313 |         string calldata error
+     |         ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1327:9:
+     |
+1327 |         string calldata error
+     |         ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1335:79:
+     |
+1335 |     function assertApproxEqAbs(uint256 left, uint256 right, uint256 maxDelta, string calldata error) external pure;
+     |                                                                               ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1342:77:
+     |
+1342 |     function assertApproxEqAbs(int256 left, int256 right, uint256 maxDelta, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1359:9:
+     |
+1359 |         string calldata error
+     |         ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1377:9:
+     |
+1377 |         string calldata error
+     |         ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1387:86:
+     |
+1387 |     function assertApproxEqRel(uint256 left, uint256 right, uint256 maxPercentDelta, string calldata error)
+     |                                                                                      ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1398:84:
+     |
+1398 |     function assertApproxEqRel(int256 left, int256 right, uint256 maxPercentDelta, string calldata error) external pure;
+     |                                                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1405:77:
+     |
+1405 |     function assertEqDecimal(uint256 left, uint256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1412:75:
+     |
+1412 |     function assertEqDecimal(int256 left, int256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                           ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1418:46:
+     |
+1418 |     function assertEq(bool left, bool right, string calldata error) external pure;
+     |                                              ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1424:68:
+     |
+1424 |     function assertEq(string calldata left, string calldata right, string calldata error) external pure;
+     |                                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1430:66:
+     |
+1430 |     function assertEq(bytes calldata left, bytes calldata right, string calldata error) external pure;
+     |                                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1436:68:
+     |
+1436 |     function assertEq(bool[] calldata left, bool[] calldata right, string calldata error) external pure;
+     |                                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1442:74:
+     |
+1442 |     function assertEq(uint256[] calldata left, uint256[] calldata right, string calldata error) external pure;
+     |                                                                          ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1448:72:
+     |
+1448 |     function assertEq(int256[] calldata left, int256[] calldata right, string calldata error) external pure;
+     |                                                                        ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1457:74:
+     |
+1457 |     function assertEq(address[] calldata left, address[] calldata right, string calldata error) external pure;
+     |                                                                          ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1463:74:
+     |
+1463 |     function assertEq(bytes32[] calldata left, bytes32[] calldata right, string calldata error) external pure;
+     |                                                                          ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1469:72:
+     |
+1469 |     function assertEq(string[] calldata left, string[] calldata right, string calldata error) external pure;
+     |                                                                        ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1475:70:
+     |
+1475 |     function assertEq(bytes[] calldata left, bytes[] calldata right, string calldata error) external pure;
+     |                                                                      ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1478:52:
+     |
+1478 |     function assertEq(uint256 left, uint256 right, string calldata error) external pure;
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1484:50:
+     |
+1484 |     function assertEq(int256 left, int256 right, string calldata error) external pure;
+     |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1490:52:
+     |
+1490 |     function assertEq(address left, address right, string calldata error) external pure;
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1496:52:
+     |
+1496 |     function assertEq(bytes32 left, bytes32 right, string calldata error) external pure;
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1502:42:
+     |
+1502 |     function assertFalse(bool condition, string calldata error) external pure;
+     |                                          ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1510:77:
+     |
+1510 |     function assertGeDecimal(uint256 left, uint256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1518:75:
+     |
+1518 |     function assertGeDecimal(int256 left, int256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                           ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1525:52:
+     |
+1525 |     function assertGe(uint256 left, uint256 right, string calldata error) external pure;
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1532:50:
+     |
+1532 |     function assertGe(int256 left, int256 right, string calldata error) external pure;
+     |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1540:77:
+     |
+1540 |     function assertGtDecimal(uint256 left, uint256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1548:75:
+     |
+1548 |     function assertGtDecimal(int256 left, int256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                           ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1555:52:
+     |
+1555 |     function assertGt(uint256 left, uint256 right, string calldata error) external pure;
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1562:50:
+     |
+1562 |     function assertGt(int256 left, int256 right, string calldata error) external pure;
+     |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1570:77:
+     |
+1570 |     function assertLeDecimal(uint256 left, uint256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1578:75:
+     |
+1578 |     function assertLeDecimal(int256 left, int256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                           ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1585:52:
+     |
+1585 |     function assertLe(uint256 left, uint256 right, string calldata error) external pure;
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1592:50:
+     |
+1592 |     function assertLe(int256 left, int256 right, string calldata error) external pure;
+     |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1600:77:
+     |
+1600 |     function assertLtDecimal(uint256 left, uint256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1608:75:
+     |
+1608 |     function assertLtDecimal(int256 left, int256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                           ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1615:52:
+     |
+1615 |     function assertLt(uint256 left, uint256 right, string calldata error) external pure;
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1622:50:
+     |
+1622 |     function assertLt(int256 left, int256 right, string calldata error) external pure;
+     |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1629:80:
+     |
+1629 |     function assertNotEqDecimal(uint256 left, uint256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                                ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1636:78:
+     |
+1636 |     function assertNotEqDecimal(int256 left, int256 right, uint256 decimals, string calldata error) external pure;
+     |                                                                              ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1642:49:
+     |
+1642 |     function assertNotEq(bool left, bool right, string calldata error) external pure;
+     |                                                 ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1648:71:
+     |
+1648 |     function assertNotEq(string calldata left, string calldata right, string calldata error) external pure;
+     |                                                                       ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1654:69:
+     |
+1654 |     function assertNotEq(bytes calldata left, bytes calldata right, string calldata error) external pure;
+     |                                                                     ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1660:71:
+     |
+1660 |     function assertNotEq(bool[] calldata left, bool[] calldata right, string calldata error) external pure;
+     |                                                                       ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1666:77:
+     |
+1666 |     function assertNotEq(uint256[] calldata left, uint256[] calldata right, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1672:75:
+     |
+1672 |     function assertNotEq(int256[] calldata left, int256[] calldata right, string calldata error) external pure;
+     |                                                                           ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1681:77:
+     |
+1681 |     function assertNotEq(address[] calldata left, address[] calldata right, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1687:77:
+     |
+1687 |     function assertNotEq(bytes32[] calldata left, bytes32[] calldata right, string calldata error) external pure;
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1693:75:
+     |
+1693 |     function assertNotEq(string[] calldata left, string[] calldata right, string calldata error) external pure;
+     |                                                                           ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1699:73:
+     |
+1699 |     function assertNotEq(bytes[] calldata left, bytes[] calldata right, string calldata error) external pure;
+     |                                                                         ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1702:55:
+     |
+1702 |     function assertNotEq(uint256 left, uint256 right, string calldata error) external pure;
+     |                                                       ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1708:53:
+     |
+1708 |     function assertNotEq(int256 left, int256 right, string calldata error) external pure;
+     |                                                     ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1714:55:
+     |
+1714 |     function assertNotEq(address left, address right, string calldata error) external pure;
+     |                                                       ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1720:55:
+     |
+1720 |     function assertNotEq(bytes32 left, bytes32 right, string calldata error) external pure;
+     |                                                       ^^^^^^^^^^^^^^^^^^^^^
+
+Warning (6335): "error" will be promoted to keyword in the future and will not be allowed as an identifier anymore.
+    --> lib/forge-std/src/Vm.sol:1726:41:
+     |
+1726 |     function assertTrue(bool condition, string calldata error) external pure;
+     |                                         ^^^^^^^^^^^^^^^^^^^^^
+
+
+Running 1 tests for test/Solvency.t.sol:Solvency
+
+
+╭─ Initial Invariant Target Functions ─╮
+│ Solvency.t.sol:Actor @ 0xaaaa0006    │
+│ ├── deposit(uint96)                  │
+│ └── withdraw(uint96)                 │
+│                                      │
+│ Solvency.t.sol:Actor @ 0xaaaa0005    │
+│ ├── deposit(uint96)                  │
+│ └── withdraw(uint96)                 │
+╰──────────────────────────────────────╯
+
+
+[31mCounterexample: 
+    halmos_block_timestamp_depth1_7466d04 = 0x8000000000000000
+    halmos_block_timestamp_depth2_9db1938 = 0x8000000000000000
+    halmos_block_timestamp_depth3_c0c23b4 = 0x8000000000000000
+    halmos_block_timestamp_depth4_5af9bb0 = 0x8000000000000000
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_2468834_23 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_5232581_11 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_599afc7_15 = 0x00
+    halmos_msg_value_0x00000000000000000000000000000000aaaa0006_66c217e_03 = 0x00
+    p_amount_uint96_04ad592_24 = 0x40000000000000000
+    p_amount_uint96_35b2730_04 = 0x01
+    p_amount_uint96_6029143_16 = 0x01
+    p_amount_uint96_74404af_12 = 0x01[0m
+Sequence:
+    [36mCALL[0m 0xaaaa0006::deposit(p_amount_uint96_35b2730_04) (value: halmos_msg_value_0x00000000000000000000000000000000aaaa0006_66c217e_03) (caller: halmos_msg_sender_0x00000000000000000000000000000000aaaa0006_eb5e71e_02)
+        [36mCALL[0m 0xaaaa0004::deposit(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))) (caller: 0xaaaa0006)
+            [36mSLOAD[0m  @[95m0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0003
+            [36mDELEGATECALL[0m 0xaaaa0004::deposit(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))) (caller: 0xaaaa0006)
+                [36mSLOAD[0m  @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m → 0x00
+                [36mSSTORE[0m @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m ← 0x0000000000000000000000000000000000000000000000000000000000000001
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m → 0x0000000000000000000000000000000000000000000000056bc75e2d63100000
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416803[0m → 0x00000000000000000000000000000000000000000000003635c9adc5dea00000
+                [36mSLOAD[0m  @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m → 0x00
+                [36mSSTORE[0m @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m ← Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))
+                [36mSSTORE[0m @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0002
+                [36mCALL[0m 0xaaaa0002::transferFrom(Concat(0x00000000000000000000000000000000000000000000000000000000aaaa000600000000000000000000000000000000000000000000000000000000aaaa00040000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))) (caller: 0xaaaa0004)
+                    [36mSLOAD[0m  @[95m0xf5f0e89d9b5820b4e9805ee8c2dfbffd2088ec019c46e0df87d99e7c13aa4a6c[0m → 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+                    [36mSLOAD[0m  @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m → 0x0000000000000000000000000000000000000000000000008ac7230489e80000
+                    [36mSSTORE[0m @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m ← +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))))
+                    [36mSLOAD[0m  @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m → 0x0000000000000000000000000000000000000000000000056bc75e2d63100000
+                    [36mSSTORE[0m @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)))
+                    LOG3([36mtopic0[0m=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef, [36mtopic1[0m=0xaaaa0006, [36mtopic2[0m=0xaaaa0004, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)))
+                [32m↩ [0m[36mRETURN[0m [32m0x0000000000000000000000000000000000000000000000000000000000000001[0m[32m[0m
+                LOG2([36mtopic0[0m=0x2da466a7b24304f47e87fa2e1e5a81b9831ce54fec19055ce277ca2f39ba42c4, [36mtopic1[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)))
+            [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+        [32m↩ [0m[36mRETURN[0m [32m0x[0m[32m[0m
+    [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+    [36mCALL[0m 0xaaaa0006::withdraw(p_amount_uint96_74404af_12) (value: halmos_msg_value_0x00000000000000000000000000000000aaaa0006_5232581_11) (caller: halmos_msg_sender_0x00000000000000000000000000000000aaaa0006_462f4cf_10)
+        [36mCALL[0m 0xaaaa0004::withdraw(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))) (caller: 0xaaaa0006)
+            [36mSLOAD[0m  @[95m0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0003
+            [36mDELEGATECALL[0m 0xaaaa0004::withdraw(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))) (caller: 0xaaaa0006)
+                [36mSLOAD[0m  @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m → 0x0000000000000000000000000000000000000000000000000000000000000001
+                [36mSSTORE[0m @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m ← 0x0000000000000000000000000000000000000000000000000000000000000002
+                [36mSLOAD[0m  @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m → Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))
+                [36mSSTORE[0m @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m ← +(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)))
+                [36mSSTORE[0m @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0002
+                [36mCALL[0m 0xaaaa0002::transfer(Concat(0x00000000000000000000000000000000000000000000000000000000aaaa00060000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))) (caller: 0xaaaa0004)
+                    [36mSLOAD[0m  @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)))
+                    [36mSSTORE[0m @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                    [36mSLOAD[0m  @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m → +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))))
+                    [36mSSTORE[0m @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m ← +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))))
+                    LOG3([36mtopic0[0m=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef, [36mtopic1[0m=0xaaaa0004, [36mtopic2[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12)))
+                [32m↩ [0m[36mRETURN[0m [32m0x0000000000000000000000000000000000000000000000000000000000000001[0m[32m[0m
+                LOG2([36mtopic0[0m=0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5, [36mtopic1[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12)))
+            [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+        [32m↩ [0m[36mRETURN[0m [32m0x[0m[32m[0m
+    [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+    [36mCALL[0m 0xaaaa0006::deposit(p_amount_uint96_6029143_16) (value: halmos_msg_value_0x00000000000000000000000000000000aaaa0006_599afc7_15) (caller: halmos_msg_sender_0x00000000000000000000000000000000aaaa0006_550fa33_14)
+        [36mCALL[0m 0xaaaa0004::deposit(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16))) (caller: 0xaaaa0006)
+            [36mSLOAD[0m  @[95m0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0003
+            [36mDELEGATECALL[0m 0xaaaa0004::deposit(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16))) (caller: 0xaaaa0006)
+                [36mSLOAD[0m  @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m → 0x0000000000000000000000000000000000000000000000000000000000000002
+                [36mSSTORE[0m @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m ← 0x0000000000000000000000000000000000000000000000000000000000000003
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416803[0m → 0x00000000000000000000000000000000000000000000003635c9adc5dea00000
+                [36mSLOAD[0m  @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m → +(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                [36mSSTORE[0m @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m ← +(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                [36mSSTORE[0m @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0002
+                [36mCALL[0m 0xaaaa0002::transferFrom(Concat(0x00000000000000000000000000000000000000000000000000000000aaaa000600000000000000000000000000000000000000000000000000000000aaaa00040000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16))) (caller: 0xaaaa0004)
+                    [36mSLOAD[0m  @[95m0xf5f0e89d9b5820b4e9805ee8c2dfbffd2088ec019c46e0df87d99e7c13aa4a6c[0m → 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+                    [36mSLOAD[0m  @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m → +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))))
+                    [36mSSTORE[0m @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m ← +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16))))
+                    [36mSLOAD[0m  @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                    [36mSSTORE[0m @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                    LOG3([36mtopic0[0m=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef, [36mtopic1[0m=0xaaaa0006, [36mtopic2[0m=0xaaaa0004, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)))
+                [32m↩ [0m[36mRETURN[0m [32m0x0000000000000000000000000000000000000000000000000000000000000001[0m[32m[0m
+                LOG2([36mtopic0[0m=0x2da466a7b24304f47e87fa2e1e5a81b9831ce54fec19055ce277ca2f39ba42c4, [36mtopic1[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)))
+            [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+        [32m↩ [0m[36mRETURN[0m [32m0x[0m[32m[0m
+    [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+    [36mCALL[0m 0xaaaa0006::withdraw(p_amount_uint96_04ad592_24) (value: halmos_msg_value_0x00000000000000000000000000000000aaaa0006_2468834_23) (caller: halmos_msg_sender_0x00000000000000000000000000000000aaaa0006_012569d_22)
+        [36mCALL[0m 0xaaaa0004::withdraw(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_04ad592_24))) (caller: 0xaaaa0006)
+            [36mSLOAD[0m  @[95m0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0003
+            [36mDELEGATECALL[0m 0xaaaa0004::withdraw(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_04ad592_24))) (caller: 0xaaaa0006)
+                [36mSLOAD[0m  @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m → 0x0000000000000000000000000000000000000000000000000000000000000003
+                [36mSLOAD[0m  @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m → +(Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                [36mSSTORE[0m @[95m0x486c1f2b3a223f917b4801feb6ad0cdae4c12e2f892d9afa4c500909672b9418[0m ← 0x0000000000000000000000000000000000000000000000000000000000000000
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                [36mSSTORE[0m @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416802[0m ← 0x0000000000000000000000000000000000000000000000056bc75e2d63100000
+                [36mSSTORE[0m @[95m0xc8115b747ec27ae7b1fd143c533517c8272ebb483e0f3427bba715059314243f[0m ← 0x0000000000000000000000000000000000000000000000000000000000000000
+                [36mSLOAD[0m  @[95m0x199cdf1a4abaec4823e24931ac666120eb2410beefcb1fe17a5d0d2c4f416800[0m → 0x00000000000000000000000000000000000000000000000000000000aaaa0002
+                [36mCALL[0m 0xaaaa0002::transfer(Concat(0x00000000000000000000000000000000000000000000000000000000aaaa00060000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_04ad592_24))) (caller: 0xaaaa0004)
+                    [36mSLOAD[0m  @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m → +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))))
+                    [36mSSTORE[0m @[95m0x9cbe99521f3a4e2f27a0c7e94ebc53412b6f663f2ce4078fb806ada4a0d12382[0m ← +(0x0000000000000000000000000000000000000000000000056bc75e2d63100000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12))), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_04ad592_24))))
+                    [36mSLOAD[0m  @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m → +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16))))
+                    [36mSSTORE[0m @[95m0x9a443b533841f80fdd613660918a5d7c14bda507ca948f5a8f5d1baa220a174[0m ← +(0x0000000000000000000000000000000000000000000000008ac7230489e80000, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_04ad592_24)), Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_74404af_12)), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_35b2730_04))), *(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_6029143_16))))
+                    LOG3([36mtopic0[0m=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef, [36mtopic1[0m=0xaaaa0004, [36mtopic2[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_04ad592_24)))
+                [32m↩ [0m[36mRETURN[0m [32m0x0000000000000000000000000000000000000000000000000000000000000001[0m[32m[0m
+                LOG2([36mtopic0[0m=0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5, [36mtopic1[0m=0xaaaa0006, [36mdata[0m=Concat(0x0000000000000000000000000000000000000000, Extract(0x5f, 0x00, p_amount_uint96_04ad592_24)))
+            [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+        [32m↩ [0m[36mRETURN[0m [32m0x[0m[32m[0m
+    [32m↩ [0m[36mSTOP[0m [32m0x[0m[32m[0m
+
+[31m[FAIL][0m invariant_solvency() (paths: 398, time: 60.45s, bounds: [])
+Symbolic test result: 0 passed; 1 failed; time: 60.82s
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Honest.sol:50:9
+   │
+50 │         emit Deposited(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Honest.sol:60:9
+   │
+60 │         emit Withdrawn(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV1.sol:40:9
+   │
+40 │         emit Deposited(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV1.sol:50:9
+   │
+50 │         emit Withdrawn(msg.sender, amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+   ╭▸ src/demo/VaultV2Drain.sol:34:13
+   │
+34 │             emit Withdrawn(msg.sender, amount);
+   │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+{
+    "exitcode": 1,
+    "test_results": {
+        "test/Solvency.t.sol:Solvency": [
+            {
+                "name": "invariant_solvency()",
+                "exitcode": 1,
+                "num_models": 1,
+                "models": [
+                    {
+                        "model": {
+                            "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_66c217e_03": {
+                                "full_name": "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_66c217e_03",
+                                "variable_name": "msg",
+                                "solidity_type": "value",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 0
+                            },
+                            "p_amount_uint96_35b2730_04": {
+                                "full_name": "p_amount_uint96_35b2730_04",
+                                "variable_name": "amount",
+                                "solidity_type": "uint96",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 1
+                            },
+                            "halmos_block_timestamp_depth1_7466d04": {
+                                "full_name": "halmos_block_timestamp_depth1_7466d04",
+                                "variable_name": "block",
+                                "solidity_type": "timestamp",
+                                "smt_type": "BitVec 64",
+                                "size_bits": 64,
+                                "value": 9223372036854775808
+                            },
+                            "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_5232581_11": {
+                                "full_name": "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_5232581_11",
+                                "variable_name": "msg",
+                                "solidity_type": "value",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 0
+                            },
+                            "p_amount_uint96_74404af_12": {
+                                "full_name": "p_amount_uint96_74404af_12",
+                                "variable_name": "amount",
+                                "solidity_type": "uint96",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 1
+                            },
+                            "halmos_block_timestamp_depth2_9db1938": {
+                                "full_name": "halmos_block_timestamp_depth2_9db1938",
+                                "variable_name": "block",
+                                "solidity_type": "timestamp",
+                                "smt_type": "BitVec 64",
+                                "size_bits": 64,
+                                "value": 9223372036854775808
+                            },
+                            "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_599afc7_15": {
+                                "full_name": "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_599afc7_15",
+                                "variable_name": "msg",
+                                "solidity_type": "value",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 0
+                            },
+                            "p_amount_uint96_6029143_16": {
+                                "full_name": "p_amount_uint96_6029143_16",
+                                "variable_name": "amount",
+                                "solidity_type": "uint96",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 1
+                            },
+                            "halmos_block_timestamp_depth3_c0c23b4": {
+                                "full_name": "halmos_block_timestamp_depth3_c0c23b4",
+                                "variable_name": "block",
+                                "solidity_type": "timestamp",
+                                "smt_type": "BitVec 64",
+                                "size_bits": 64,
+                                "value": 9223372036854775808
+                            },
+                            "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_2468834_23": {
+                                "full_name": "halmos_msg_value_0x00000000000000000000000000000000aaaa0006_2468834_23",
+                                "variable_name": "msg",
+                                "solidity_type": "value",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 0
+                            },
+                            "p_amount_uint96_04ad592_24": {
+                                "full_name": "p_amount_uint96_04ad592_24",
+                                "variable_name": "amount",
+                                "solidity_type": "uint96",
+                                "smt_type": "BitVec 256",
+                                "size_bits": 256,
+                                "value": 73786976294838206464
+                            },
+                            "halmos_block_timestamp_depth4_5af9bb0": {
+                                "full_name": "halmos_block_timestamp_depth4_5af9bb0",
+                                "variable_name": "block",
+                                "solidity_type": "timestamp",
+                                "smt_type": "BitVec 64",
+                                "size_bits": 64,
+                                "value": 9223372036854775808
+                            }
+                        },
+                        "is_valid": true
+                    }
+                ],
+                "num_paths": [
+                    398,
+                    396,
+                    0
+                ],
+                "time": [
+                    60.454107554000075,
+                    60.45383238600016,
+                    0.0002695019998100179
+                ],
+                "num_bounded_loops": 0
+            }
+        ]
+    }
+}

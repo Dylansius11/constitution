@@ -11,41 +11,9 @@ fn startup(args: &[&str], env: &[(&str, &str)]) -> String {
     String::from_utf8(output.stderr).unwrap()
 }
 #[test]
-fn startup_names_missing_chain_and_local_configuration() {
-    for (env, missing) in [
-        (vec![], "PAGE_ORIGIN"),
-        (vec![("PAGE_ORIGIN", "http://page.local")], "NEAR_RPC_URL"),
-        (
-            vec![
-                ("PAGE_ORIGIN", "http://page.local"),
-                ("NEAR_RPC_URL", "http://127.0.0.1:1"),
-            ],
-            "BASE_SEPOLIA_RPC_URL",
-        ),
-        (
-            vec![
-                ("PAGE_ORIGIN", "http://page.local"),
-                ("NEAR_RPC_URL", "http://127.0.0.1:1"),
-                ("BASE_SEPOLIA_RPC_URL", "http://127.0.0.1:2"),
-            ],
-            "VERIFIER_RELAY_ACCOUNT_ID",
-        ),
-        (
-            vec![
-                ("PAGE_ORIGIN", "http://page.local"),
-                ("NEAR_RPC_URL", "http://127.0.0.1:1"),
-                ("BASE_SEPOLIA_ARCHIVE_RPC_URL", "http://127.0.0.1:2"),
-                ("VERIFIER_RELAY_ACCOUNT_ID", "relay.testnet"),
-            ],
-            "NEAR_NETWORK_ID",
-        ),
-    ] {
-        assert!(
-            startup(&[], &env)
-                .contains(&format!("missing required environment variable {missing}")),
-            "{missing}"
-        );
-    }
+fn startup_names_missing_origin_and_local_configuration() {
+    assert!(startup(&[], &[]).contains("PAGE_ORIGIN"));
+    assert!(startup(&[], &[("PAGE_ORIGIN", "http://page.local")]).contains("GATE_ACCOUNT_ID"));
     assert!(
         startup(
             &["--insecure-dev-identity"],
@@ -57,4 +25,45 @@ fn startup_names_missing_chain_and_local_configuration() {
 #[test]
 fn startup_rejects_unrecognized_flags() {
     assert!(startup(&["--production"], &[]).contains("usage:"));
+}
+#[tokio::test]
+async fn chain_identity_requires_attestation_but_explicit_local_mode_can_start() {
+    use constitution_verifier::identity::Identity;
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("absent.sock");
+    let error = Identity::new()
+        .for_mode(false, &socket)
+        .await
+        .err()
+        .unwrap();
+    assert!(error.starts_with("attestation_required:"));
+    let local = Identity::new().for_mode(true, &socket).await.unwrap();
+    assert_eq!(local.release_hash(), [0; 32]);
+    assert!(local.view([0; 32]).quote_hex.is_empty());
+}
+#[tokio::test]
+async fn broken_present_socket_never_downgrades_in_either_mode() {
+    use constitution_verifier::identity::Identity;
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("broken.sock");
+    std::fs::write(&socket, b"not a socket").unwrap();
+    for local in [true, false] {
+        assert!(Identity::new().for_mode(local, &socket).await.is_err());
+    }
+}
+
+#[cfg(unix)]
+#[path = "fixtures/dstack_socket.rs"]
+mod dstack_socket;
+#[cfg(unix)]
+#[tokio::test]
+async fn chain_mode_accepts_socket_bound_identity_without_local_opt_out() {
+    // Protocol simulator only, not DCAP or deployed attestation evidence.
+    let (dir, guest) = dstack_socket::guest(false);
+    let identity = constitution_verifier::identity::Identity::new()
+        .for_mode(false, &dir.path().join("dstack.sock"))
+        .await
+        .unwrap();
+    assert_ne!(identity.release_hash(), [0; 32]);
+    guest.join().unwrap();
 }

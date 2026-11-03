@@ -24,6 +24,26 @@ pub struct LocalProposal {
 }
 pub trait ProposalSource: Send + Sync {
     fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String>;
+    /// Chain sources pin one gate; local registries remain explicitly offline.
+    fn gate_account(&self) -> Option<&AccountId> {
+        None
+    }
+    /// Verify the secret source commitment before expensive chain observations.
+    fn get_for_bundle(
+        &self,
+        gate: &AccountId,
+        id: u64,
+        commitment: [u8; 32],
+    ) -> Result<Option<LocalProposal>, String> {
+        let proposal = self.get(gate, id)?;
+        if proposal
+            .as_ref()
+            .is_some_and(|p| p.source_commitment.0 != commitment)
+        {
+            return Err("bad_bundle".into());
+        }
+        Ok(proposal)
+    }
     fn archive_provider(&self) -> String;
     /// Used only for archive calls; never include this credential-bearing URL in evidence.
     fn archive_rpc(&self) -> Option<String>;

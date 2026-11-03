@@ -20,9 +20,15 @@ pub struct GateSource {
     base_rpc: reqwest::Url,
     rule_set_hash: [u8; 32],
     confirmations: u64,
+    gate: AccountId,
 }
 impl GateSource {
-    pub fn new(near_rpc: &str, base_rpc: &str, manifest: &RuleSetManifest) -> Result<Self, String> {
+    pub fn new(
+        near_rpc: &str,
+        base_rpc: &str,
+        manifest: &RuleSetManifest,
+        gate: AccountId,
+    ) -> Result<Self, String> {
         fn url(value: &str) -> Result<reqwest::Url, String> {
             let url = reqwest::Url::parse(value).map_err(|_| "invalid RPC URL")?;
             if !matches!(url.scheme(), "http" | "https") {
@@ -35,6 +41,7 @@ impl GateSource {
             base_rpc: url(base_rpc)?,
             rule_set_hash: rule_set_hash(manifest).map_err(|e| e.to_string())?,
             confirmations: u64::from(manifest.r5.confirmations),
+            gate,
         })
     }
 }
@@ -59,8 +66,8 @@ impl Rpc {
         if value["jsonrpc"] != "2.0" || value["id"] != 1 {
             return Err(format!("{method} RPC invalid envelope"));
         }
-        if let Some(error) = value.get("error") {
-            return Err(format!("{method} RPC error: {error}"));
+        if value.get("error").is_some() {
+            return Err(format!("{method} RPC error"));
         }
         let result = value
             .get("result")
@@ -92,6 +99,17 @@ fn quantity(text: &str) -> Result<u64, String> {
     u64::from_str_radix(digits, 16).map_err(|e| format!("invalid hex quantity: {e}"))
 }
 impl ProposalSource for GateSource {
+    fn gate_account(&self) -> Option<&AccountId> {
+        Some(&self.gate)
+    }
+    fn get_for_bundle(
+        &self,
+        gate: &AccountId,
+        id: u64,
+        commitment: [u8; 32],
+    ) -> Result<Option<LocalProposal>, String> {
+        self.observe(gate, id, Some(commitment))
+    }
     fn archive_rpc(&self) -> Option<String> {
         Some(self.base_rpc.as_str().to_owned())
     }
@@ -104,11 +122,23 @@ impl ProposalSource for GateSource {
         )
     }
     fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String> {
+        self.observe(gate, id, None)
+    }
+}
+impl GateSource {
+    fn observe(
+        &self,
+        gate: &AccountId,
+        id: u64,
+        commitment: Option<[u8; 32]>,
+    ) -> Result<Option<LocalProposal>, String> {
+        if gate != &self.gate {
+            return Err("wrong_gate".into());
+        }
         let rpc = Rpc(reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| e.without_url().to_string())?);
-        let config: Config = rpc.view(&self.near_rpc, gate, "get_config", json!({}))?;
+            .map_err(|_| "rpc_unavailable")?);
         let proposal: Option<Proposal> =
             rpc.view(&self.near_rpc, gate, "get_proposal", json!({"id":id}))?;
         let Some(p) = proposal else { return Ok(None) };
@@ -121,6 +151,10 @@ impl ProposalSource for GateSource {
         if p.rule_set_hash != self.rule_set_hash {
             return Err("unsupported rule_set_hash".into());
         }
+        if commitment.is_some_and(|hash| hash != p.source_commitment) {
+            return Err("bad_bundle".into());
+        }
+        let config: Config = rpc.view(&self.near_rpc, gate, "get_config", json!({}))?;
         let latest: String = rpc.call(&self.base_rpc, "eth_blockNumber", json!([]))?;
         let number = quantity(&latest)?
             .checked_sub(self.confirmations)

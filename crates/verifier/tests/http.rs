@@ -135,6 +135,7 @@ async fn http_registry_prechecks_cors_and_no_caller_supplied_hashes() {
         request(&base, "GET", "/v1/identity", None, "https://page.local").await;
     assert_eq!(code, 200);
     assert!(headers.contains("access-control-allow-origin: https://page.local"));
+    assert!(headers.contains("access-control-expose-headers: retry-after"));
     assert!(!headers.contains("access-control-allow-credentials"));
     assert_eq!(identity["quote_hex"], "");
     assert!(identity["label"].as_str().unwrap().contains("not attested"));
@@ -161,7 +162,7 @@ async fn http_registry_prechecks_cors_and_no_caller_supplied_hashes() {
         .0,
         202
     );
-    assert_eq!(request(&base,"POST","/v1/runs",Some(serde_json::json!({"gate":p.gate,"proposal_id":99,"sealed_bundle_b64":Base64Bytes(vec![])})),"https://page.local").await.0,404);
+    assert_eq!(request(&base,"POST","/v1/runs",Some(serde_json::json!({"gate":p.gate,"proposal_id":99,"sealed_bundle_b64":body["sealed_bundle_b64"]})),"https://page.local").await.0,404);
     let (code, _, started) =
         request(&base, "POST", "/v1/runs", Some(body), "https://page.local").await;
     assert_eq!(code, 202);
@@ -178,7 +179,7 @@ async fn http_registry_prechecks_cors_and_no_caller_supplied_hashes() {
         .await;
         assert_eq!(code, 200);
         assert!(!headers.contains("access-control-allow-origin"));
-        if result["stage"] == "done" {
+        if matches!(result["stage"].as_str(), Some("done" | "failed")) {
             break result;
         }
         assert!(

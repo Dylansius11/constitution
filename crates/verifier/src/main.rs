@@ -1,4 +1,4 @@
-//! Chain-connected by default; dstack evidence is selected only when its socket exists.
+//! Chain-connected mode requires a socket-attested identity; local mode is explicit.
 use constitution_verifier::{
     api::{Service, router},
     chain::GateSource,
@@ -24,7 +24,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repo = std::env::current_dir()?;
     let manifest = load_manifest(repo.join("rules/manifest.json"))?;
     let origin = required("PAGE_ORIGIN")?;
-    let identity = Identity::new().attest_if_present().await?;
+    let gate = if local {
+        None
+    } else {
+        Some(
+            required("GATE_ACCOUNT_ID")?
+                .parse()
+                .map_err(|_| "invalid GATE_ACCOUNT_ID")?,
+        )
+    };
+    let identity = Identity::new()
+        .for_mode(
+            local,
+            std::path::Path::new(constitution_verifier::identity::DSTACK_SOCKET),
+        )
+        .await?;
     let identity_label = identity.view([0; 32]).label;
     let service = if local {
         let registry = required("LOCAL_PROPOSAL_REGISTRY")?;
@@ -35,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::new(LocalRegistry::load(registry)?),
         )?
     } else {
+        let gate = gate.ok_or("missing GATE_ACCOUNT_ID")?;
         let near_rpc = required("NEAR_RPC_URL")?;
         let base_rpc = match std::env::var("BASE_SEPOLIA_ARCHIVE_RPC_URL") {
             Ok(value) if !value.trim().is_empty() => value,
@@ -48,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .join(required("NEAR_NETWORK_ID")?)
                 .join(format!("{account}.json")),
         };
-        let source = GateSource::new(&near_rpc, &base_rpc, &manifest)?;
+        let source = GateSource::new(&near_rpc, &base_rpc, &manifest, gate)?;
         let submitter = NearSubmitter::new(&near_rpc, &account, &keyfile)?;
         Service::with_submitter(
             identity,
@@ -61,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = router(service, &origin)?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8787").await?;
     eprintln!(
-        "verifier listening on 127.0.0.1:8787; {identity_label}; no Pass certificates; mode={}",
+        "verifier listening on 127.0.0.1:8787; {identity_label}; Pass requires provider_tee review; mode={}",
         if local {
             "local registry (no submission)"
         } else {

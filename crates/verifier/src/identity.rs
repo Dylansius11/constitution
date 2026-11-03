@@ -91,12 +91,12 @@ impl Identity {
             .as_ref()
             .map_or([0; 32], |a| a.release_hash)
     }
-    pub async fn attest_if_present(self) -> Result<Self, String> {
-        if Path::new(DSTACK_SOCKET)
-            .try_exists()
-            .map_err(|e| e.to_string())?
-        {
-            self.attest(Path::new(DSTACK_SOCKET)).await
+    /// Local mode is an explicit opt-out; a present but broken socket never downgrades.
+    pub async fn for_mode(self, local: bool, socket: &Path) -> Result<Self, String> {
+        if socket.try_exists().map_err(|e| e.to_string())? {
+            self.attest(socket).await
+        } else if !local {
+            Err("attestation_required: dstack socket missing; use --insecure-dev-identity only for offline development".into())
         } else {
             Ok(self)
         }

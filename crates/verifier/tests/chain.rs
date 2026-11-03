@@ -116,9 +116,14 @@ async fn observe(
             .await
             .unwrap()
     });
-    let source = GateSource::new(&url, &url, &m).unwrap();
+    let source = GateSource::new(&url, &url, &m, "gate.testnet".parse().unwrap()).unwrap();
     let result = tokio::task::spawn_blocking(move || {
-        source.get(&"gate.testnet".parse::<AccountId>().unwrap(), 7)
+        let gate = "gate.testnet".parse::<AccountId>().unwrap();
+        match fault {
+            "commitment" => source.get_for_bundle(&gate, 7, [0; 32]),
+            "wrong_gate" => source.get(&"other.testnet".parse().unwrap(), 7),
+            _ => source.get(&gate, 7),
+        }
     })
     .await
     .unwrap();
@@ -181,6 +186,7 @@ fn chain_provenance_exposes_hosts_not_rpc_credentials() {
         "https://alice:password@near.example/api/secret?key=hidden",
         "https://bob:password@base.example/secret?key=hidden",
         &manifest(),
+        "gate.testnet".parse().unwrap(),
     )
     .unwrap();
     assert_eq!(
@@ -196,4 +202,15 @@ fn chain_provenance_exposes_hosts_not_rpc_credentials() {
     std::fs::write(&file, b"[]").unwrap();
     let local = constitution_verifier::proposals::LocalRegistry::load(file).unwrap();
     assert!(local.archive_rpc().is_none());
+}
+
+#[tokio::test]
+async fn gate_and_source_commitment_prechecks_avoid_expensive_observations() {
+    let (result, calls) = observe("wrong_gate").await;
+    assert_eq!(result.unwrap_err(), "wrong_gate");
+    assert!(calls.is_empty());
+    let (result, calls) = observe("commitment").await;
+    assert_eq!(result.unwrap_err(), "bad_bundle");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0]["params"]["method_name"], "get_proposal");
 }

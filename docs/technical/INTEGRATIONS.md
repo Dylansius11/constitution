@@ -37,7 +37,7 @@ One convention for the whole repo. `.env.example` will list these names with emp
 | --- | --- | --- | --- |
 | `NEAR_NETWORK_ID` | cli, verifier | `testnet` | public |
 | `NEAR_RPC_URL` | cli, verifier | `https://test.rpc.fastnear.com` | public |
-| `GATE_ACCOUNT_ID` | cli, verifier, page | gate account | public |
+| `GATE_ACCOUNT_ID` | cli, verifier, page | gate account; required at verifier startup in chain-connected mode; other request gates return `400 wrong_gate` before RPC | public |
 | `GUARDIAN_ACCOUNT_ID` | cli | guardian account (keys in NEAR keychain) | public id |
 | `DEMO_GOVERNOR_ACCOUNT_ID` | page, cli | public demo account (D17) | public |
 | `PUBLIC_DEMO_GOVERNOR_KEY` | page | function-call key shown as QR; public by design, testnet only | public by design |
