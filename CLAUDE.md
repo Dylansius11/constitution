@@ -29,7 +29,16 @@ Planning permission is not implementation permission. No git init, scaffolding, 
 
 ## Commits when authorized
 
-One behavior per commit, 50 to 350 changed lines excluding lock and generated files; a complete docs or config unit may be smaller. Split large behaviors at coherent boundaries (types, contract logic with tests, CLI, page, fix-ups), never pad. Subject `feat|fix|refactor|test|docs|perf|chore(scope): outcome in plain words`; body says why and the observed proof (test names, tx hashes). No AI attribution. Stage only the unit's paths. Docs describing changed behavior and the satisfied BUILD-PLAN checkbox ride in the same commit. Never commit secrets, `.env`, `.claude/skills/`, `scratch/`, build output. Clean tree and `git pull --rebase` before work and before any push; push only when the founder asks; never force-push.
+One behavior per commit, 50 to 350 changed lines excluding lock and generated files; a complete docs or config unit may be smaller. Split large behaviors at coherent boundaries (types, contract logic with tests, CLI, page, fix-ups), never pad. Subject `feat|fix|refactor|test|docs|perf|chore(scope): outcome in plain words`; body says why and the observed proof (test names, tx hashes). No AI attribution. Stage only the unit's paths. Docs describing changed behavior and the satisfied BUILD-PLAN checkbox ride in the same commit. Never commit secrets, `.env`, `.claude/skills/`, `scratch/`, build output. Clean tree and `git pull --rebase` before work and before any push; never force-push.
+
+## Branches and pull requests
+
+Remote: `origin` = `github.com/Dylansius11/constitution` (private until the founder publishes it, B6). Default branch is `dev`; `main` holds only what is ready to submit.
+
+- Never commit to `dev` or `main` directly. Work on a branch cut from fresh `dev`: `feat/<scope>`, `fix/<scope>`, `docs/<scope>`, `test/<scope>`, `chore/<scope>`.
+- Push the branch and open a PR into `dev` with `gh pr create --base dev`. The PR body says why, the checks run and their observed result, and anything unproven. Merge with a merge commit or fast-forward only after the checks named in the PR passed; delete the branch afterwards.
+- `dev` goes into `main` by PR only, at a milestone (core gate, submission). Lead opens it; the founder merges the final one into `main`.
+- Pushing branches and opening PRs into `dev` is authorized. Merging into `main`, changing repo visibility, tags and releases need the founder.
 
 ## Docs discipline
 
