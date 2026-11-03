@@ -353,7 +353,7 @@ Residual risks are listed in PRD "Risks and guarantees".
 | Testnet dev | Spikes and iteration | Gate deployed **with** a developer key (labeled "dev, claim inactive"); audit fails by design |
 | Testnet activated | Demo and judging | Fresh gate account, keys deleted, executor + proxy deployed, verifier in Phala CVM |
 
-Compatibility spikes: P1.1 to P1.7 in BUILD-PLAN. Planned verification commands (not run): `cargo test -p constitution-types`, `cargo test -p constitution-gate`, `cargo near build reproducible-wasm` (in `crates/gate`), `forge test` (in `contracts`), `pnpm --dir tools/vectors-viem vectors`, `constitution audit --network testnet`. Observed evidence is recorded only in SMART-CONTRACT "Deployment and measured costs".
+Compatibility spikes: P1.1 to P1.7 in BUILD-PLAN. Planned verification commands (not run): `cargo test -p constitution-types`, `cargo test -p constitution-gate`, `cargo near build reproducible-wasm` (in `crates/gate`), `forge test` (in `contracts`), `pnpm --dir tools/vectors-viem vectors`, and the audit command in `scripts/activate.md` step 6 (`constitution audit --deployment deployments/testnet.json --manifest ... --executor-artifact ... --near-rpc ... --evm-rpc ...`; the CLI has no `--network` flag). Observed evidence is recorded only in SMART-CONTRACT "Deployment and measured costs".
 
 ## Sources
 
