@@ -4,6 +4,12 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-03: A trailing slash in .gitignore does not ignore symlinks
+
+- What happened: a temporary worktree linked `web/node_modules` to the main tree with a Windows junction; `git add web` committed the junction because `.gitignore` said `node_modules/`.
+- Root cause: a pattern ending in `/` matches only directories, and git sees a junction or symlink as a file (gitignore documentation). The commits were local, so they were rewritten before any push.
+- Rule: ignore dependency folders without the trailing slash (`node_modules`), and list a worktree's staged paths before committing.
+
 ### 2026-11-03: An unbounded Halmos branch timeout makes depth 4 look infeasible
 
 - What happened: the first R2 probes classified VaultV2Honest Incomplete at depth 3 and 4; a one-actor depth-3 run took 100 s with `--solver-timeout-branching 0` and 11 s with `1ms`.
