@@ -3,10 +3,13 @@ mod audit;
 mod failure;
 mod govern;
 mod near_tx;
+mod propose;
+mod receipt;
 mod relay;
 mod rpc;
 mod rules;
 mod signed_tx;
+mod status;
 
 use clap::{Args, Parser, Subcommand};
 use failure::Failure;
@@ -26,6 +29,47 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Register canonical source and send its sealed bundle to a verifier (identity not appraised).
+    Propose {
+        #[command(flatten)]
+        signer: SignerArgs,
+        #[arg(long)]
+        bundle: PathBuf,
+        #[arg(long)]
+        contract: String,
+        #[arg(long = "impl")]
+        implementation: String,
+        #[arg(long, default_value = "0x")]
+        init: String,
+        #[arg(long, env = "VERIFIER_URL")]
+        verifier: String,
+        #[arg(
+            long,
+            env = "BASE_SEPOLIA_RPC_URL",
+            default_value = "https://sepolia.base.org"
+        )]
+        evm_rpc: String,
+    },
+    /// Read gate state and optionally verifier stages; poll every two seconds with --watch.
+    Status {
+        id: u64,
+        #[command(flatten)]
+        read: ReadArgs,
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long, value_name = "SECONDS")]
+        watch: Option<u64>,
+    },
+    /// Assemble constitution.receipt/1 from observed public state.
+    Receipt {
+        id: u64,
+        #[command(flatten)]
+        read: ReadArgs,
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Rule-set manifest tools.
     Rules {
         #[command(subcommand)]
@@ -98,6 +142,43 @@ enum RulesCommand {
     Hash { manifest: PathBuf },
 }
 
+#[derive(Args)]
+struct ReadArgs {
+    #[arg(long, env = "GATE_ACCOUNT_ID")]
+    gate: String,
+    #[arg(
+        long,
+        env = "NEAR_RPC_URL",
+        default_value = "https://test.rpc.fastnear.com"
+    )]
+    near_rpc: String,
+    #[arg(
+        long,
+        env = "BASE_SEPOLIA_RPC_URL",
+        default_value = "https://sepolia.base.org"
+    )]
+    evm_rpc: String,
+    #[arg(long, env = "VERIFIER_URL")]
+    verifier: Option<String>,
+    #[arg(long, default_value = "testnet", value_parser = ["testnet", "local"])]
+    network: String,
+}
+
+impl ReadArgs {
+    fn verifier(&self, run: Option<&str>) -> Result<Option<rpc::Verifier>, Failure> {
+        run.map(|_| {
+            let url = self.verifier.as_deref().ok_or_else(|| {
+                Failure::new(
+                    "--run requires a verifier URL",
+                    "pass --verifier or set VERIFIER_URL",
+                )
+            })?;
+            rpc::Verifier::new(url)
+        })
+        .transpose()
+    }
+}
+
 /// Who signs a NEAR write. The key file never leaves the machine.
 #[derive(Args)]
 struct SignerArgs {
@@ -164,6 +245,69 @@ enum GovernCommand {
 
 fn run(cli: Cli) -> Result<(), Failure> {
     match cli.command {
+        Command::Propose {
+            signer,
+            bundle,
+            contract,
+            implementation,
+            init,
+            verifier,
+            evm_rpc,
+        } => {
+            let bytes = propose::canonical_bytes(&propose::build_bundle(&bundle, &contract)?)?;
+            let (gate, writer) = signer.writer()?;
+            let account = signer
+                .account
+                .as_deref()
+                .expect("writer requires an account");
+            propose::propose(
+                propose::Input {
+                    bytes: &bytes,
+                    implementation: &implementation,
+                    init: &init,
+                    account,
+                },
+                &gate,
+                &writer,
+                &rpc::Near::new(&signer.near_rpc),
+                &rpc::Evm::new(&evm_rpc),
+                &rpc::Verifier::new(&verifier)?,
+            )
+        }
+        Command::Status {
+            id,
+            read,
+            run,
+            watch,
+        } => {
+            let verifier = read.verifier(run.as_deref())?;
+            status::status(
+                &rpc::Near::new(&read.near_rpc),
+                &read.gate,
+                id,
+                &rpc::Evm::new(&read.evm_rpc),
+                &read.network,
+                verifier.as_ref().zip(run.as_deref()),
+                watch.map(std::time::Duration::from_secs),
+            )
+        }
+        Command::Receipt {
+            id,
+            read,
+            run,
+            json,
+        } => {
+            let verifier = read.verifier(run.as_deref())?;
+            receipt::receipt(
+                &rpc::Near::new(&read.near_rpc),
+                &read.gate,
+                id,
+                &rpc::Evm::new(&read.evm_rpc),
+                &read.network,
+                verifier.as_ref().zip(run.as_deref()),
+                json,
+            )
+        }
         Command::Rules {
             command: RulesCommand::Hash { manifest },
         } => {
@@ -217,7 +361,29 @@ fn run(cli: Cli) -> Result<(), Failure> {
 }
 
 fn main() -> ExitCode {
-    match run(Cli::parse()) {
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error)
+            if matches!(
+                error.kind(),
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
+            ) =>
+        {
+            print!("{error}");
+            return ExitCode::SUCCESS;
+        }
+        Err(error) => {
+            eprintln!(
+                "{}",
+                Failure::new(
+                    error.to_string(),
+                    "run constitution <command> --help and correct the arguments"
+                )
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    match run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
             eprintln!("{failure}");
