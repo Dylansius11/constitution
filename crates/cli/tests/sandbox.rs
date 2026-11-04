@@ -145,13 +145,14 @@ async fn governance_waits_the_timelock_and_only_the_guardian_cancels()
 
     let cancelled = local.run(&local.guardian, &["govern", "cancel", "0"]);
     assert!(cancelled.status.success(), "{}", text(&cancelled));
+    // A cancelled change's body is deleted (storage metering), so the gate no longer returns it.
     let change: serde_json::Value = local
         .gate
         .view("get_change")
         .args_json(json!({ "id": 0 }))
         .await?
         .json()?;
-    assert_eq!(change["status"], "Cancelled");
+    assert!(change.is_null(), "{change}");
 
     let bad_kind = local.run(
         &local.governor,

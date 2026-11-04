@@ -190,11 +190,19 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
         callback_gas_tgas: 20,
     };
     gate.call("new").args_json(json!({"config":config, "constitution":Constitution {rule_set_hash:[5;32], manifest_uri:"local".into(), ai_required:true, params}, "roles":Roles {governor:account.id().clone(), guardian:account.id().clone()}, "verifiers":[(Base64([7;32]), VerifierRecord {release_hash:[6;32], attestation_uri:"local".into(), added_at_ns:0})], "initial_evm_nonce":0})).transact().await?.into_result()?;
-    // Credit is already unreserved. The command must attach only the 60 yoctoNEAR shortfall.
+    // Credit is already unreserved. The command must attach only the 60 yoctoNEAR shortfall; the
+    // first deposit to a new entry pays the gate's one-time entry fee out of the attached amount.
+    let entry_fee: U128Str = gate
+        .view("get_credit_entry_fee")
+        .args_json(json!({"account":account.id()}))
+        .await?
+        .json()?;
     account
         .call(gate.id(), "deposit_credit")
         .args_json(json!({"account":account.id()}))
-        .deposit(near_workspaces::types::NearToken::from_yoctonear(40))
+        .deposit(near_workspaces::types::NearToken::from_yoctonear(
+            40 + entry_fee.0,
+        ))
         .transact()
         .await?
         .into_result()?;
@@ -257,6 +265,7 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
     assert!(output.status.success(), "{}", text(&output));
     println!("SUCCESSFUL LOCAL PROPOSE OUTPUT:\n{}", text(&output));
     assert!(text(&output).contains("depositing credit: 60 yoctoNEAR"));
+    assert!(text(&output).contains("non-refundable proposal storage fee"));
     assert!(text(&output).contains("proposal 0"));
     assert!(text(&output).contains("NOT APPRAISED"));
     assert!(text(&output).contains("verifier run: 7"));
