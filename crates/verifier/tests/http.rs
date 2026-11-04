@@ -129,7 +129,9 @@ async fn http_registry_prechecks_cors_and_no_caller_supplied_hashes() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
+        constitution_verifier::api::serve(listener, app)
+            .await
+            .unwrap();
     });
     let (code, headers, identity) =
         request(&base, "GET", "/v1/identity", None, "https://page.local").await;

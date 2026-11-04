@@ -1,7 +1,7 @@
 //! Final NEAR views plus confirmed Base observations. Call from a blocking worker.
 use crate::{
     keccak,
-    proposals::{LocalProposal, ProposalSource},
+    proposals::{Admit, LocalProposal, ProposalSource, SourceError},
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use constitution_types::{
@@ -107,8 +107,9 @@ impl ProposalSource for GateSource {
         gate: &AccountId,
         id: u64,
         commitment: [u8; 32],
-    ) -> Result<Option<LocalProposal>, String> {
-        self.observe(gate, id, Some(commitment))
+        admit: Admit<'_>,
+    ) -> Result<Option<LocalProposal>, SourceError> {
+        self.observe(gate, id, Some((commitment, admit)))
     }
     fn archive_rpc(&self) -> Option<String> {
         Some(self.base_rpc.as_str().to_owned())
@@ -121,7 +122,7 @@ impl ProposalSource for GateSource {
             self.confirmations,
         )
     }
-    fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String> {
+    fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, SourceError> {
         self.observe(gate, id, None)
     }
 }
@@ -130,10 +131,10 @@ impl GateSource {
         &self,
         gate: &AccountId,
         id: u64,
-        commitment: Option<[u8; 32]>,
-    ) -> Result<Option<LocalProposal>, String> {
+        authenticate: Option<([u8; 32], Admit<'_>)>,
+    ) -> Result<Option<LocalProposal>, SourceError> {
         if gate != &self.gate {
-            return Err("wrong_gate".into());
+            return Err(SourceError::WrongGate);
         }
         let rpc = Rpc(reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -143,22 +144,28 @@ impl GateSource {
             rpc.view(&self.near_rpc, gate, "get_proposal", json!({"id":id}))?;
         let Some(p) = proposal else { return Ok(None) };
         if p.id != id {
-            return Err("get_proposal id mismatch".into());
+            return Err(SourceError::Unsupported("get_proposal id mismatch"));
         }
         if p.state != ProposalState::Pending {
-            return Err("proposal must be Pending".into());
+            return Err(SourceError::NotPending);
         }
         if p.rule_set_hash != self.rule_set_hash {
-            return Err("unsupported rule_set_hash".into());
+            return Err(SourceError::Unsupported("unsupported rule_set_hash"));
         }
-        if commitment.is_some_and(|hash| hash != p.source_commitment) {
-            return Err("bad_bundle".into());
+        if let Some((commitment, admit)) = authenticate {
+            if commitment != p.source_commitment {
+                return Err(SourceError::BadBundle);
+            }
+            admit()?;
         }
         let config: Config = rpc.view(&self.near_rpc, gate, "get_config", json!({}))?;
         let latest: String = rpc.call(&self.base_rpc, "eth_blockNumber", json!([]))?;
-        let number = quantity(&latest)?
-            .checked_sub(self.confirmations)
-            .ok_or("insufficient blocks for manifest confirmations")?;
+        let number =
+            quantity(&latest)?
+                .checked_sub(self.confirmations)
+                .ok_or(SourceError::NotReady(
+                    "insufficient blocks for manifest confirmations",
+                ))?;
         let tag = format!("0x{number:x}");
         #[derive(serde::Deserialize)]
         struct Block {
@@ -175,14 +182,16 @@ impl GateSource {
             json!([Hex20(config.proxy), IMPLEMENTATION_SLOT, tag]),
         )?;
         if slot.0[..12] != [0; 12] {
-            return Err("implementation slot high 12 bytes must be zero".into());
+            return Err(SourceError::Unsupported(
+                "implementation slot high 12 bytes must be zero",
+            ));
         }
         let mut address = [0; 20];
         address.copy_from_slice(&slot.0[12..]);
         let code: HexBytes =
             rpc.call(&self.base_rpc, "eth_getCode", json!([Hex20(address), tag]))?;
         if address == [0; 20] || code.0.is_empty() {
-            return Err("empty current implementation".into());
+            return Err(SourceError::NotReady("empty current implementation"));
         }
         // Refuse a reorg observed during the numbered reads rather than combining forks.
         let after: Block = rpc.call(&self.base_rpc, "eth_getBlockByNumber", json!([tag, false]))?;

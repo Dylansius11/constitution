@@ -178,19 +178,25 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         honest_address,
         honest_hash,
         &init,
+        Instant::now() + std::time::Duration::from_secs(300),
     )
     .expect("anvil prestateTracer and state-root proofs");
-    assert!(
-        fetch_witness(
-            &url,
-            block,
-            &corpus,
-            proxy,
-            honest_address,
-            B256::ZERO,
-            &init
-        )
-        .is_err()
+    // Candidate code that does not hash to the proposal's code hash at a confirmed block is a
+    // contradiction, not a provider fault.
+    let error = fetch_witness(
+        &url,
+        block,
+        &corpus,
+        proxy,
+        honest_address,
+        B256::ZERO,
+        &init,
+        Instant::now() + std::time::Duration::from_secs(300),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.kind,
+        constitution_verifier::replay::IncompleteKind::Environment
     );
     let start = Instant::now();
     assert_eq!(
@@ -213,6 +219,7 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         negative_address,
         negative_hash,
         &init,
+        Instant::now() + std::time::Duration::from_secs(300),
     )
     .expect("production candidate access discovery");
     let result = replay(&candidate_witness, &corpus, &current, &negative_r2, &init);
@@ -344,7 +351,8 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
             proxy,
             honest_address,
             honest_hash,
-            &init
+            &init,
+            Instant::now() + std::time::Duration::from_secs(300)
         )
         .is_err()
     );
@@ -358,7 +366,8 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
             proxy,
             honest_address,
             honest_hash,
-            &init
+            &init,
+            Instant::now() + std::time::Duration::from_secs(300)
         )
         .is_err()
     );
@@ -440,6 +449,7 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         negative_hash,
         &init,
         actor.parse().unwrap(),
+        Instant::now() + std::time::Duration::from_secs(300),
     )
     .unwrap();
     struct LocalProtocolFake(Vec<u8>);
@@ -519,6 +529,7 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
             honest_hash,
             &init,
             actor.parse().unwrap(),
+            Instant::now() + std::time::Duration::from_secs(300),
         )
         .map_err(|e| e.to_string())
         .and_then(|predicate_witness| {

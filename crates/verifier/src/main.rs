@@ -1,6 +1,6 @@
 //! Chain-connected mode requires a socket-attested identity; local mode is explicit.
 use constitution_verifier::{
-    api::{Service, router},
+    api::{Service, router, serve},
     chain::GateSource,
     identity::Identity,
     manifest::load_manifest,
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
     let identity_label = identity.view([0; 32]).label;
-    let service = if local {
+    let mut service = if local {
         let registry = required("LOCAL_PROPOSAL_REGISTRY")?;
         Service::new(
             identity,
@@ -73,16 +73,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::new(submitter),
         )?
     };
+    // Unset (default): the per-peer limiter keys on the socket peer address, which behind a
+    // reverse proxy is the proxy itself. Set it to a header that proxy always overwrites.
+    let proxy_header = std::env::var("VERIFIER_TRUSTED_PROXY_HEADER")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+    if let Some(header) = &proxy_header {
+        Service::trust_proxy_header(&mut service, header)?;
+    }
     let app = router(service, &origin)?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8787").await?;
     eprintln!(
-        "verifier listening on 127.0.0.1:8787; {identity_label}; Pass requires provider_tee review; mode={}",
+        "verifier listening on 127.0.0.1:8787; {identity_label}; Pass requires provider_tee review; mode={}; admission peers keyed by {}",
         if local {
             "local registry (no submission)"
         } else {
             "gate RPC and verdict submission"
-        }
+        },
+        proxy_header.as_deref().unwrap_or("socket peer address"),
     );
-    axum::serve(listener, app).await?;
+    serve(listener, app).await?;
     Ok(())
 }

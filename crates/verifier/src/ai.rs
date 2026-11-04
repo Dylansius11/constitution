@@ -359,8 +359,11 @@ pub fn fetch_candidate_witness(
     codehash: revm::primitives::B256,
     init: &[u8],
     actor: Address,
+    deadline: std::time::Instant,
 ) -> Result<replay::Witness, replay::Incomplete> {
-    replay::fetch_ai_witness(rpc, block, corpus, proxy, new_impl, codehash, init, actor)
+    replay::fetch_ai_witness(
+        rpc, block, corpus, proxy, new_impl, codehash, init, actor, deadline,
+    )
 }
 alloy_sol_types::sol! {
     interface vault {

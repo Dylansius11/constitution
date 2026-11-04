@@ -145,18 +145,7 @@ impl Sandbox {
         let mut log = output.stdout;
         log.extend(output.stderr);
         if !output.status.success() {
-            let text = String::from_utf8_lossy(&log);
-            if [
-                "No space left on device",
-                "Read-only file system",
-                "Input/output error",
-            ]
-            .iter()
-            .any(|message| text.contains(message))
-            {
-                return Err("infrastructure:storage_error".into());
-            }
-            return Err(String::from_utf8_lossy(&log).into_owned());
+            return Err(classify_compile_failure(&String::from_utf8_lossy(&log)));
         }
         Ok(log)
     }
@@ -309,6 +298,110 @@ impl Sandbox {
         Ok((result, reason, log))
     }
 }
+/// Host-level failure text that must never be read as a verdict on the source.
+const HOST_STORAGE_TEXT: [&str; 3] = [
+    "no space left on device",
+    "read-only file system",
+    "input/output error",
+];
+const HOST_RESOURCE_TEXT: [&str; 9] = [
+    "cannot allocate memory",
+    "out of memory",
+    "too many open files",
+    "resource temporarily unavailable",
+    "cannot fork",
+    "can't fork",
+    "fork:",
+    "fork failed",
+    "failed to fork",
+];
+/// Real compiler diagnostics. Only text carrying one of these may become a signed rejection.
+const COMPILER_DIAGNOSTICS: [&str; 6] = [
+    "Error:",
+    "ParserError",
+    "DeclarationError",
+    "TypeError",
+    "SyntaxError",
+    "Error (",
+];
+/// A failed `forge build` is a source verdict only when it carries a compiler diagnostic and
+/// no host-level failure text; the diagnostic text is returned as-is. Anything else is an
+/// infrastructure error (`tool_output_invalid`, subject to the canary rule in the pipeline),
+/// because the proposal's own source can exhaust the container, but a host fault must not
+/// become a terminal on-chain Reject on the first occurrence.
+pub fn classify_compile_failure(text: &str) -> String {
+    let lower = text.to_lowercase();
+    if HOST_STORAGE_TEXT.iter().any(|m| lower.contains(m)) {
+        return "infrastructure:storage_error".into();
+    }
+    if HOST_RESOURCE_TEXT.iter().any(|m| lower.contains(m))
+        || !COMPILER_DIAGNOSTICS.iter().any(|m| text.contains(m))
+    {
+        return "infrastructure:tool_output_invalid".into();
+    }
+    text.to_owned()
+}
+
+/// The verifier's tool stages, implemented by the Docker sandbox and by test doubles.
+pub trait Toolchain {
+    fn compile(&self) -> Result<Vec<u8>, String>;
+    fn runtime(&self, contract: &str) -> Result<Vec<u8>, String>;
+    fn layout(
+        &self,
+        candidate: &str,
+        reference: &str,
+        unsafe_allow: &[String],
+    ) -> Result<(StageStatus, Vec<u8>), String>;
+    fn solvency(
+        &self,
+        manifest: &RuleSetManifest,
+        bundle: &SourceBundle,
+    ) -> Result<(StageStatus, u16, Vec<u8>), String>;
+}
+impl Toolchain for Sandbox {
+    fn compile(&self) -> Result<Vec<u8>, String> {
+        Sandbox::compile(self)
+    }
+    fn runtime(&self, contract: &str) -> Result<Vec<u8>, String> {
+        Sandbox::runtime(self, contract)
+    }
+    fn layout(
+        &self,
+        candidate: &str,
+        reference: &str,
+        unsafe_allow: &[String],
+    ) -> Result<(StageStatus, Vec<u8>), String> {
+        Sandbox::layout(self, candidate, reference, unsafe_allow)
+    }
+    fn solvency(
+        &self,
+        manifest: &RuleSetManifest,
+        bundle: &SourceBundle,
+    ) -> Result<(StageStatus, u16, Vec<u8>), String> {
+        Sandbox::solvency(self, manifest, bundle)
+    }
+}
+/// Stages one bundle for tool execution.
+pub trait ToolBackend: Send + Sync {
+    fn open(
+        &self,
+        repo: &Path,
+        bundle: &SourceBundle,
+        manifest: &RuleSetManifest,
+    ) -> Result<Box<dyn Toolchain>, String>;
+}
+/// The production backend: one throwaway Docker sandbox per bundle.
+pub struct DockerBackend;
+impl ToolBackend for DockerBackend {
+    fn open(
+        &self,
+        repo: &Path,
+        bundle: &SourceBundle,
+        manifest: &RuleSetManifest,
+    ) -> Result<Box<dyn Toolchain>, String> {
+        Ok(Box::new(Sandbox::new(repo, bundle, manifest)?))
+    }
+}
 /// [I] Hash sorted relative paths and content digests using canonical Borsh.
 pub fn harness_digest(root: &Path) -> Result<[u8; 32], String> {
     let mut entries = Vec::new();
@@ -372,6 +465,43 @@ mod tests {
         let sandbox = Sandbox::new(&repo(), &bundle, &manifest).unwrap();
         let error = sandbox.compile().unwrap_err();
         assert_eq!(infrastructure_error(&error), None);
+        // A real compiler diagnostic, not a digest of host text.
+        assert!(COMPILER_DIAGNOSTICS.iter().any(|m| error.contains(m)));
+    }
+
+    #[test]
+    fn compile_text_is_a_verdict_only_with_a_compiler_diagnostic() {
+        for text in [
+            "Error: Compiler run failed:\nError (2314): Expected '{' but got end of source\n --> src/A.sol:1:30",
+            "ParserError: Expected ';' but got '}'",
+            "DeclarationError: Identifier not found or not unique.",
+            "TypeError: Operator + not compatible",
+            "SyntaxError: Invalid number literal",
+        ] {
+            assert_eq!(classify_compile_failure(text), text);
+        }
+        // Host-level text wins even behind forge's generic `Error:` prefix.
+        for text in [
+            "Error: Cannot allocate memory (os error 12)",
+            "Error: Too many open files (os error 24)",
+            "sh: 1: Cannot fork",
+            "sh: fork: retry: Resource temporarily unavailable",
+            "Error: out of memory",
+            "Killed",
+            "",
+        ] {
+            assert_eq!(
+                infrastructure_error(&classify_compile_failure(text)),
+                Some("tool_output_invalid"),
+                "{text:?}"
+            );
+        }
+        assert_eq!(
+            infrastructure_error(&classify_compile_failure(
+                "Error: No space left on device (os error 28)"
+            )),
+            Some("storage_error")
+        );
     }
 
     #[test]
