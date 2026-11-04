@@ -4,6 +4,12 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-04: NVIDIA attestation JWTs fail closed when the host clock is a few seconds behind
+
+- What happened: `live-review.mjs` returned `inference_or_verification_failed` with no completion id; a direct SDK call showed `[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid`.
+- Root cause: the dev machine clock was about 3 s behind the provider (`date -u` against the HTTP `Date` header of `cloud-api.near.ai`); `w32tm` reported "Local CMOS Clock", never synced. The SDK checks the JWT not-before time without leeway. With a throwaway +6 s clock offset the same call returned `provider_tee`. The sidecar swallows the SDK error by design, so the reason code alone hid the cause.
+- Rule: sync the clock before any live provider check (Windows: Settings, Time, Sync now); the verifier CVM must run NTP-synced. A `not_yet_valid` withheld run is a clock fault, not a model fault.
+
 ### 2026-11-03: Orca's WSL relay restarts the VM, so the vhdx stays locked
 
 - What happened: three attempts to compact `ext4.vhdx` with diskpart after `wsl --shutdown` failed with "being used by another process"; the founder had quit Docker Desktop and ran the script as Administrator. `wsl --shutdown` itself worked, but `vmmemWSL` and `vmwp` were back within seconds.
