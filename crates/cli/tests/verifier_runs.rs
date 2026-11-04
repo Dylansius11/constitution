@@ -80,6 +80,28 @@ async fn admission_refusals_explain_each_cause_and_recovery_without_credentials(
             "worker is busy",
             "after 3 seconds",
         ),
+        (
+            429,
+            "cooling_down",
+            Some("600"),
+            "retries are spaced out",
+            "after 600 seconds",
+        ),
+        (
+            429,
+            "busy",
+            Some("1"),
+            "unauthenticated submissions",
+            "after 1 seconds",
+        ),
+        (
+            409,
+            "proposal_not_pending",
+            None,
+            "no longer Pending",
+            "status",
+        ),
+        (409, "not_ready", None, "committed data", "retry"),
         (409, "run_in_progress", None, "already running", "status"),
     ] {
         let (base, server) = serve(Fake {

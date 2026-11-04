@@ -22,25 +22,70 @@ pub struct LocalProposal {
     pub evidence_block_hash: Hex32,
     pub expires_at_s: u64,
 }
+/// Why a proposal observation was refused; the API maps each kind to a stable status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SourceError {
+    /// Plaintext does not match the on-chain source commitment.
+    BadBundle,
+    WrongGate,
+    /// The gate proposal is no longer Pending.
+    NotPending,
+    /// Rule set or proposal shape this verifier cannot certify (will not change by retrying).
+    Unsupported(&'static str),
+    /// Chain state is not yet usable (too few blocks, no current implementation); retry later.
+    NotReady(&'static str),
+    /// Transport, protocol or lag faults of a provider.
+    Rpc(String),
+    /// The admission callback refused; the caller holds the reason.
+    Refused,
+}
+impl std::fmt::Display for SourceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BadBundle => f.write_str("bad_bundle"),
+            Self::WrongGate => f.write_str("wrong_gate"),
+            Self::NotPending => f.write_str("proposal must be Pending"),
+            Self::Unsupported(text) | Self::NotReady(text) => f.write_str(text),
+            Self::Rpc(text) => f.write_str(text),
+            Self::Refused => f.write_str("admission refused"),
+        }
+    }
+}
+impl std::error::Error for SourceError {}
+impl From<String> for SourceError {
+    fn from(text: String) -> Self {
+        Self::Rpc(text)
+    }
+}
+impl From<&str> for SourceError {
+    fn from(text: &str) -> Self {
+        Self::Rpc(text.into())
+    }
+}
+/// Called once the source commitment matched, before further reads; an error aborts.
+pub type Admit<'a> = &'a mut dyn FnMut() -> Result<(), SourceError>;
 pub trait ProposalSource: Send + Sync {
-    fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String>;
+    fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, SourceError>;
     /// Chain sources pin one gate; local registries remain explicitly offline.
     fn gate_account(&self) -> Option<&AccountId> {
         None
     }
     /// Verify the secret source commitment before expensive chain observations.
+    /// `admit` runs exactly once, after the commitment matched and before any further
+    /// read; its error aborts the observation (callers charge limiters there).
     fn get_for_bundle(
         &self,
         gate: &AccountId,
         id: u64,
         commitment: [u8; 32],
-    ) -> Result<Option<LocalProposal>, String> {
+        admit: Admit<'_>,
+    ) -> Result<Option<LocalProposal>, SourceError> {
         let proposal = self.get(gate, id)?;
-        if proposal
-            .as_ref()
-            .is_some_and(|p| p.source_commitment.0 != commitment)
-        {
-            return Err("bad_bundle".into());
+        if let Some(p) = &proposal {
+            if p.source_commitment.0 != commitment {
+                return Err(SourceError::BadBundle);
+            }
+            admit()?;
         }
         Ok(proposal)
     }
@@ -72,7 +117,7 @@ impl ProposalSource for LocalRegistry {
     fn archive_provider(&self) -> String {
         "local registry, not chain observed".into()
     }
-    fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String> {
+    fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, SourceError> {
         Ok(self
             .entries
             .iter()

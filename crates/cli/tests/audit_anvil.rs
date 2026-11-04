@@ -262,7 +262,7 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
         .unwrap();
     assert!(expected.status.success(), "{}", text(&expected));
     let expected_hash = String::from_utf8(expected.stdout).unwrap();
-    let mut deployment = json!({"chain_id":84532,"gate":gate.id(),"gate_code_hash":bs58::encode(Sha256::digest(&wasm)).into_string(),"mpc_account":mpc,"executor":executor,"proxy":proxy,"executor_runtime_hash":expected_hash.trim(),"verifiers":[{"pubkey":pubkey,"release_hash":release_hash}]});
+    let mut deployment = json!({"chain_id":84532,"gate":gate.id(),"gate_code_hash":bs58::encode(Sha256::digest(&wasm)).into_string(),"mpc_account":mpc,"executor":executor,"proxy":proxy,"executor_runtime_hash":expected_hash.trim(),"verifiers":[{"pubkey":pubkey,"release_hash":release_hash}],"roles":{"governor":governor.id(),"guardian":guardian.id()}});
     deployment_schema::validate(&deployment);
     let audit = |label: &str, d: &Value| {
         std::fs::write(&path, d.to_string()).unwrap();
@@ -475,7 +475,11 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
     assert_checks(
         &paged,
         &[],
-        &["pending_authority_change", "pending_authority_change"],
+        &[
+            "pending_authority_change",
+            "pending_authority_change",
+            "pending_authority_change",
+        ],
     );
     assert!(text(&paged).contains("WARN pending_authority_change: id=50"));
     assert!(text(&paged).contains("SetParams") && text(&paged).contains("SetRuleSet"));
@@ -494,6 +498,7 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
             "signing_paused",
             "pending_authority_change",
             "pending_authority_change",
+            "pending_authority_change",
         ],
     );
     assert!(text(&paused).contains("WARN signing_paused: signing_paused=true"));
@@ -508,6 +513,7 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
         &["gate_code_is_committed_build"],
         &[
             "signing_paused",
+            "pending_authority_change",
             "pending_authority_change",
             "pending_authority_change",
         ],

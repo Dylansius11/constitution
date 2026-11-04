@@ -36,6 +36,16 @@ pub struct Deployment {
     pub verifiers: Vec<DeployedVerifier>,
     #[serde(default)]
     pub planned_changes: Vec<PlannedChange>,
+    /// Optional governor/guardian the ceremony committed; when present the audit compares them.
+    #[serde(default)]
+    pub roles: Option<CommittedRoles>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommittedRoles {
+    pub governor: AccountId,
+    pub guardian: AccountId,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -214,12 +224,25 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
             ),
         ),
     ];
+    let roles_match = d
+        .roles
+        .as_ref()
+        .is_none_or(|r| r.governor == o.roles.governor && r.guardian == o.roles.guardian);
     checks.push(check(
         "gate_roles",
-        true,
+        roles_match,
         format!(
-            "governor={} guardian={}",
-            o.roles.governor, o.roles.guardian
+            "governor={} guardian={}{}",
+            o.roles.governor,
+            o.roles.guardian,
+            match &d.roles {
+                None => "; no committed roles to compare".to_string(),
+                Some(_) if roles_match => "; match the deployment record".to_string(),
+                Some(r) => format!(
+                    "; deployment record commits governor={} guardian={}",
+                    r.governor, r.guardian
+                ),
+            }
         ),
     ));
     checks.push(check(
@@ -254,8 +277,9 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
             .planned_changes
             .iter()
             .any(|p| p.id == c.id && p.kind == c.kind && p.eta_ns == c.eta_ns);
-        // SetRuleSet changes what a Pass means and RemoveVerifier shrinks the allowlist, so an
-        // unplanned one is as noteworthy as an authority change.
+        // SetRuleSet changes what a Pass means, SetParams changes fee caps and validity windows and
+        // RemoveVerifier shrinks the allowlist, so an unplanned one is as noteworthy as an
+        // authority change.
         let authority = matches!(
             c.kind,
             ChangeKind::MigrateAuthority { .. }
@@ -264,6 +288,7 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
                 | ChangeKind::AddVerifier { .. }
                 | ChangeKind::RemoveVerifier { .. }
                 | ChangeKind::SetRuleSet { .. }
+                | ChangeKind::SetParams { .. }
         );
         checks.push(Check {
             name: if authority && !planned {
@@ -506,6 +531,7 @@ mod tests {
                 pubkey: Base64([7; 32]),
                 release_hash: Hex32([6; 32]),
             }],
+            roles: None,
         }
     }
 
@@ -713,6 +739,26 @@ mod tests {
     }
 
     #[test]
+    fn committed_roles_are_compared_and_a_mismatch_fails_gate_roles() {
+        let mut d = deployment();
+        d.roles = Some(CommittedRoles {
+            governor: "governor.testnet".parse().unwrap(),
+            guardian: "guardian.testnet".parse().unwrap(),
+        });
+        assert!(failed_with(&d, &healthy()).is_empty());
+        d.roles.as_mut().unwrap().guardian = "someone-else.testnet".parse().unwrap();
+        assert_eq!(failed_with(&d, &healthy()), vec!["gate_roles"]);
+    }
+
+    fn failed_with(d: &Deployment, o: &Observed) -> Vec<&'static str> {
+        evaluate(d, RULES, o)
+            .into_iter()
+            .filter(|c| !c.ok)
+            .map(|c| c.name)
+            .collect()
+    }
+
+    #[test]
     fn unplanned_rule_set_and_verifier_removal_warn_like_authority_changes() {
         for kind in [
             ChangeKind::SetRuleSet {
@@ -721,6 +767,9 @@ mod tests {
                 ai_required: false,
             },
             ChangeKind::RemoveVerifier { pubkey: [7; 32] },
+            ChangeKind::SetParams {
+                params: healthy().constitution.params,
+            },
         ] {
             let mut o = healthy();
             o.changes.push(PendingChange {

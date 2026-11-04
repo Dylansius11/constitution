@@ -275,14 +275,24 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
     let slot: Hex32 = serde_json::from_value(slot["result"].clone())?;
     let mut current = [0; 20];
     current.copy_from_slice(&slot.0[12..]);
+    let entry_fee: String = gate
+        .view("get_credit_entry_fee")
+        .args_json(json!({"account": proposer.id()}))
+        .await?
+        .json()?;
+    let proposal_fee: String = gate.view("get_proposal_fee").await?.json()?;
+    let entry_fee: u128 = entry_fee.parse()?;
+    let proposal_fee: u128 = proposal_fee.parse()?;
     proposer
         .call(gate.id(), "deposit_credit")
         .args_json(json!({"account":null}))
-        .deposit(near_workspaces::types::NearToken::from_yoctonear(100))
+        .deposit(near_workspaces::types::NearToken::from_yoctonear(
+            100 + entry_fee,
+        ))
         .transact()
         .await?
         .into_result()?;
-    let id:u64=proposer.call(gate.id(),"propose").args_json(json!({"args":ProposeArgs {new_impl,new_impl_codehash:Hex32(constitution_verifier::keccak(&code.0)),expected_current_impl:Hex20(current),init_calldata:init,source_commitment:Hex32(sha256(&bytes))}})).transact().await?.into_result()?.json()?;
+    let id:u64=proposer.call(gate.id(),"propose").args_json(json!({"args":ProposeArgs {new_impl,new_impl_codehash:Hex32(constitution_verifier::keccak(&code.0)),expected_current_impl:Hex20(current),init_calldata:init,source_commitment:Hex32(sha256(&bytes))}})).deposit(near_workspaces::types::NearToken::from_yoctonear(proposal_fee)).transact().await?.into_result()?.json()?;
     // Workspaces transact returns before this proposal reaches finality.
     // GateSource deliberately reads only final views, so advance the local chain.
     worker.fast_forward(3).await?;
@@ -328,7 +338,11 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let app = router(service, "http://page.local")?;
-    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let server = tokio::spawn(async move {
+        constitution_verifier::api::serve(listener, app)
+            .await
+            .unwrap()
+    });
     let response = client
         .post(format!("{base}/v1/runs"))
         .json(&json!({"gate":gate.id(),"proposal_id":id,"sealed_bundle_b64":Base64Bytes(sealed)}))

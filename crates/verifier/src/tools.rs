@@ -145,18 +145,7 @@ impl Sandbox {
         let mut log = output.stdout;
         log.extend(output.stderr);
         if !output.status.success() {
-            let text = String::from_utf8_lossy(&log);
-            if [
-                "No space left on device",
-                "Read-only file system",
-                "Input/output error",
-            ]
-            .iter()
-            .any(|message| text.contains(message))
-            {
-                return Err("infrastructure:storage_error".into());
-            }
-            return Err(String::from_utf8_lossy(&log).into_owned());
+            return Err(classify_compile_failure(&String::from_utf8_lossy(&log)));
         }
         Ok(log)
     }
@@ -309,6 +298,84 @@ impl Sandbox {
         Ok((result, reason, log))
     }
 }
+/// Real compiler diagnostics. Only text carrying one of these may become a signed rejection.
+const COMPILER_DIAGNOSTICS: [&str; 6] = [
+    "Error:",
+    "ParserError",
+    "DeclarationError",
+    "TypeError",
+    "SyntaxError",
+    "Error (",
+];
+/// Only compiler diagnostics can be source verdicts. Tool output may echo source text, so
+/// resource and disk markers in it are not trusted as host-owned signals.
+pub fn classify_compile_failure(text: &str) -> String {
+    if !COMPILER_DIAGNOSTICS.iter().any(|m| text.contains(m)) {
+        return "infrastructure:tool_output_invalid".into();
+    }
+    text.to_owned()
+}
+
+/// The verifier's tool stages, implemented by the Docker sandbox and by test doubles.
+pub trait Toolchain {
+    fn compile(&self) -> Result<Vec<u8>, String>;
+    fn runtime(&self, contract: &str) -> Result<Vec<u8>, String>;
+    fn layout(
+        &self,
+        candidate: &str,
+        reference: &str,
+        unsafe_allow: &[String],
+    ) -> Result<(StageStatus, Vec<u8>), String>;
+    fn solvency(
+        &self,
+        manifest: &RuleSetManifest,
+        bundle: &SourceBundle,
+    ) -> Result<(StageStatus, u16, Vec<u8>), String>;
+}
+impl Toolchain for Sandbox {
+    fn compile(&self) -> Result<Vec<u8>, String> {
+        Sandbox::compile(self)
+    }
+    fn runtime(&self, contract: &str) -> Result<Vec<u8>, String> {
+        Sandbox::runtime(self, contract)
+    }
+    fn layout(
+        &self,
+        candidate: &str,
+        reference: &str,
+        unsafe_allow: &[String],
+    ) -> Result<(StageStatus, Vec<u8>), String> {
+        Sandbox::layout(self, candidate, reference, unsafe_allow)
+    }
+    fn solvency(
+        &self,
+        manifest: &RuleSetManifest,
+        bundle: &SourceBundle,
+    ) -> Result<(StageStatus, u16, Vec<u8>), String> {
+        Sandbox::solvency(self, manifest, bundle)
+    }
+}
+/// Stages one bundle for tool execution.
+pub trait ToolBackend: Send + Sync {
+    fn open(
+        &self,
+        repo: &Path,
+        bundle: &SourceBundle,
+        manifest: &RuleSetManifest,
+    ) -> Result<Box<dyn Toolchain>, String>;
+}
+/// The production backend: one throwaway Docker sandbox per bundle.
+pub struct DockerBackend;
+impl ToolBackend for DockerBackend {
+    fn open(
+        &self,
+        repo: &Path,
+        bundle: &SourceBundle,
+        manifest: &RuleSetManifest,
+    ) -> Result<Box<dyn Toolchain>, String> {
+        Ok(Box::new(Sandbox::new(repo, bundle, manifest)?))
+    }
+}
 /// [I] Hash sorted relative paths and content digests using canonical Borsh.
 pub fn harness_digest(root: &Path) -> Result<[u8; 32], String> {
     let mut entries = Vec::new();
@@ -372,6 +439,46 @@ mod tests {
         let sandbox = Sandbox::new(&repo(), &bundle, &manifest).unwrap();
         let error = sandbox.compile().unwrap_err();
         assert_eq!(infrastructure_error(&error), None);
+        // A real compiler diagnostic, not a digest of host text.
+        assert!(COMPILER_DIAGNOSTICS.iter().any(|m| error.contains(m)));
+    }
+
+    #[test]
+    fn source_echo_cannot_spoof_a_storage_fault() {
+        let (manifest, bundle) = fixture(
+            b"pragma solidity 0.8.38;\ncontract A { function x() public { @ // no space left on device\n} }\n",
+            "src/A.sol:A",
+        );
+        let sandbox = Sandbox::new(&repo(), &bundle, &manifest).unwrap();
+        let error = sandbox.compile().unwrap_err();
+        assert!(error.contains("no space left on device"));
+        assert_eq!(infrastructure_error(&error), None);
+    }
+    #[test]
+    fn compile_text_is_a_verdict_only_with_a_compiler_diagnostic() {
+        for text in [
+            "Error: Compiler run failed:\nError (2314): Expected '{' but got end of source\n --> src/A.sol:1:30",
+            "ParserError: Expected ';' but got '}'",
+            "DeclarationError: Identifier not found or not unique.",
+            "TypeError: Operator + not compatible",
+            "SyntaxError: Invalid number literal",
+        ] {
+            assert_eq!(classify_compile_failure(text), text);
+        }
+        for text in [
+            "sh: 1: Cannot fork",
+            "sh: fork: retry: Resource temporarily unavailable",
+            "Killed",
+            "",
+        ] {
+            assert_eq!(
+                infrastructure_error(&classify_compile_failure(text)),
+                Some("tool_output_invalid"),
+                "{text:?}"
+            );
+        }
+        let echoed = "Error (2314): parser error\n1 | no space left on device";
+        assert_eq!(classify_compile_failure(echoed), echoed);
     }
 
     #[test]

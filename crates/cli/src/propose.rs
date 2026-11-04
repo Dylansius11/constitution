@@ -49,7 +49,7 @@ pub fn build_bundle(dir: &Path, contract: &str) -> Result<SourceBundle, Failure>
                         path.display()
                     )));
                 }
-                if meta.len() > MAX_BUNDLE as u64 || files.len() >= 4096 {
+                if meta.len() > MAX_BUNDLE as u64 || files.len() >= 128 {
                     return Err(bundle_error("bundle limit exceeded"));
                 }
                 let content = fs::read(&path).map_err(bundle_error)?;
@@ -273,7 +273,9 @@ pub fn propose(
                 json!({"account": input.account}),
             )
             .map_err(read_error)?;
-        shortfall = shortfall.saturating_add(entry_fee.0);
+        // The gate refuses a first deposit that does not exceed the entry fee (E61), which would
+        // happen for a zero proposal_deposit; one extra yocto becomes refundable credit.
+        shortfall = shortfall.max(1).saturating_add(entry_fee.0);
     }
     if shortfall > 0 {
         println!("depositing credit: {shortfall} yoctoNEAR");

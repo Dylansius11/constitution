@@ -1,6 +1,6 @@
 //! Chain-connected mode requires a socket-attested identity; local mode is explicit.
 use constitution_verifier::{
-    api::{Service, router},
+    api::{Service, router, serve},
     chain::GateSource,
     identity::Identity,
     manifest::load_manifest,
@@ -33,6 +33,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|_| "invalid GATE_ACCOUNT_ID")?,
         )
     };
+    let peer_source = match std::env::var("VERIFIER_PEER_SOURCE") {
+        Ok(value) if value == "socket" => value,
+        Ok(value)
+            if value
+                .strip_prefix("header:")
+                .is_some_and(|name| !name.is_empty()) =>
+        {
+            value
+        }
+        Err(_) if local => "socket".to_owned(),
+        _ => return Err("VERIFIER_PEER_SOURCE must be socket or header:<name>".into()),
+    };
+    if let Some(name) = peer_source.strip_prefix("header:") {
+        axum::http::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| "invalid VERIFIER_PEER_SOURCE header")?;
+    }
     let identity = Identity::new()
         .for_mode(
             local,
@@ -40,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
     let identity_label = identity.view([0; 32]).label;
-    let service = if local {
+    let mut service = if local {
         let registry = required("LOCAL_PROPOSAL_REGISTRY")?;
         Service::new(
             identity,
@@ -73,16 +89,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::new(submitter),
         )?
     };
+    if let Some(header) = peer_source.strip_prefix("header:") {
+        Service::trust_proxy_header(&mut service, header)?;
+    }
     let app = router(service, &origin)?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8787").await?;
     eprintln!(
-        "verifier listening on 127.0.0.1:8787; {identity_label}; Pass requires provider_tee review; mode={}",
+        "verifier listening on 127.0.0.1:8787; {identity_label}; Pass requires provider_tee review; mode={}; admission peers keyed by {}",
         if local {
             "local registry (no submission)"
         } else {
             "gate RPC and verdict submission"
-        }
+        },
+        peer_source,
     );
-    axum::serve(listener, app).await?;
+    serve(listener, app).await?;
     Ok(())
 }

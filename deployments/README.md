@@ -18,6 +18,7 @@
 | `verifiers` | required array | Exact committed verifier allowlist, including no extras. Each entry has only `pubkey` and `release_hash` below. An empty list represents no verifiers, not a successful attestation. |
 | `verifiers[].pubkey` | required standard padded base64 of 32 bytes | Verifier Ed25519 public key; obtain from the running CVM and independently appraise it before registration. Not a secret key. |
 | `verifiers[].release_hash` | required lowercase `0x` + 64 hex digits | Release measurement bound to that verifier key; obtain from appraised evidence. Audit compares the allowlist; it does not itself appraise the CVM. |
+| `roles` | optional object `{governor, guardian}` of NEAR account ids | Governor and guardian committed at activation. When present, `gate_roles` FAILs if the gate reports different accounts; when absent the audit only prints them. Commit it in the ceremony (review R3-7). |
 | `planned_changes` | optional array, default `[]` | Only exact committed governance changes expected at audit time. Omitting it never hides pending changes. Each entry has only `id`, `kind`, `eta_ns`. |
 | `planned_changes[].id` | required u64 JSON integer | Observed gate change id. |
 | `planned_changes[].kind` | required canonical `ChangeKind` JSON | Exact enum and payload scheduled on the gate (see below), not a free-form label. |

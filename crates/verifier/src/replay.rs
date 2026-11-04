@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const GAS_LIMIT: u64 = 3_000_000;
@@ -34,24 +34,58 @@ fn hash(data: &[u8]) -> B256 {
     B256::from(keccak(data))
 }
 
+/// Why a witness or replay could not complete. Only an authenticated contradiction may
+/// become a signed rejection; everything else is a verifier-side or provider-side fault.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IncompleteKind {
+    /// Provider lag, null results, transport glitches, unverifiable provider data:
+    /// nothing here authenticates a fact about the proposal.
+    Environment,
+    /// A fact established from authenticated data (verified header, valid proofs, pure
+    /// deterministic replay) that the proposal cannot satisfy.
+    Contradiction,
+}
 /// A diagnostic never includes an RPC URL or response body (URLs may contain keys).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Incomplete(pub String);
+pub struct Incomplete {
+    pub message: String,
+    pub kind: IncompleteKind,
+    pub rpc_transport: bool,
+}
 impl fmt::Display for Incomplete {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.message)
     }
 }
 impl std::error::Error for Incomplete {}
 impl DBErrorMarker for Incomplete {}
+/// Environment by default: the safe reading of anything not explicitly authenticated.
 fn incomplete(message: &str) -> Incomplete {
-    Incomplete(message.into())
+    Incomplete {
+        message: message.into(),
+        kind: IncompleteKind::Environment,
+        rpc_transport: false,
+    }
+}
+fn contradiction(message: &str) -> Incomplete {
+    Incomplete {
+        message: message.into(),
+        kind: IncompleteKind::Contradiction,
+        rpc_transport: false,
+    }
 }
 fn require(condition: bool, message: &str) -> Result<(), Incomplete> {
     if condition {
         Ok(())
     } else {
         Err(incomplete(message))
+    }
+}
+fn require_contradiction(condition: bool, message: &str) -> Result<(), Incomplete> {
+    if condition {
+        Ok(())
+    } else {
+        Err(contradiction(message))
     }
 }
 
@@ -173,7 +207,7 @@ fn proof(v: &Value) -> Result<Vec<Vec<u8>>, Incomplete> {
 
 /// Header field order follows Ethereum's execution header (EIPs 1559/4895/4844/4788/7685).
 /// Optional suffix holes are encoded as empty strings, as in geth's RLP header encoding.
-fn verified_header(header: &Value, block: EvidenceBlock) -> Result<(B256, BlockEnv), Incomplete> {
+pub(crate) fn header_hash(header: &Value) -> Result<B256, Incomplete> {
     const FIELDS: [(&str, usize); 23] = [
         ("parentHash", 32),
         ("sha3Uncles", 32),
@@ -199,10 +233,6 @@ fn verified_header(header: &Value, block: EvidenceBlock) -> Result<(B256, BlockE
         ("blockAccessListHash", 32),
         ("slotNumber", 0),
     ];
-    require(
-        fixed(&header["hash"])? == block.hash && number(&header["number"])? == block.number,
-        "evidence block mismatch",
-    )?;
     let count = FIELDS
         .iter()
         .rposition(|(name, _)| !header[*name].is_null())
@@ -229,8 +259,15 @@ fn verified_header(header: &Value, block: EvidenceBlock) -> Result<(B256, BlockE
             stream.append(&data);
         }
     }
+    Ok(hash(&stream.out()))
+}
+fn verified_header(header: &Value, block: EvidenceBlock) -> Result<(B256, BlockEnv), Incomplete> {
     require(
-        hash(&stream.out()) == block.hash,
+        fixed(&header["hash"])? == block.hash && number(&header["number"])? == block.number,
+        "evidence block mismatch",
+    )?;
+    require(
+        header_hash(header)? == block.hash,
         "execution header hash mismatch",
     )?;
     let mut environment = BlockEnv {
@@ -251,18 +288,55 @@ fn verified_header(header: &Value, block: EvidenceBlock) -> Result<(B256, BlockE
     Ok((fixed(&header["stateRoot"])?, environment))
 }
 
+/// One archive RPC session bound by the run's wall-clock deadline.
 struct Rpc {
     client: reqwest::blocking::Client,
     url: String,
+    deadline: Instant,
 }
+const RPC_TIMEOUT: Duration = Duration::from_secs(30);
+const RPC_RETRY_PAUSE: Duration = Duration::from_millis(250);
 impl Rpc {
+    fn new(url: &str, deadline: Instant) -> Result<Self, Incomplete> {
+        Ok(Self {
+            client: reqwest::blocking::Client::builder()
+                .timeout(RPC_TIMEOUT)
+                .build()
+                .map_err(|_| incomplete("RPC client unavailable"))?,
+            url: url.into(),
+            deadline,
+        })
+    }
+    /// Every read is attempted twice: a lagging or load-balanced provider often serves a
+    /// null/error for a fresh block and the correct value moments later. A second failure is
+    /// reported as the provider's fault, never as a fact about the proposal.
     fn call(&self, method: &str, params: Value) -> Result<Value, Incomplete> {
+        match self.call_once(method, &params) {
+            Ok(value) => Ok(value),
+            Err(_) if Instant::now() + RPC_RETRY_PAUSE < self.deadline => {
+                std::thread::sleep(RPC_RETRY_PAUSE);
+                self.call_once(method, &params)
+            }
+            Err(error) => Err(error),
+        }
+    }
+    fn call_once(&self, method: &str, params: &Value) -> Result<Value, Incomplete> {
+        let remaining = self
+            .deadline
+            .checked_duration_since(Instant::now())
+            .filter(|left| !left.is_zero())
+            .ok_or_else(|| incomplete("run deadline exceeded"))?;
         let response = self
             .client
             .post(&self.url)
+            .timeout(remaining.min(RPC_TIMEOUT))
             .json(&json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}))
             .send()
-            .map_err(|_| Incomplete(format!("{method}: transport failure")))?;
+            .map_err(|_| Incomplete {
+                message: format!("{method}: transport failure"),
+                kind: IncompleteKind::Environment,
+                rpc_transport: true,
+            })?;
         require(
             response.status().is_success(),
             &format!("{method}: HTTP failure"),
@@ -273,13 +347,13 @@ impl Rpc {
         response
             .take(16 * 1024 * 1024 + 1)
             .read_to_end(&mut buffer)
-            .map_err(|_| Incomplete(format!("{method}: unreadable response")))?;
+            .map_err(|_| incomplete(&format!("{method}: unreadable response")))?;
         require(
             buffer.len() <= 16 * 1024 * 1024,
             "RPC response exceeds bound",
         )?;
         let value: Value = serde_json::from_slice(&buffer)
-            .map_err(|_| Incomplete(format!("{method}: invalid JSON")))?;
+            .map_err(|_| incomplete(&format!("{method}: invalid JSON")))?;
         require(
             value.get("error").is_none(),
             &format!("{method}: RPC error"),
@@ -288,7 +362,7 @@ impl Rpc {
             .get("result")
             .filter(|v| !v.is_null())
             .cloned()
-            .ok_or_else(|| Incomplete(format!("{method}: missing result")))
+            .ok_or_else(|| incomplete(&format!("{method}: missing result")))
     }
 }
 
@@ -314,7 +388,8 @@ fn collect_accesses(needed: &mut Accesses, trace: &Value) -> Result<(), Incomple
             }
         }
     }
-    require(
+    // A repeated oversized candidate discovery is attributed to the proposal.
+    require_contradiction(
         needed.len() <= 256 && needed.values().map(BTreeSet::len).sum::<usize>() <= 4096,
         "witness exceeds account/slot bound",
     )
@@ -388,6 +463,7 @@ fn initializer_overrides(
 /// Initializer poststate only shapes discovery: every replay input is independently
 /// fetched with eth_getProof at the original block and checked against its stateRoot.
 /// Missing discoveries remain Incomplete during pure replay; they never become zeros.
+#[allow(clippy::too_many_arguments)]
 pub fn fetch_witness(
     rpc_url: &str,
     block: EvidenceBlock,
@@ -396,6 +472,7 @@ pub fn fetch_witness(
     new_impl: Address,
     new_impl_codehash: B256,
     new_init_calldata: &[u8],
+    deadline: Instant,
 ) -> Result<Witness, Incomplete> {
     fetch_witness_inner(
         rpc_url,
@@ -406,6 +483,7 @@ pub fn fetch_witness(
         new_impl_codehash,
         new_init_calldata,
         None,
+        deadline,
     )
 }
 
@@ -419,6 +497,7 @@ pub(crate) fn fetch_ai_witness(
     new_impl_codehash: B256,
     init: &[u8],
     actor: Address,
+    deadline: Instant,
 ) -> Result<Witness, Incomplete> {
     fetch_witness_inner(
         rpc_url,
@@ -429,6 +508,7 @@ pub(crate) fn fetch_ai_witness(
         new_impl_codehash,
         init,
         Some(actor),
+        deadline,
     )
 }
 
@@ -454,19 +534,14 @@ fn fetch_witness_inner(
     new_impl_codehash: B256,
     new_init_calldata: &[u8],
     ai_actor: Option<Address>,
+    deadline: Instant,
 ) -> Result<Witness, Incomplete> {
     corpus.validate()?;
     require(
         new_init_calldata.len() <= 1024,
         "initializer exceeds byte bound",
     )?;
-    let rpc = Rpc {
-        client: reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|_| incomplete("RPC client unavailable"))?,
-        url: rpc_url.into(),
-    };
+    let rpc = Rpc::new(rpc_url, deadline)?;
     require(
         number(&rpc.call("eth_chainId", json!([]))?)? == 84532,
         "wrong chain id",
@@ -474,13 +549,21 @@ fn fetch_witness_inner(
     let tag = format!("0x{:x}", block.number);
     let header = rpc.call("eth_getBlockByNumber", json!([tag, false]))?;
     let (state_root, environment) = verified_header(&header, block)?;
-    let latest = number(&rpc.call("eth_blockNumber", json!([]))?)?;
-    require(
-        latest
+    // A second provider node may be a block behind the one that served the header; read the
+    // tip once more before concluding it is too shallow. Either outcome is environmental.
+    let mut deep_enough = false;
+    for attempt in 0..2 {
+        let latest = number(&rpc.call("eth_blockNumber", json!([]))?)?;
+        deep_enough = latest
             .checked_sub(block.number)
-            .is_some_and(|depth| depth >= u64::from(corpus.confirmations)),
-        "insufficient confirmations",
-    )?;
+            .is_some_and(|depth| depth >= u64::from(corpus.confirmations));
+        if deep_enough || attempt == 1 {
+            break;
+        }
+        std::thread::sleep(RPC_RETRY_PAUSE);
+    }
+    require(deep_enough, "insufficient confirmations")?;
+    // eth_getCode alone is not authenticated by the header, even on repeated reads.
     let new_runtime = bytes(&rpc.call("eth_getCode", json!([new_impl, tag]))?)?;
     require(
         !new_runtime.is_empty()
@@ -570,7 +653,7 @@ fn fetch_witness_inner(
     }
     let proxy_slots = needed.entry(proxy).or_default();
     proxy_slots.extend([IMPL, CAP, INITIALIZABLE]);
-    require(
+    require_contradiction(
         needed.len() <= 256 && needed.values().map(BTreeSet::len).sum::<usize>() <= 4096,
         "witness exceeds account/slot bound",
     )?;
@@ -828,7 +911,7 @@ impl Database for StrictDb {
 impl StrictDb {
     fn commit(&mut self, state: EvmState) -> Result<(), Incomplete> {
         for (a, changed) in state {
-            require(
+            require_contradiction(
                 !changed.is_selfdestructed() && !changed.is_created(),
                 "creation or destruction outside replay scope",
             )?;
@@ -897,7 +980,7 @@ fn execute(
         .build_mainnet()
         .transact(tx)
         .map_err(|_| incomplete("EVM execution incomplete"))?;
-    require(
+    require_contradiction(
         !matches!(result.result, ExecutionResult::Halt { .. }),
         "EVM halted",
     )?;
@@ -926,7 +1009,7 @@ pub fn replay(
     new_runtime: &[u8],
     new_init_calldata: &[u8],
 ) -> (StageStatus, u16) {
-    match replay_inner(
+    match replay_detailed(
         witness,
         corpus,
         current_runtime,
@@ -937,6 +1020,33 @@ pub fn replay(
         Ok(false) => (StageStatus::Fail, 50),
         Err(_) => (StageStatus::Incomplete, 51),
     }
+}
+/// Like [`replay`], but keeps the reason an incomplete replay could not finish:
+/// a failure of the *candidate's* execution over an authenticated witness is a
+/// `Contradiction`; anything else (inconsistent witness, current-runtime execution) is
+/// `Environment`.
+pub fn replay_detailed(
+    witness: &Witness,
+    corpus: &Corpus,
+    current_runtime: &[u8],
+    new_runtime: &[u8],
+    new_init_calldata: &[u8],
+) -> Result<bool, Incomplete> {
+    replay_inner(
+        witness,
+        corpus,
+        current_runtime,
+        new_runtime,
+        new_init_calldata,
+    )
+}
+fn environmental(mut error: Incomplete) -> Incomplete {
+    error.kind = IncompleteKind::Environment;
+    error
+}
+fn candidate_fault(mut error: Incomplete) -> Incomplete {
+    error.kind = IncompleteKind::Contradiction;
+    error
 }
 fn replay_inner(
     w: &Witness,
@@ -964,6 +1074,8 @@ fn replay_inner(
         );
         let metadata_before = [IMPL, CAP, INITIALIZABLE]
             .map(|key| upgraded.accounts[&w.proxy].storage.get(&key).copied());
+        // The current implementation is the reference; its failing to execute over the
+        // witness says nothing about the candidate.
         let original = execute(
             &mut old,
             &w.environment,
@@ -971,7 +1083,8 @@ fn replay_inner(
             w.proxy,
             value,
             call.data.clone(),
-        )?;
+        )
+        .map_err(environmental)?;
         let changed = execute(
             &mut upgraded,
             &w.environment,
@@ -979,7 +1092,8 @@ fn replay_inner(
             w.proxy,
             value,
             call.data.clone(),
-        )?;
+        )
+        .map_err(candidate_fault)?;
         if original != changed
             || metadata_before
                 != [IMPL, CAP, INITIALIZABLE]
@@ -1135,7 +1249,8 @@ fn prepared_states(
             w.proxy,
             U256::ZERO,
             Bytes::copy_from_slice(init),
-        )?;
+        )
+        .map_err(candidate_fault)?;
         if !outcome.success {
             return Ok(None);
         }
@@ -1227,5 +1342,31 @@ impl CandidateReplay {
         )?;
         require(result.success, "R2 predicate getter reverted")?;
         Ok(result.output)
+    }
+}
+
+#[cfg(test)]
+mod attribution_tests {
+    use super::*;
+
+    #[test]
+    fn candidate_incomplete_and_discovery_bounds_are_contradictions() {
+        for message in ["unwitnessed blockhash read", "EVM execution incomplete"] {
+            assert_eq!(
+                candidate_fault(incomplete(message)).kind,
+                IncompleteKind::Contradiction
+            );
+        }
+        let trace = Value::Object(
+            (0..257u32)
+                .map(|i| (format!("0x{i:040x}"), json!({})))
+                .collect(),
+        );
+        assert_eq!(
+            collect_accesses(&mut Accesses::new(), &trace)
+                .unwrap_err()
+                .kind,
+            IncompleteKind::Contradiction
+        );
     }
 }
