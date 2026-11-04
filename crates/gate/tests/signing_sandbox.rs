@@ -22,6 +22,8 @@ struct Harness {
     worker: Worker<Sandbox>,
     gate: Contract,
     actor: Account,
+    /// Accounts that already hold a credit entry (the first deposit pays the entry fee).
+    funded: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 impl Harness {
     async fn new(fee_cap: u128) -> Result<Self> {
@@ -58,6 +60,7 @@ impl Harness {
             worker,
             gate,
             actor,
+            funded: Default::default(),
         })
     }
     async fn mode(&self, mode: u8) -> Result<()> {
@@ -70,13 +73,30 @@ impl Harness {
         Ok(())
     }
     async fn propose(&self, who: &Account, tag: u8) -> Result<Certificate> {
+        let first = self.funded.lock().unwrap().insert(who.id().to_string());
+        let entry_fee: u128 = if first {
+            self.gate
+                .view("get_credit_entry_fee")
+                .args_json(json!({"account":who.id()}))
+                .await?
+                .json::<String>()?
+                .parse()?
+        } else {
+            0
+        };
+        let proposal_fee: u128 = self
+            .gate
+            .view("get_proposal_fee")
+            .await?
+            .json::<String>()?
+            .parse()?;
         who.call(self.gate.id(), "deposit_credit")
             .args_json(json!({"account":null}))
-            .deposit(NearToken::from_yoctonear(100))
+            .deposit(NearToken::from_yoctonear(100 + entry_fee))
             .transact()
             .await?
             .into_result()?;
-        let id:u64=who.call(self.gate.id(),"propose").args_json(json!({"args":ProposeArgs{new_impl:Hex20([8;20]),new_impl_codehash:Hex32([tag;32]),expected_current_impl:Hex20([10;20]),init_calldata:HexBytes(vec![]),source_commitment:Hex32([11;32])}})).transact().await?.into_result()?.json()?;
+        let id:u64=who.call(self.gate.id(),"propose").args_json(json!({"args":ProposeArgs{new_impl:Hex20([8;20]),new_impl_codehash:Hex32([tag;32]),expected_current_impl:Hex20([10;20]),init_calldata:HexBytes(vec![]),source_commitment:Hex32([11;32])}})).deposit(NearToken::from_yoctonear(proposal_fee)).transact().await?.into_result()?.json()?;
         let now = ns_to_s(self.worker.view_block().await?.timestamp());
         let mut empty_hash = [0; 32];
         hex::decode_to_slice(
@@ -146,6 +166,22 @@ impl Harness {
         method: &str,
         id: u64,
     ) -> Result<near_workspaces::result::ExecutionFinalResult> {
+        if method == "bump_fee" {
+            // Sandbox fast_forward skips heights, not wall-clock time. Backdate only the
+            // existing request timestamp to exercise later bumps without a ten-minute wait.
+            let now = self.worker.view_block().await?.timestamp();
+            let mut key = vec![9]; // StorageKey::SignRequestedAt
+            key.extend_from_slice(&id.to_le_bytes());
+            let state = self.worker.view_state(self.gate.id()).await?;
+            assert!(state.contains_key(&key), "missing request timestamp");
+            self.worker
+                .patch_state(
+                    self.gate.id(),
+                    &key,
+                    &now.saturating_sub(600_000_000_000).to_le_bytes(),
+                )
+                .await?;
+        }
         Ok(self
             .actor
             .call(self.gate.id(), method)
@@ -297,6 +333,15 @@ async fn mock_mpc_sandbox_t_gate_9_10_11_retry_fee_bumps_and_nonce_assignment() 
     h.call("retry_sign", 0).await?.into_result()?;
     let signed = h.proposal(0).await?;
     assert_eq!(signed.state, ProposalState::Signed);
+    let early = h
+        .actor
+        .call(h.gate.id(), "bump_fee")
+        .args_json(json!({"target":SignTarget::Proposal(0)}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(early.is_failure());
+    assert!(format!("{:?}", early.failures()).contains("E62_BUMP_TOO_EARLY"));
     let e = signed.evm.unwrap();
     assert_eq!(e.signing_hash, hash);
     assert_eq!(e.nonce, 42);
