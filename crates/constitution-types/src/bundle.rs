@@ -17,7 +17,7 @@ impl SourceBundle {
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.foundry_profile != "default"
             || self.files.is_empty()
-            || self.files.len() > 4096
+            || self.files.len() > 128
             || !self
                 .contract_name
                 .chars()
@@ -40,5 +40,22 @@ impl SourceBundle {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_count_is_limited_to_128() {
+        let mut bundle = SourceBundle {
+            contract_name: "src/A.sol:A".into(),
+            foundry_profile: "default".into(),
+            files: (0..128).map(|i| (format!("src/{i}.sol"), vec![])).collect(),
+        };
+        assert!(bundle.validate().is_ok());
+        bundle.files.push(("src/extra.sol".into(), vec![]));
+        assert!(bundle.validate().is_err());
     }
 }
