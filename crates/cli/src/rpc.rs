@@ -456,11 +456,20 @@ impl Verifier {
                     "verifier rpc_unavailable: chain RPC could not be read; no run was created; the proposal is still Pending",
                     10,
                 ),
-                (429, "rate_limited" | "queue_full") => {
-                    let cause = if code.trim() == "rate_limited" {
-                        "verifier rate_limited: admission rate limit reached; no run was created"
-                    } else {
-                        "verifier queue_full: verifier worker is busy; no run was created"
+                (429, "rate_limited" | "queue_full" | "cooling_down" | "busy") => {
+                    let cause = match code.trim() {
+                        "rate_limited" => {
+                            "verifier rate_limited: admission rate limit reached; no run was created"
+                        }
+                        "queue_full" => {
+                            "verifier queue_full: verifier worker is busy; no run was created"
+                        }
+                        "cooling_down" => {
+                            "verifier cooling_down: earlier runs of this proposal failed on resource limits, so retries are spaced out; no run was created"
+                        }
+                        _ => {
+                            "verifier busy: too many unauthenticated submissions are being checked; no run was created"
+                        }
                     };
                     match retry_after {
                         Some(seconds) => Failure::retry_verifier(cause, seconds),
@@ -473,6 +482,14 @@ impl Verifier {
                 (409, "run_in_progress") => Failure::new(
                     "verifier run_in_progress: this proposal is already running; no new run was created",
                     "watch the existing run with `constitution status <id> --run <run_id> --watch <seconds>`; do not start a duplicate run",
+                ),
+                (409, "proposal_not_pending") => Failure::new(
+                    "verifier proposal_not_pending: the proposal is no longer Pending on the gate; no run was created",
+                    "inspect `constitution status <id>`; a decided, expired or signed proposal cannot be verified again",
+                ),
+                (409, "not_ready") => Failure::new(
+                    "verifier not_ready: the verifier cannot read the committed data it needs yet; no run was created",
+                    "wait a few minutes and retry `constitution verifier run --proposal <id> --bundle <bundle>`; the proposal is still Pending",
                 ),
                 _ => Self::failure(format!(
                     "POST /v1/runs returned {status} with an undocumented error code"

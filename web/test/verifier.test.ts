@@ -146,6 +146,10 @@ describe("verifier client", () => {
       [429, "rate_limited", "rate_limited"],
       [429, "queue_full", "queue_full"],
       [409, "run_in_progress", "run_in_progress"],
+      [409, "proposal_not_pending", "proposal_not_pending"],
+      [409, "not_ready", "not_ready"],
+      [429, "cooling_down", "cooling_down"],
+      [429, "busy", "busy"],
       // A body naming no known code falls back to the status default.
       [400, "", "bad_bundle"],
       [502, "upstream unhappy", "rpc_unavailable"],

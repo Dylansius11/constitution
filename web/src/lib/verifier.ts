@@ -132,6 +132,10 @@ export type RunRefusalCode =
   | "rpc_unavailable"
   | "rate_limited"
   | "queue_full"
+  | "cooling_down"
+  | "busy"
+  | "proposal_not_pending"
+  | "not_ready"
   | "run_in_progress";
 
 /** `POST /v1/runs` was refused with one of the documented statuses. */
@@ -168,8 +172,8 @@ export class RunRefusedError extends Error {
 const REFUSALS: Readonly<Record<number, readonly RunRefusalCode[]>> = {
   400: ["bad_bundle", "wrong_gate", "unsupported_proposal"],
   404: ["proposal_not_found"],
-  409: ["run_in_progress"],
-  429: ["queue_full", "rate_limited"],
+  409: ["run_in_progress", "proposal_not_pending", "not_ready"],
+  429: ["queue_full", "rate_limited", "cooling_down", "busy"],
   502: ["rpc_unavailable"],
 };
 
