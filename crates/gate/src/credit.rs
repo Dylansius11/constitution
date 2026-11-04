@@ -56,7 +56,7 @@ impl Gate {
         self.assert_solvent(amount.0);
         self.pending_withdrawals = self
             .pending_withdrawals
-            .checked_add(amount.0)
+            .checked_add(Gate::withdrawal_reserve(amount.0))
             .unwrap_or_else(|| env::panic_str(GateError::InsufficientCredit.code()));
         Promise::new(account.clone())
             .transfer(NearToken::from_yoctonear(amount.0))
@@ -69,7 +69,10 @@ impl Gate {
 
     #[private]
     pub fn on_withdraw_credit(&mut self, account: AccountId, amount: U128) -> bool {
-        let Some(pending) = self.pending_withdrawals.checked_sub(amount.0) else {
+        let Some(pending) = self
+            .pending_withdrawals
+            .checked_sub(Gate::withdrawal_reserve(amount.0))
+        else {
             env::log_str("Withdrawal callback has no matching reserve");
             return false;
         };

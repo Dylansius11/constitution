@@ -47,6 +47,10 @@ pub(crate) const PROPOSAL_STORAGE_BYTES: u64 = 4096;
 /// NEAR charges the key, the value and a fixed 40-byte record overhead per entry. The credit key
 /// is one storage-prefix byte plus a 4-byte length plus the account id; the value is 16 bytes.
 const CREDIT_ENTRY_FIXED_BYTES: u64 = 80;
+/// The refund-window reserve of an in-flight withdrawal is capped at this much storage. It only
+/// has to cover the unpaid growth that can happen between a refund arriving and its callback;
+/// reserving the whole amount would let any large depositor lock every write for the window.
+const WITHDRAWAL_RESERVE_BYTES: u64 = 16_384;
 #[derive(borsh::BorshSerialize, BorshStorageKey)]
 enum StorageKey {
     Verifiers,
@@ -256,6 +260,11 @@ impl Gate {
     pub(crate) fn credit_entry_fee(account: &AccountId) -> u128 {
         (u128::from(CREDIT_ENTRY_FIXED_BYTES) + account.as_str().len() as u128)
             * env::storage_byte_cost().as_yoctonear()
+    }
+
+    /// Contingent refund reserve held while a withdrawal of `amount` is in flight.
+    pub(crate) fn withdrawal_reserve(amount: u128) -> u128 {
+        amount.min(u128::from(WITHDRAWAL_RESERVE_BYTES) * env::storage_byte_cost().as_yoctonear())
     }
 
     /// Non-refundable fee attached to `propose`; it keeps a proposal record's storage funded.
