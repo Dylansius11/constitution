@@ -859,7 +859,9 @@ fn failed_withdrawal_restores_credit_and_liabilities_success_does_not() {
 #[test]
 fn refunded_withdrawal_cannot_be_spent_before_failure_callback() {
     let mut g = gate();
-    let amount = 10u128.pow(24);
+    // Below the reserve cap, so the whole refund stays protected.
+    let amount = 10u128.pow(23);
+    assert!(amount < Gate::withdrawal_reserve(u128::MAX));
     fund(&mut g, "alice.testnet", amount);
     drop(g.withdraw_credit(U128(amount)));
     let storage = env::storage_usage();
@@ -877,6 +879,46 @@ fn refunded_withdrawal_cannot_be_spent_before_failure_callback() {
     fails("E12_STORAGE_INSOLVENT", || {
         g.schedule_change(ChangeKind::Unpause)
     });
+}
+
+#[test]
+fn large_withdrawal_in_flight_does_not_lock_writes() {
+    // R3-1: reserving the whole amount would need surplus >= amount, so anyone holding more than the
+    // operating surplus could open E12 windows on every write. The reserve is capped.
+    let mut g = gate();
+    let amount = 10u128.pow(24);
+    fund(&mut g, "alice.testnet", amount);
+    drop(g.withdraw_credit(U128(amount)));
+    assert_eq!(g.pending_withdrawals, Gate::withdrawal_reserve(amount));
+    assert!(g.pending_withdrawals < amount);
+    let storage = env::storage_usage();
+    let surplus = 5 * 10u128.pow(23);
+    // The transfer has left; the gate holds storage plus a 0.5 NEAR operating surplus only.
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id("gate.testnet".parse().unwrap())
+            .predecessor_account_id("governor.testnet".parse().unwrap())
+            .account_balance(NearToken::from_yoctonear(
+                u128::from(storage) * env::storage_byte_cost().as_yoctonear() + surplus
+            ))
+            .storage_usage(storage)
+            .build()
+    );
+    assert_eq!(g.operating_surplus(), surplus - g.pending_withdrawals);
+    g.schedule_change(ChangeKind::Unpause);
+    // The callback releases exactly the reserve it took.
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id("gate.testnet".parse().unwrap())
+            .predecessor_account_id("gate.testnet".parse().unwrap())
+            .build(),
+        near_sdk::test_vm_config(),
+        near_sdk::RuntimeFeesConfig::test(),
+        Default::default(),
+        vec![near_sdk::PromiseResult::Successful(vec![])]
+    );
+    assert!(g.on_withdraw_credit("alice.testnet".parse().unwrap(), U128(amount)));
+    assert_eq!(g.pending_withdrawals, 0);
 }
 
 #[path = "signing_tests.rs"]
