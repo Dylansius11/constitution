@@ -54,40 +54,90 @@ observation. RPC errors and incomplete observations cannot fabricate a proposal.
 Blocking reads and signing run outside the HTTP async runtime.
 
 Admission [I]: `GATE_ACCOUNT_ID` pins the only chain-connected gate;
-other gates return `400 wrong_gate` before any RPC. Unseal/validation errors
-and `sha256(plaintext) != source_commitment` return `400 bad_bundle`, without
-creating a run, consuming a certificate attempt or submitting a verdict.
-The commitment is checked after only `get_proposal`, before config/Base reads.
-Bad requests still count toward off-chain admission rate limits.
+other gates return `400 wrong_gate` before any RPC. The order is fixed so that an
+unauthenticated caller can only ever spend its own budget:
 
-Constants in `api.rs`: one request per proposal per 10 seconds
-(`PROPOSAL_INTERVAL`), globally at most 10 admitted requests per one-second
-sliding window (`GLOBAL_REQUESTS`, `GLOBAL_WINDOW`). `429 rate_limited` and
-`429 queue_full` include `Retry-After` seconds; a bad-bundle retry at exactly
-10 seconds is eligible again. One worker runs at a time; an active same-proposal
-request otherwise returns `409 run_in_progress`. A panic drop guard releases
-that slot and ends a pre-submission run `failed`/`worker_panic`; poisoned state
-locks recover. Post-signing submission uncertainty is retained as described below.
+1. **Peer limiter** (`PEER_REQUESTS` = 6 per `PEER_WINDOW` = 10 s per peer address;
+   IPv6 peers share one budget per /64) and the per-proposal **cool-down** (below).
+   Neither does any RPC or sandbox work. The peer is the socket address
+   (`ConnectInfo`, so the listener must be started through `api::serve`). Behind a
+   reverse proxy every client then shares the proxy's budget: set
+   `VERIFIER_TRUSTED_PROXY_HEADER` (default **off**) to a header the proxy always
+   overwrites; the **last** comma-separated entry is used, and a missing or
+   unparseable value falls back to the socket address. Startup prints which key is in use.
+2. **Pre-authentication RPC**: a semaphore of `PREAUTH_RPC_SLOTS` = 4 bounds the
+   concurrent `get_proposal` reads; none free returns `429 busy`. The slot is
+   released the moment the commitment check passes.
+3. **Authentication**: the sealed box opens and `sha256(plaintext)` equals the
+   on-chain `source_commitment` (`400 bad_bundle` otherwise, nothing charged).
+4. **Run admission**, only now: an occupied worker is refused first
+   (`429 queue_full`, or `409 run_in_progress` for the same proposal) and charges
+   nothing; then the per-proposal limiter (one per 10 s, `PROPOSAL_INTERVAL`) and
+   the global limiter (10 per 1 s sliding window, `GLOBAL_REQUESTS`/`GLOBAL_WINDOW`)
+   are charged, and the single `active` slot is taken (before the Base reads).
+
+Bad requests do not consume the authenticated proposal or global admission budgets
+and cannot hold the run slot. They can exhaust a shared peer budget (for example
+behind an unconfigured proxy) or occupy the four pre-authentication RPC slots.
+`429 rate_limited`, `queue_full`, `cooling_down` and `busy` carry `Retry-After`.
+One worker runs at a time. A panic drop guard releases that slot and ends a
+pre-submission run `failed`/`worker_panic`; poisoned state locks recover.
+Post-signing submission uncertainty is retained as described below.
 The newest 64 finished runs are retained (`FINISHED_RUNS`), plus any unfinished
 run. IDs are monotonic; evicted status/evidence returns 404, not a lifetime
 queue refusal. Export evidence before eviction if it must be retained.
 The allowed CORS origin can read `Retry-After` via `Access-Control-Expose-Headers`.
 
+**Cool-down (N5).** A run that ends `failed` with `infrastructure_timeout` or
+`tool_output_invalid` (exit 124/137, Halmos exception, malformed tool output: all
+causable by the proposal's own source) starts a per-proposal cool-down of 10 min,
+doubling per further such failure (20, 40), capped at 1 h (`COOLDOWN_BASE`,
+`COOLDOWN_CAP`); failures are forgotten after 2 h (`COOLDOWN_MEMORY`) or by any run
+that finishes `done`. It is enforced before any RPC or sandbox work and returns
+`429 cooling_down` with `Retry-After`. Environment failures (`sandbox_unavailable`,
+`storage_error`, `tool_unavailable`, `rpc_unavailable`, `committed_data_unavailable`,
+`worker_panic`) never count.
+
+**Honest canary (N5/N6).** After the 2nd failed run of a proposal with
+`infrastructure_timeout`/`tool_output_invalid` in a sandbox stage, the pipeline runs the
+repository's known-honest fixture (`CanaryPolicy`: `VaultV2Honest` with its reference
+sources, the files the sandbox tests use) through the *same* stage once. If it completes
+within bounds the failure is attributed to the proposal and the run ends in a signed
+Reject: compile `0/2`, R1 `1/11`, R2 `2/23` (the existing reasons). If the canary also
+fails, the run stays `failed` (verifier environment) and the proposal is not cooled
+down. A Halmos report that is incomplete (solver timeout/unknown, reason 23) is subject
+to the canary on its first occurrence: only a completing canary lets it become `Reject{2,23}`;
+otherwise the run is `failed`/`infrastructure_timeout`. The canary adds a `canary` stage
+(`Pass`/`Fail`) to the run's `stages`.
+
 ### Outcome classification
 
 | Cause | HTTP / run outcome | Certificate / gate |
 | --- | --- | --- |
-| Bad sealed bundle, malformed plaintext, wrong source commitment | `400 bad_bundle`; no run or attempt | None; Pending |
+| Bad sealed bundle, malformed plaintext, wrong source commitment | `400 bad_bundle`; no run or attempt; no limiter charged | None; Pending |
 | Other gate | `400 wrong_gate` before RPC | None |
-| Admission rate / busy worker | `429 rate_limited` / `429 queue_full`, `Retry-After`; same active proposal otherwise 409 | None |
-| RPC failure before queueing | `502 rpc_unavailable` | None; Pending |
-| Source compilation failure, runtime mismatch, incompatible R1, R3/R4 violation | Signed Reject with existing rule/reason | Terminal Reject |
-| Halmos solver timeout/unknown in a completed solver report | R2 Incomplete, reason 23 (fail closed) | Signed Reject |
-| Missing/unproved R5 witness or incomplete deterministic replay | R5 Incomplete, reason 51 | Signed Reject |
-| Sandbox/Docker unavailable, disk/tempdir failure, missing verifier tools, infrastructure wall timeout | `failed`, stable `error_code`: `sandbox_unavailable`, `storage_error`, `tool_unavailable`, `infrastructure_timeout` | None; Pending and retryable |
-| Malformed/inconsistent verifier-tool artifacts or an unavailable committed harness | `failed`, `tool_output_invalid` | None; Pending and retryable |
-| R5 RPC transport/HTTP/protocol failure (including malformed/oversized RPC responses), or committed verifier data unavailable/invalid | `failed`: `rpc_unavailable` / `committed_data_unavailable` | None; Pending and retryable |
+| Per-peer flood / pre-auth RPC slots busy | `429 rate_limited` / `429 busy`, `Retry-After` | None |
+| Authenticated rate / busy worker | `429 rate_limited` / `429 queue_full`, `Retry-After`; same active proposal otherwise 409; a busy refusal charges nothing | None |
+| Proposal in cool-down | `429 cooling_down`, `Retry-After`, before any RPC | None |
+| Proposal not Pending (Signed, Rejected, Expired, ...) | `409 proposal_not_pending` | None |
+| Unsupported rule-set hash, malformed proxy slot, gate/proposal id mismatch, expired proposal | `400 unsupported_proposal` | None |
+| Too few blocks for the manifest confirmations, no current implementation yet | `409 not_ready` (retry later) | None |
+| Gate/Base RPC transport or protocol fault, evidence block change during reads | `502 rpc_unavailable` | None; Pending |
+| Source compilation failure carrying a compiler diagnostic (`Error:`, `Error (`, `ParserError`, `DeclarationError`, `TypeError`, `SyntaxError`), runtime mismatch, incompatible R1, R3/R4 violation | Signed Reject with existing rule/reason | Terminal Reject |
+| Host-level compile text (out of memory, too many open files, resource unavailable, fork failures, any output without a compiler diagnostic) | `failed`, `tool_output_invalid` (disk faults: `storage_error`); canary rule | None; Pending and retryable |
+| Halmos solver timeout/unknown in a completed solver report | R2 Incomplete, reason 23 only if the honest canary completes; otherwise `failed`/`infrastructure_timeout` | Signed Reject / none |
+| R5 contradiction reproduced over a proof-checked witness | R5 Incomplete, reason 51 | Signed Reject |
+| R5 provider lag (null block, insufficient confirmations), transport/HTTP/protocol failure, malformed/oversized replies, unverifiable provider data, a contradiction that does not reproduce, or committed verifier data unavailable | `failed`: `rpc_unavailable` / `committed_data_unavailable` | None; Pending and retryable |
+| Sandbox/Docker unavailable, disk/tempdir failure, missing verifier tools | `failed`: `sandbox_unavailable`, `storage_error`, `tool_unavailable` | None; Pending and retryable |
+| Tool wall timeout/OOM (exit 124/137), malformed/inconsistent tool artifacts, unavailable committed harness | `failed`: `infrastructure_timeout`, `tool_output_invalid`; counts toward the cool-down and canary rule | None, or signed Reject once the canary attributes it to the proposal |
+| Run exceeds `RUN_DEADLINE` (20 minutes: sandbox stages, replay RPCs, AI candidates) | `failed`, `infrastructure_timeout` | None; Pending and retryable |
 | Incomplete required AI review | Withheld, no Pass | None; Pending and retryable |
+
+Replay `Incomplete` carries an Environment or Contradiction kind. Missing witness
+data, unauthenticated code responses and tracer output are environmental, even when
+repeated. Only proposal-attributable execution failures over a proof-checked witness
+can be treated as contradictions. The configured archive URL is a single provider,
+not two independent providers.
 
 Failure details expose static codes/digests, never tool diagnostics, keys or RPC
 URLs. A generic container wall timeout is infrastructure, not a solver timeout.
@@ -102,12 +152,12 @@ seconds. Successful `GET /v1/runs/{id}` returns the following flattened object
 
 | Field | JSON shape / meaning |
 | --- | --- |
-| `stage` | String: `queued`, `unsealing`, `compiling`, `r1_layout`, `r2_solvency`, `r3_filter`, `r4_initializer`, `r5_replay`, `ai_review`, `reproducing`, `signing`, `submitting`, `done`, or `failed` |
+| `stage` | String: `queued`, `unsealing`, `compiling`, `canary`, `r1_layout`, `r2_solvency`, `r3_filter`, `r4_initializer`, `r5_replay`, `ai_review`, `reproducing`, `signing`, `submitting`, `done`, or `failed` (`canary` is transient: it appears in `stages`, and as `stage` only while the honest fixture runs) |
 | `started_at` | u64 Unix seconds |
 | `stages` | Array of `{name: string, status: "Pass" \| "Fail" \| "Incomplete" \| "NotRun" \| "Skipped", detail: string, elapsed_ms: u64}`; submission result uses stage name `submit` |
 | `outcome` | Human-readable string, not a machine discriminator |
 | `elapsed_ms` | u64 elapsed milliseconds |
-| `error_code` | Optional string, present on `failed`; stable codes from the classification table, including `tool_output_invalid` for malformed verifier-tool artifacts and `worker_panic`; defensive pipeline-only unseal failures use `bad_bundle` |
+| `error_code` | Optional string, present on `failed`; stable codes from the classification table, including `tool_output_invalid` for malformed verifier-tool artifacts, `infrastructure_timeout` (also for the 20-minute run deadline), `worker_panic`; defensive pipeline-only unseal failures use `bad_bundle` |
 | `verdict` | Optional `"Pass"` or `{"Reject":{"rule_id":u8,"reason_code":u16}}`; present only after signing |
 | `certificate_b64`, `signature_b64` | Optional base64 strings, canonical certificate bytes and Ed25519 signature |
 | `evidence_root` | Optional `0x`-prefixed 32-byte lowercase hex string |
@@ -175,16 +225,20 @@ endpoint internally through `ProposalSource::archive_rpc()`; prefer
 included in evidence or run details. LocalRegistry has no archive endpoint:
 reaching R5 in offline mode fails with `rpc_unavailable`, never a pass.
 
-R5 records Pass 0, divergence Fail 50, or Incomplete 51. Missing or unproved
-witness state and incomplete replay fail closed as signed Reject reason 51.
-Transport/HTTP outages, missing archive configuration and unavailable or corrupt
-committed corpus are verifier faults instead: `failed`, no certificate and no
-submission. Evidence hashes witness bytes or sanitized incomplete details.
+R5 records Pass 0, divergence Fail 50, or Incomplete 51. An incomplete execution
+over a proof-checked witness may produce a signed Reject only if the same
+contradiction recurs on a second fetch. Both fetches use the configured provider,
+not independent providers. Unauthenticated code responses, missing witness data,
+provider lag, RPC outages and unavailable committed corpus instead fail without
+a certificate. Evidence hashes witness bytes or sanitized incomplete details.
 
 After all deterministic rules pass, the verifier calls the loopback AI sidecar.
 An unavailable sidecar, gateway signature, timeout, malformed response or incomplete
 candidate replay produces `withheld: AI review incomplete; no Pass without provider_tee Clean`.
-AI doubt alone never produces a rejection. A reproduced R2 violation produces
+AI doubt alone never produces a rejection. **Clean means the provider responded and
+nothing was reproduced**: it is a best-effort veto layer, not a proof that the review was
+meaningful, since model output (and prompt injection from the source) can yield an empty
+candidate list. A reproduced R2 violation produces
 `Reject { rule_id: 2, reason_code: 22 }` with `AiReview::Vetoed` and a candidate hash.
 
 [I] The committed two-successor-block lag is a minimal demo evidence policy,
@@ -265,9 +319,11 @@ The sidecar requires the matching completion id and `provider_tee`, and preserve
 only allowlisted hex/bounded-text receipt fields. It does not equate the local
 content digest with a provider-signed wire hash.
 
-[I] Remaining operational limits: each archive RPC request has R5's 30-second
-timeout, but the complete multi-candidate replay has no overall wall-clock limit
-or per-proposal AI spending quota. The one-active-run queue is not account-level
+[I] Remaining operational limits: each archive RPC request has a 30-second timeout
+(shortened to the remaining run time). The pipeline checks the 20-minute
+`RUN_DEADLINE` at stage boundaries and before signing, but blocking sandbox and
+sidecar calls can overrun it until their own timeouts. There is no per-proposal AI
+spending quota. The one-active-run queue is not account-level
 abuse prevention. Independent later appraisal of the signer still needs the
 provider's attestation evidence; the normalized receipt alone is not a DCAP proof.
 The existing `--insecure-dev-identity` path still attempts socket attestation when
@@ -336,15 +392,18 @@ SDK integration reference: https://docs.near.ai/cloud/inference-sdk/javascript.m
   network, signing key, service environment, dstack socket or service home mount.
   Foundry FFI is disabled and compiler settings are trusted, not proposer-supplied.
 - Incomplete tool results are never Pass. Solver unknown, bounded loops, malformed
-  JSON, unexpected test identity, timeout and incomplete path accounting are reason
+  JSON, unexpected test identity and incomplete path accounting are reason 23 and, being
+  load-sensitive, become a signed Reject only if the honest canary completes the same stage
+  (see the canary rule above); a generic container timeout is infrastructure, never reason
   23. A symbolic counterexample is reason 20; a fuzz counterexample is reason 21.
 - Evidence keeps content hashes, not private source. Tool diagnostics are hashed
   before status publication so compiler source snippets are not exposed through
   the HTTP status or evidence endpoints.
 
 [I] The local queue allows one active run and retains a bounded in-memory history.
-Restart clears history and changes both keys. This is not durable production
-storage or rate limiting for a public deployment. Socket identity publication is
+Restart clears history, cool-downs and limiter state, and changes both keys. The per-peer
+limiter is only as good as the peer address it sees (see Admission); it is not durable
+production rate limiting. Socket identity publication is
 not, by itself, independent attestation appraisal.
 
 ## Direct dependency evidence
