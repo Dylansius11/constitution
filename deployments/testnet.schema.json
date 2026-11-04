@@ -56,6 +56,16 @@
       "items": {
         "$ref": "#/$defs/plannedChange"
       }
+    },
+    "roles": {
+      "type": "object",
+      "description": "Optional. Governor and guardian committed at activation; the audit fails gate_roles when the gate reports different accounts.",
+      "required": ["governor", "guardian"],
+      "additionalProperties": false,
+      "properties": {
+        "governor": { "$ref": "#/$defs/account" },
+        "guardian": { "$ref": "#/$defs/account" }
+      }
     }
   },
   "additionalProperties": false,
