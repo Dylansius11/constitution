@@ -185,6 +185,15 @@ impl Gate {
                 )
             }
         };
+        // Anyone may bump, so a bump must wait: otherwise eight quick bumps would exhaust the
+        // bump budget before a genuinely stuck transaction needs one.
+        let requested_at = match &target {
+            SignTarget::Proposal(id) => self.sign_requested_at.get(id).copied(),
+            SignTarget::Change(id) => self.migration_requested_at.get(id).copied(),
+        };
+        if requested_at.is_none_or(|at| env::block_timestamp().saturating_sub(at) < MIN_BUMP_AGE) {
+            env::panic_str(BUMP_TOO_EARLY);
+        }
         check(
             bumps < 8,
             GateError::TooManyBumps,

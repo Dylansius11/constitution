@@ -3,6 +3,7 @@ use crate::{GateExt, credit::active_key};
 
 #[near]
 impl Gate {
+    #[payable]
     pub fn propose(&mut self, args: ProposeArgs) -> u64 {
         let proposer = env::predecessor_account_id();
         check(
@@ -33,6 +34,12 @@ impl Gate {
             GateError::DuplicateActive,
             "proposer, codehash and calldata active",
         );
+        let fee = Gate::proposal_storage_fee();
+        if env::attached_deposit().as_yoctonear() != fee {
+            env::panic_str(&format!(
+                "{STORAGE_FEE}: attach exactly {fee} yocto, the non-refundable proposal storage fee"
+            ));
+        }
         let now = env::block_timestamp();
         let expires_at_ns = s_to_ns(self.constitution.params.proposal_ttl_s)
             .and_then(|ttl| now.checked_add(ttl))

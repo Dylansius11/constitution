@@ -12,7 +12,7 @@ fn setup() -> (Gate, Certificate) {
     g.verifiers
         .insert(key().verifying_key().to_bytes(), verifier());
     fund(&mut g, "alice.testnet", 100);
-    let id = g.propose(args());
+    let id = propose_fee(&mut g, args());
     let c = Certificate {
         domain: DOMAIN,
         gate: "gate.testnet".parse().unwrap(),
@@ -322,7 +322,11 @@ fn t_gate_9_fee_bumps_round_up_keep_nonce_and_stop_at_eight() {
     let original = g.get_proposal(0).unwrap().evm.clone().unwrap();
     g.constitution.params.fee_cap = u128::MAX;
     for bump in 1..=8 {
-        context("relay.testnet", 1_000_000_000, 0);
+        context(
+            "relay.testnet",
+            1_000_000_000 + u64::from(bump) * (MIN_BUMP_AGE + 1),
+            0,
+        );
         drop(g.bump_fee(SignTarget::Proposal(0)));
         let e = g.get_proposal(0).unwrap().evm.as_ref().unwrap();
         assert_eq!(e.nonce, original.nonce);
@@ -335,6 +339,7 @@ fn t_gate_9_fee_bumps_round_up_keep_nonce_and_stop_at_eight() {
         let attempt = e.attempts;
         callback(&mut g, 0, attempt, captured());
     }
+    context("relay.testnet", 1_000_000_000 + 9 * (MIN_BUMP_AGE + 1), 0);
     fails("E49_TOO_MANY_BUMPS", || {
         drop(g.bump_fee(SignTarget::Proposal(0)));
     });
@@ -344,6 +349,7 @@ fn fee_cap_and_superseded_rules_fail_before_state_mutation() {
     let (mut g, c) = setup();
     submit(&mut g, &c);
     callback(&mut g, 0, 1, captured());
+    context("relay.testnet", 1_000_000_000 + MIN_BUMP_AGE, 0);
     g.constitution.params.fee_cap = 12;
     fails("E48_FEE_CAP", || {
         drop(g.bump_fee(SignTarget::Proposal(0)));
@@ -373,7 +379,8 @@ fn failed_bump_preserves_prior_raw_and_never_releases_a_new_active_proposal() {
     context("alice.testnet", 1_000_000_000, 0);
     let mut a = args();
     a.new_impl_codehash = Hex32([88; 32]);
-    let next = g.propose(a);
+    let next = propose_fee(&mut g, a);
+    context("relay.testnet", 1_000_000_000 + MIN_BUMP_AGE, 0);
     drop(g.bump_fee(SignTarget::Proposal(0)));
     callback(&mut g, 0, 2, PromiseResult::Failed);
     assert_eq!(
@@ -679,6 +686,7 @@ fn migration_fee_bump_preserves_nonce_deadline_and_calldata_and_caps() {
         VMContextBuilder::new()
             .current_account_id("gate.testnet".parse().unwrap())
             .predecessor_account_id("gate.testnet".parse().unwrap())
+            .block_timestamp(604_801_000_000_000 + MIN_BUMP_AGE)
             .build(),
         near_sdk::test_vm_config(),
         near_sdk::RuntimeFeesConfig::test(),
@@ -726,7 +734,7 @@ fn signed_max_calldata_storage_measurement() {
     let mut a = args();
     a.init_calldata.0 = vec![0x55; 1024];
     c.init_calldata_hash = env::keccak256_array(&a.init_calldata.0);
-    g.propose(a);
+    propose_fee(&mut g, a);
     submit(&mut g, &c);
     let usage = env::storage_usage();
     testing_env!(
