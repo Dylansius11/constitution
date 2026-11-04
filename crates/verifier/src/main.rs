@@ -33,6 +33,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|_| "invalid GATE_ACCOUNT_ID")?,
         )
     };
+    let peer_source = match std::env::var("VERIFIER_PEER_SOURCE") {
+        Ok(value) if value == "socket" => value,
+        Ok(value)
+            if value
+                .strip_prefix("header:")
+                .is_some_and(|name| !name.is_empty()) =>
+        {
+            value
+        }
+        Err(_) if local => "socket".to_owned(),
+        _ => return Err("VERIFIER_PEER_SOURCE must be socket or header:<name>".into()),
+    };
+    if let Some(name) = peer_source.strip_prefix("header:") {
+        axum::http::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| "invalid VERIFIER_PEER_SOURCE header")?;
+    }
     let identity = Identity::new()
         .for_mode(
             local,
@@ -73,12 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::new(submitter),
         )?
     };
-    // Unset (default): the per-peer limiter keys on the socket peer address, which behind a
-    // reverse proxy is the proxy itself. Set it to a header that proxy always overwrites.
-    let proxy_header = std::env::var("VERIFIER_TRUSTED_PROXY_HEADER")
-        .ok()
-        .filter(|v| !v.trim().is_empty());
-    if let Some(header) = &proxy_header {
+    if let Some(header) = peer_source.strip_prefix("header:") {
         Service::trust_proxy_header(&mut service, header)?;
     }
     let app = router(service, &origin)?;
@@ -90,7 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             "gate RPC and verdict submission"
         },
-        proxy_header.as_deref().unwrap_or("socket peer address"),
+        peer_source,
     );
     serve(listener, app).await?;
     Ok(())

@@ -298,23 +298,6 @@ impl Sandbox {
         Ok((result, reason, log))
     }
 }
-/// Host-level failure text that must never be read as a verdict on the source.
-const HOST_STORAGE_TEXT: [&str; 3] = [
-    "no space left on device",
-    "read-only file system",
-    "input/output error",
-];
-const HOST_RESOURCE_TEXT: [&str; 9] = [
-    "cannot allocate memory",
-    "out of memory",
-    "too many open files",
-    "resource temporarily unavailable",
-    "cannot fork",
-    "can't fork",
-    "fork:",
-    "fork failed",
-    "failed to fork",
-];
 /// Real compiler diagnostics. Only text carrying one of these may become a signed rejection.
 const COMPILER_DIAGNOSTICS: [&str; 6] = [
     "Error:",
@@ -324,19 +307,10 @@ const COMPILER_DIAGNOSTICS: [&str; 6] = [
     "SyntaxError",
     "Error (",
 ];
-/// A failed `forge build` is a source verdict only when it carries a compiler diagnostic and
-/// no host-level failure text; the diagnostic text is returned as-is. Anything else is an
-/// infrastructure error (`tool_output_invalid`, subject to the canary rule in the pipeline),
-/// because the proposal's own source can exhaust the container, but a host fault must not
-/// become a terminal on-chain Reject on the first occurrence.
+/// Only compiler diagnostics can be source verdicts. Tool output may echo source text, so
+/// resource and disk markers in it are not trusted as host-owned signals.
 pub fn classify_compile_failure(text: &str) -> String {
-    let lower = text.to_lowercase();
-    if HOST_STORAGE_TEXT.iter().any(|m| lower.contains(m)) {
-        return "infrastructure:storage_error".into();
-    }
-    if HOST_RESOURCE_TEXT.iter().any(|m| lower.contains(m))
-        || !COMPILER_DIAGNOSTICS.iter().any(|m| text.contains(m))
-    {
+    if !COMPILER_DIAGNOSTICS.iter().any(|m| text.contains(m)) {
         return "infrastructure:tool_output_invalid".into();
     }
     text.to_owned()
@@ -470,6 +444,17 @@ mod tests {
     }
 
     #[test]
+    fn source_echo_cannot_spoof_a_storage_fault() {
+        let (manifest, bundle) = fixture(
+            b"pragma solidity 0.8.38;\ncontract A { function x() public { @ // no space left on device\n} }\n",
+            "src/A.sol:A",
+        );
+        let sandbox = Sandbox::new(&repo(), &bundle, &manifest).unwrap();
+        let error = sandbox.compile().unwrap_err();
+        assert!(error.contains("no space left on device"));
+        assert_eq!(infrastructure_error(&error), None);
+    }
+    #[test]
     fn compile_text_is_a_verdict_only_with_a_compiler_diagnostic() {
         for text in [
             "Error: Compiler run failed:\nError (2314): Expected '{' but got end of source\n --> src/A.sol:1:30",
@@ -480,13 +465,9 @@ mod tests {
         ] {
             assert_eq!(classify_compile_failure(text), text);
         }
-        // Host-level text wins even behind forge's generic `Error:` prefix.
         for text in [
-            "Error: Cannot allocate memory (os error 12)",
-            "Error: Too many open files (os error 24)",
             "sh: 1: Cannot fork",
             "sh: fork: retry: Resource temporarily unavailable",
-            "Error: out of memory",
             "Killed",
             "",
         ] {
@@ -496,12 +477,8 @@ mod tests {
                 "{text:?}"
             );
         }
-        assert_eq!(
-            infrastructure_error(&classify_compile_failure(
-                "Error: No space left on device (os error 28)"
-            )),
-            Some("storage_error")
-        );
+        let echoed = "Error (2314): parser error\n1 | no space left on device";
+        assert_eq!(classify_compile_failure(echoed), echoed);
     }
 
     #[test]

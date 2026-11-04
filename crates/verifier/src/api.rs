@@ -56,6 +56,9 @@ struct Admission {
     proposals: BTreeMap<ProposalKey, Instant>,
     global: VecDeque<Instant>,
     peers: BTreeMap<IpAddr, VecDeque<Instant>>,
+    peer_expirations: VecDeque<(Instant, IpAddr)>,
+    read_peers: BTreeMap<IpAddr, VecDeque<Instant>>,
+    read_expirations: VecDeque<(Instant, IpAddr)>,
     cooldowns: BTreeMap<ProposalKey, Cooldown>,
 }
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -86,20 +89,58 @@ fn cooldown_for(failures: u32) -> Duration {
         .saturating_mul(1u32 << failures.saturating_sub(1).min(8))
         .min(COOLDOWN_CAP)
 }
+fn limit_peer(
+    peers: &mut BTreeMap<IpAddr, VecDeque<Instant>>,
+    expirations: &mut VecDeque<(Instant, IpAddr)>,
+    peer: IpAddr,
+    now: Instant,
+    limit: usize,
+) -> Result<(), ApiError> {
+    while expirations
+        .front()
+        .is_some_and(|(time, _)| now.duration_since(*time) >= PEER_WINDOW)
+    {
+        let (time, ip) = expirations.pop_front().expect("front exists");
+        if let Some(times) = peers.get_mut(&ip) {
+            if times.front() == Some(&time) {
+                times.pop_front();
+            }
+            if times.is_empty() {
+                peers.remove(&ip);
+            }
+        }
+    }
+    let peer = peer_bucket(peer);
+    let times = peers.entry(peer).or_default();
+    if times.len() >= limit {
+        return Err(ApiError::limited(
+            "rate_limited",
+            whole_seconds(PEER_WINDOW - now.duration_since(times[0])),
+        ));
+    }
+    times.push_back(now);
+    expirations.push_back((now, peer));
+    Ok(())
+}
 impl Admission {
     /// Unauthenticated requests are limited per peer address, never per proposal or globally.
     fn peer_limit(&mut self, peer: IpAddr, now: Instant) -> Result<(), ApiError> {
-        self.peers.retain(|_, times| {
-            times.retain(|time| now.duration_since(*time) < PEER_WINDOW);
-            !times.is_empty()
-        });
-        let times = self.peers.entry(peer_bucket(peer)).or_default();
-        if times.len() >= PEER_REQUESTS {
-            let wait = PEER_WINDOW - now.duration_since(times[0]);
-            return Err(ApiError::limited("rate_limited", whole_seconds(wait)));
-        }
-        times.push_back(now);
-        Ok(())
+        limit_peer(
+            &mut self.peers,
+            &mut self.peer_expirations,
+            peer,
+            now,
+            PEER_REQUESTS,
+        )
+    }
+    fn read_limit(&mut self, peer: IpAddr, now: Instant) -> Result<(), ApiError> {
+        limit_peer(
+            &mut self.read_peers,
+            &mut self.read_expirations,
+            peer,
+            now,
+            60,
+        )
     }
     /// Refuse a proposal that recently failed runs its own source can cause; no RPC or
     /// sandbox work happens before this check.
@@ -120,30 +161,40 @@ impl Admission {
     fn prior_failed_runs(&self, key: &ProposalKey) -> u32 {
         self.cooldowns.get(key).map_or(0, |c| c.failures)
     }
-    /// Remember how a finished run ended. A failure the honest canary also reproduced belongs
-    /// to the verifier environment and never penalises the proposal.
+    /// Count failed and withheld outcomes except clearly verifier-owned faults.
     fn record_outcome(&mut self, key: &ProposalKey, run: &Run, now: Instant) {
-        match run.stage.as_str() {
-            "failed" if run.canary_failed => {
-                self.cooldowns.remove(key);
-            }
-            "failed" => {
-                if run
-                    .error_code
-                    .as_deref()
-                    .is_some_and(pipeline::proposal_attributable)
-                {
-                    let c = self.cooldowns.entry(key.clone()).or_insert(Cooldown {
-                        failures: 0,
-                        last_failure: now,
-                    });
-                    c.failures += 1;
-                    c.last_failure = now;
-                }
-            }
-            _ => {
-                self.cooldowns.remove(key);
-            }
+        let verifier_fault = run.stage == "failed"
+            && (run.canary_failed
+                || run.error_code.as_deref().is_some_and(|code| {
+                    matches!(
+                        code,
+                        "sandbox_unavailable" | "worker_panic" | "rpc_unavailable"
+                    )
+                })
+                || (run.error_code.as_deref() == Some("infrastructure_timeout")
+                    && run
+                        .stages
+                        .iter()
+                        .rev()
+                        .find(|stage| stage.name != "failed")
+                        .is_some_and(|stage| {
+                            matches!(
+                                stage.name.as_str(),
+                                "r5_replay" | "ai_review" | "reproducing"
+                            )
+                        })));
+        if verifier_fault {
+            return;
+        }
+        if run.certificate_b64.is_none() && matches!(run.stage.as_str(), "failed" | "done") {
+            let c = self.cooldowns.entry(key.clone()).or_insert(Cooldown {
+                failures: 0,
+                last_failure: now,
+            });
+            c.failures = c.failures.saturating_add(1);
+            c.last_failure = now;
+        } else if run.certificate_b64.is_some() {
+            self.cooldowns.remove(key);
         }
     }
     /// Authenticated admission: a refusal because the worker is busy charges nothing.
@@ -282,6 +333,7 @@ pub struct Service {
     /// Tool execution backend; the canary runs through the same backend as proposal stages.
     pub tools: Box<dyn ToolBackend>,
     pub canary: CanaryPolicy,
+    pub canary_health: pipeline::CanaryHealth,
     submitter: Option<Box<dyn VerdictSubmitter>>,
     state: Mutex<Admission>,
     /// Bounds the unauthenticated `get_proposal` RPC.
@@ -325,6 +377,7 @@ impl Service {
             ai_transport: Box::new(crate::ai::LocalSidecar),
             tools: Box::new(DockerBackend),
             canary: CanaryPolicy::default(),
+            canary_health: pipeline::CanaryHealth::default(),
             submitter,
             state: Mutex::new(Admission::default()),
             preauth: Arc::new(tokio::sync::Semaphore::new(PREAUTH_RPC_SLOTS)),
@@ -346,17 +399,19 @@ impl Service {
             .trusted_proxy_header = Some(name);
         Ok(())
     }
-    fn peer(&self, socket: SocketAddr, headers: &HeaderMap) -> IpAddr {
-        self.trusted_proxy_header
-            .as_ref()
-            .and_then(|name| headers.get(name))
+    fn peer(&self, socket: SocketAddr, headers: &HeaderMap) -> Result<IpAddr, ApiError> {
+        let Some(name) = &self.trusted_proxy_header else {
+            return Ok(socket.ip());
+        };
+        headers
+            .get(name)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.rsplit(',').next())
             .and_then(|value| value.trim().parse().ok())
-            .unwrap_or_else(|| socket.ip())
+            .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "invalid_peer"))
     }
 }
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StartRun {
     pub gate: AccountId,
@@ -429,8 +484,14 @@ async fn start(
     State(s): State<Arc<Service>>,
     ConnectInfo(socket): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Json(request): Json<StartRun>,
+    request: axum::extract::Request,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    lock(&s.state).peer_limit(s.peer(socket, &headers)?, Instant::now())?;
+    let body = axum::body::to_bytes(request.into_body(), 3 * 1024 * 1024)
+        .await
+        .map_err(|_| ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "bad_request"))?;
+    let request: StartRun = serde_json::from_slice(&body)
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "bad_request"))?;
     if s.proposals
         .gate_account()
         .is_some_and(|gate| gate != &request.gate)
@@ -439,11 +500,8 @@ async fn start(
     }
     let key = (request.gate.clone(), request.proposal_id);
     {
-        // Unauthenticated: only the peer's own budget and the proposal's own failure history.
         let mut state = lock(&s.state);
-        let now = Instant::now();
-        state.peer_limit(s.peer(socket, &headers), now)?;
-        state.cooling_down(&key, now)?;
+        state.cooling_down(&key, Instant::now())?;
     }
     let permit = Arc::clone(&s.preauth)
         .try_acquire_owned()
@@ -553,6 +611,7 @@ async fn start(
                 ai_transport: s.ai_transport.as_ref(),
                 tools: s.tools.as_ref(),
                 canary: &s.canary,
+                canary_health: &s.canary_health,
                 prior_failed_runs,
                 deadline: Instant::now() + pipeline::RUN_DEADLINE,
                 observer: Some(observer),
@@ -575,25 +634,33 @@ async fn start(
 }
 async fn status(
     State(s): State<Arc<Service>>,
+    ConnectInfo(socket): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<u64>,
-) -> Result<Json<SubmittedRun>, StatusCode> {
-    lock(&s.state)
+) -> Result<Json<SubmittedRun>, ApiError> {
+    let mut state = lock(&s.state);
+    state.read_limit(s.peer(socket, &headers)?, Instant::now())?;
+    state
         .runs
         .get(&id)
         .cloned()
         .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "evicted"))
 }
 async fn evidence(
     State(s): State<Arc<Service>>,
+    ConnectInfo(socket): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<u64>,
-) -> Result<Json<constitution_types::EvidenceManifest>, StatusCode> {
-    lock(&s.state)
+) -> Result<Json<constitution_types::EvidenceManifest>, ApiError> {
+    let mut state = lock(&s.state);
+    state.read_limit(s.peer(socket, &headers)?, Instant::now())?;
+    state
         .runs
         .get(&id)
         .and_then(|r| r.run.evidence.clone())
         .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "evicted"))
 }
 
 #[cfg(test)]
@@ -722,7 +789,14 @@ mod tests {
         n: u8,
         request: StartRun,
     ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-        start(State(s.clone()), peer(n), HeaderMap::new(), Json(request)).await
+        let body = serde_json::to_vec(&request).unwrap();
+        start(
+            State(s.clone()),
+            peer(n),
+            HeaderMap::new(),
+            axum::http::Request::new(axum::body::Body::from(body)),
+        )
+        .await
     }
     async fn finished(s: &Service, id: u64) -> SubmittedRun {
         tokio::time::timeout(Duration::from_secs(5), async {
@@ -780,7 +854,7 @@ mod tests {
         );
         assert_eq!(reads.load(Ordering::SeqCst), 0);
         let state = lock(&s.state);
-        assert!(state.global.is_empty() && state.peers.is_empty());
+        assert!(state.global.is_empty());
     }
     #[tokio::test]
     async fn bad_body_flood_cannot_lock_out_the_real_proposer() {
@@ -993,17 +1067,81 @@ mod tests {
             "x-forwarded-for",
             "198.51.100.9, 192.0.2.4".parse().unwrap(),
         );
-        assert_eq!(s.peer(socket, &headers), socket.ip());
+        assert_eq!(s.peer(socket, &headers).unwrap(), socket.ip());
         Service::trust_proxy_header(&mut s, "X-Forwarded-For").unwrap();
         // The last hop is the address the trusted proxy appended.
         assert_eq!(
-            s.peer(socket, &headers),
+            s.peer(socket, &headers).unwrap(),
             "192.0.2.4".parse::<IpAddr>().unwrap()
         );
-        assert_eq!(s.peer(socket, &HeaderMap::new()), socket.ip());
+        assert!(s.peer(socket, &HeaderMap::new()).is_err());
         headers.insert("x-forwarded-for", "not an address".parse().unwrap());
-        assert_eq!(s.peer(socket, &headers), socket.ip());
+        assert!(s.peer(socket, &headers).is_err());
         assert!(Service::trust_proxy_header(&mut s, "bad header").is_err());
+    }
+    #[tokio::test]
+    async fn peer_limit_precedes_body_parsing_and_bounds_reads() {
+        let (s, _, _) = setup();
+        for _ in 0..PEER_REQUESTS {
+            let request = axum::http::Request::new(axum::body::Body::from("not json"));
+            assert_eq!(
+                start(State(s.clone()), peer(9), HeaderMap::new(), request)
+                    .await
+                    .unwrap_err()
+                    .code,
+                "bad_request"
+            );
+        }
+        let request = axum::http::Request::new(axum::body::Body::from("not json"));
+        assert_eq!(
+            start(State(s.clone()), peer(9), HeaderMap::new(), request)
+                .await
+                .unwrap_err()
+                .code,
+            "rate_limited"
+        );
+        for _ in 0..60 {
+            assert_eq!(
+                status(State(s.clone()), peer(10), HeaderMap::new(), Path(1))
+                    .await
+                    .err()
+                    .unwrap()
+                    .code,
+                "evicted"
+            );
+        }
+        assert_eq!(
+            evidence(State(s), peer(10), HeaderMap::new(), Path(1))
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "rate_limited"
+        );
+    }
+    #[test]
+    fn withheld_and_storage_faults_count_but_rpc_timeouts_do_not() {
+        let mut state = Admission::default();
+        let now = Instant::now();
+        let k = key(1);
+        let mut withheld = Run::queued();
+        withheld.stage = "done".into();
+        state.record_outcome(&k, &withheld, now);
+        assert_eq!(state.prior_failed_runs(&k), 1);
+        let mut storage = Run::queued();
+        storage.fail("storage_error");
+        state.record_outcome(&k, &storage, now);
+        assert_eq!(state.prior_failed_runs(&k), 2);
+        let mut rpc = Run::queued();
+        rpc.stages.push(pipeline::Stage {
+            name: "r5_replay".into(),
+            status: constitution_types::manifest::StageStatus::Incomplete,
+            detail: String::new(),
+            elapsed_ms: 0,
+        });
+        rpc.fail("infrastructure_timeout");
+        state.record_outcome(&k, &rpc, now);
+        assert_eq!(state.prior_failed_runs(&k), 2);
     }
     #[test]
     fn cooldown_grows_to_the_cap_and_forgives_success_and_environment_blame() {
@@ -1040,12 +1178,12 @@ mod tests {
         let mut environment = failed("infrastructure_timeout");
         environment.canary_failed = true;
         state.record_outcome(&k, &environment, now + minutes(33));
-        assert_eq!(state.prior_failed_runs(&k), 0);
+        assert_eq!(state.prior_failed_runs(&k), 2);
         state.record_outcome(&k, &failed("infrastructure_timeout"), now + minutes(34));
         let mut done = Run::queued();
         done.stage = "done".into();
         state.record_outcome(&k, &done, now + minutes(35));
-        assert_eq!(state.prior_failed_runs(&k), 0);
+        assert_eq!(state.prior_failed_runs(&k), 4);
         // Forgotten after the memory window.
         state.record_outcome(&k, &failed("infrastructure_timeout"), now);
         state.cooling_down(&k, now + COOLDOWN_MEMORY).unwrap();
@@ -1179,7 +1317,7 @@ mod tests {
             first.run.error_code.as_deref(),
             Some("infrastructure_timeout")
         );
-        assert!(first.run.stages.iter().all(|stage| stage.name != "canary"));
+        assert!(first.run.stages.iter().any(|stage| stage.name == "canary"));
         assert_eq!(lock(&s.state).prior_failed_runs(&key(1)), 1);
         let error = call(&s, 1, request(&s, &bytes, 1)).await.unwrap_err();
         assert_eq!(

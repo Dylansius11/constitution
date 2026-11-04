@@ -225,6 +225,18 @@ impl CanaryPolicy {
 pub fn proposal_attributable(code: &str) -> bool {
     matches!(code, "infrastructure_timeout" | "tool_output_invalid")
 }
+#[derive(Default)]
+pub struct CanaryHealth(std::sync::Mutex<[Option<Instant>; 3]>);
+impl CanaryHealth {
+    fn fresh(&self, stage: SandboxStage) -> bool {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())[stage as usize]
+            .is_some_and(|at| at.elapsed() <= Duration::from_secs(30 * 60))
+    }
+    fn record(&self, stage: SandboxStage, healthy: bool) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())[stage as usize] =
+            healthy.then(Instant::now);
+    }
+}
 /// Everything one run needs besides the proposal and the sealed bundle.
 pub struct RunContext<'a> {
     pub archive_provider: &'a str,
@@ -232,6 +244,7 @@ pub struct RunContext<'a> {
     pub ai_transport: &'a dyn crate::ai::Transport,
     pub tools: &'a dyn ToolBackend,
     pub canary: &'a CanaryPolicy,
+    pub canary_health: &'a CanaryHealth,
     /// Earlier failed runs of this proposal that count toward the canary rule.
     pub prior_failed_runs: u32,
     pub deadline: Instant,
@@ -266,6 +279,7 @@ pub fn execute(
             ai_transport: &crate::ai::LocalSidecar,
             tools: &DockerBackend,
             canary: &CanaryPolicy::default(),
+            canary_health: &CanaryHealth::default(),
             prior_failed_runs: 0,
             deadline: Instant::now() + RUN_DEADLINE,
             observer: None,
@@ -525,6 +539,7 @@ fn canary_completes(
             })
         })()
         .unwrap_or(false);
+    ctx.canary_health.record(stage, completed);
     run.record(
         "canary",
         if completed {
@@ -548,6 +563,7 @@ fn canary_completes(
 /// A sandbox stage failed with infrastructure code `code`. After enough failed runs the
 /// canary decides who owns the failure: it completing makes the failure the proposal's
 /// (a signed Reject); otherwise, or before the canary is due, the run stays `failed`.
+#[allow(clippy::too_many_arguments)]
 fn attribute_failure(
     ctx: &RunContext,
     repo: &Path,
@@ -556,10 +572,12 @@ fn attribute_failure(
     code: &'static str,
     run: &mut Run,
     start: Instant,
+    before: bool,
 ) -> Result<(u8, u16), &'static str> {
     let due = proposal_attributable(code)
         && ctx.prior_failed_runs.saturating_add(1) >= ctx.canary.after_failed_runs;
-    if due && canary_completes(ctx, repo, m, stage, run) {
+    let after = proposal_attributable(code) && canary_completes(ctx, repo, m, stage, run);
+    if due && before && after {
         run.record(
             stage.name(),
             StageStatus::Incomplete,
@@ -568,7 +586,7 @@ fn attribute_failure(
         );
         return Ok(stage.rejection());
     }
-    run.canary_failed |= due;
+    run.canary_failed |= proposal_attributable(code) && !after;
     run.record(stage.name(), StageStatus::Incomplete, code, start);
     Err(code)
 }
@@ -624,6 +642,7 @@ fn run_stages(
         run.record("compiling", StageStatus::Fail, error, start);
         return Ok(Some((0, 4)));
     }
+    let compile_before = ctx.canary_health.fresh(SandboxStage::Compile);
     let tools = match ctx.tools.open(repo, &b, m) {
         Ok(s) => s,
         Err(e) => {
@@ -634,8 +653,21 @@ fn run_stages(
     };
     if let Err(e) = tools.compile() {
         if let Some(code) = crate::tools::infrastructure_error(&e) {
-            return attribute_failure(ctx, repo, m, SandboxStage::Compile, code, run, start)
-                .map(Some);
+            return attribute_failure(
+                ctx,
+                repo,
+                m,
+                SandboxStage::Compile,
+                code,
+                run,
+                start,
+                compile_before,
+            )
+            .map(Some);
+        }
+        if !canary_completes(ctx, repo, m, SandboxStage::Compile, run) {
+            run.canary_failed = true;
+            return Err("sandbox_unavailable");
         }
         run.record(
             "compiling",
@@ -652,8 +684,17 @@ fn run_stages(
         Ok(v) => v,
         Err(e) => {
             if let Some(code) = crate::tools::infrastructure_error(&e) {
-                return attribute_failure(ctx, repo, m, SandboxStage::Compile, code, run, start)
-                    .map(Some);
+                return attribute_failure(
+                    ctx,
+                    repo,
+                    m,
+                    SandboxStage::Compile,
+                    code,
+                    run,
+                    start,
+                    compile_before,
+                )
+                .map(Some);
             }
             run.record(
                 "compiling",
@@ -678,8 +719,17 @@ fn run_stages(
         Ok(current) if keccak(&current) == p.current_impl_codehash.0 => current,
         Err(e) if crate::tools::infrastructure_error(&e).is_some() => {
             let code = infra(&e, "tool_unavailable");
-            return attribute_failure(ctx, repo, m, SandboxStage::Compile, code, run, start)
-                .map(Some);
+            return attribute_failure(
+                ctx,
+                repo,
+                m,
+                SandboxStage::Compile,
+                code,
+                run,
+                start,
+                compile_before,
+            )
+            .map(Some);
         }
         _ => {
             run.record(
@@ -701,6 +751,7 @@ fn run_stages(
     run.begin("r1_layout");
     let start = Instant::now();
     deadline_check(ctx, run, "r1_layout")?;
+    let layout_before = ctx.canary_health.fresh(SandboxStage::Layout);
     let (status, log) = match tools.layout(
         &b.contract_name,
         &m.reference.contract_name,
@@ -709,7 +760,16 @@ fn run_stages(
         Ok(result) => result,
         Err(e) => {
             let code = infra(&e, "tool_unavailable");
-            let reject = attribute_failure(ctx, repo, m, SandboxStage::Layout, code, run, start)?;
+            let reject = attribute_failure(
+                ctx,
+                repo,
+                m,
+                SandboxStage::Layout,
+                code,
+                run,
+                start,
+                layout_before,
+            )?;
             ev.r1 = RuleEvidence {
                 status: StageStatus::Incomplete,
                 artifact_sha256: Hex32(sha256(code.as_bytes())),
@@ -748,11 +808,21 @@ fn run_stages(
     run.begin("r2_solvency");
     let start = Instant::now();
     deadline_check(ctx, run, "r2_solvency")?;
+    let solvency_before = ctx.canary_health.fresh(SandboxStage::Solvency);
     let (status, code, log) = match tools.solvency(m, &b) {
         Ok(result) => result,
         Err(e) => {
             let code = infra(&e, "tool_unavailable");
-            let reject = attribute_failure(ctx, repo, m, SandboxStage::Solvency, code, run, start)?;
+            let reject = attribute_failure(
+                ctx,
+                repo,
+                m,
+                SandboxStage::Solvency,
+                code,
+                run,
+                start,
+                solvency_before,
+            )?;
             ev.r2 = RuleEvidence {
                 status: StageStatus::Incomplete,
                 artifact_sha256: Hex32(sha256(code.as_bytes())),
@@ -763,17 +833,15 @@ fn run_stages(
     };
     // A solver timeout or unknown depends on host load as much as on the proposal: it may
     // only become a terminal Reject if the honest fixture still completes the same stage.
-    if status == StageStatus::Incomplete
-        && !canary_completes(ctx, repo, m, SandboxStage::Solvency, run)
-    {
-        run.canary_failed = true;
-        run.record(
-            "r2_solvency",
-            StageStatus::Incomplete,
-            "infrastructure_timeout; solver incomplete and the honest canary did not complete",
-            start,
-        );
-        return Err("infrastructure_timeout");
+    if status == StageStatus::Incomplete {
+        let after = canary_completes(ctx, repo, m, SandboxStage::Solvency, run);
+        if !solvency_before || !after {
+            run.canary_failed = !after;
+            run.record("r2_solvency", StageStatus::Incomplete,
+                "infrastructure_timeout; solver incomplete without healthy canaries before and after",
+                start);
+            return Err("infrastructure_timeout");
+        }
     }
     ev.r2 = RuleEvidence {
         status,
@@ -1044,7 +1112,11 @@ fn replay_stage(
                     return ReplayOutcome::Fault("infrastructure_timeout");
                 }
                 if error.kind == IncompleteKind::Environment {
-                    return ReplayOutcome::Fault("rpc_unavailable");
+                    return ReplayOutcome::Fault(if error.rpc_transport {
+                        "rpc_unavailable"
+                    } else {
+                        "replay_unavailable"
+                    });
                 }
                 if confirmed
                     .as_ref()
@@ -1110,6 +1182,8 @@ mod replay_stage_tests {
     }
     static CANARY: std::sync::LazyLock<CanaryPolicy> =
         std::sync::LazyLock::new(CanaryPolicy::default);
+    static HEALTH: std::sync::LazyLock<CanaryHealth> =
+        std::sync::LazyLock::new(CanaryHealth::default);
     fn context<'a>(
         rpc: Option<&'a str>,
         tools: &'a dyn ToolBackend,
@@ -1122,6 +1196,7 @@ mod replay_stage_tests {
             ai_transport: &crate::ai::LocalSidecar,
             tools,
             canary: &CANARY,
+            canary_health: &HEALTH,
             prior_failed_runs: prior,
             deadline,
             observer: None,
@@ -1320,7 +1395,10 @@ mod replay_stage_tests {
             _ => Reply::Null,
         });
         let m = committed_manifest();
-        assert_eq!(fault(&repo_root(), &m, Some(&stub.url)), "rpc_unavailable");
+        assert_eq!(
+            fault(&repo_root(), &m, Some(&stub.url)),
+            "replay_unavailable"
+        );
         assert_eq!(stub.count("eth_getBlockByNumber"), 2);
     }
     #[test]
@@ -1328,7 +1406,7 @@ mod replay_stage_tests {
         let m = committed_manifest();
         let (stub, p) = chain_stub(100, |_| 1, |_| "0x");
         let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("rpc_unavailable")));
+        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
         assert_eq!(stub.count("eth_blockNumber"), 2);
         assert_eq!(stub.count("eth_getCode"), 0);
         // A node that catches up on the second read lets the run continue to the code read.
@@ -1341,12 +1419,12 @@ mod replay_stage_tests {
         let m = committed_manifest();
         let (stub, p) = chain_stub(100, |_| 5, |_| "0x");
         let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("rpc_unavailable")));
+        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
         assert_eq!(stub.count("eth_chainId"), 1);
         // A later response changing cannot turn the first unauthenticated read into a verdict.
         let (stub, p) = chain_stub(100, |_| 5, |nth| if nth == 1 { "0x" } else { "0x6001" });
         let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("rpc_unavailable")));
+        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
         assert_eq!(stub.count("eth_chainId"), 1);
     }
     #[test]
@@ -1502,10 +1580,13 @@ mod replay_stage_tests {
     }
     impl crate::tools::Toolchain for FakeTools {
         fn compile(&self) -> Result<Vec<u8>, String> {
-            self.0
-                .compile
-                .map(|()| b"ok".to_vec())
-                .map_err(infrastructure)
+            self.0.compile.map(|()| b"ok".to_vec()).map_err(|code| {
+                if code == "diagnostic" {
+                    "ParserError: no space left on device".to_owned()
+                } else {
+                    infrastructure(code)
+                }
+            })
         }
         fn runtime(&self, _: &str) -> Result<Vec<u8>, String> {
             Ok(RUNTIME.to_vec())
@@ -1562,6 +1643,11 @@ mod replay_stage_tests {
         let (m, mut p, sealed) = sealed_fixture(&identity, false);
         p.current_impl_codehash = Hex32(keccak(RUNTIME));
         p.new_impl_codehash = Hex32(keccak(RUNTIME));
+        *HEALTH.0.lock().unwrap() = if prior_failed_runs > 0 {
+            [Some(Instant::now()); 3]
+        } else {
+            [None; 3]
+        };
         let backend = FakeBackend {
             proposal,
             canary,
@@ -1598,31 +1684,67 @@ mod replay_stage_tests {
     fn canary_stage(run: &Run) -> Option<StageStatus> {
         run.stages
             .iter()
+            .rev()
             .find(|stage| stage.name == "canary")
             .map(|stage| stage.status)
     }
     #[test]
-    fn first_proposal_timeout_fails_without_running_the_canary() {
+    fn cached_health_expires_and_success_path_does_not_run_canary() {
+        let health = CanaryHealth::default();
+        health.record(SandboxStage::Solvency, true);
+        assert!(health.fresh(SandboxStage::Solvency));
+        health.0.lock().unwrap()[SandboxStage::Solvency as usize] =
+            Some(Instant::now() - Duration::from_secs(30 * 60 + 1));
+        assert!(!health.fresh(SandboxStage::Solvency));
+        let (_, opened) = fake_run(Behavior::healthy(), Behavior::healthy(), 0, later());
+        assert_eq!(
+            opened.len(),
+            1,
+            "successful tool stages must not run a canary"
+        );
+    }
+    #[test]
+    fn compiler_diagnostic_requires_a_healthy_canary() {
+        let diagnostic = Behavior {
+            compile: Err("diagnostic"),
+            ..Behavior::healthy()
+        };
+        let (run, _) = fake_run(diagnostic.clone(), Behavior::healthy(), 0, later());
+        rejected(&run, 0, 2);
+        let broken = Behavior {
+            compile: Err("tool_unavailable"),
+            ..Behavior::healthy()
+        };
+        let (run, _) = fake_run(diagnostic, broken, 0, later());
+        assert_eq!(run.stage, "failed");
+        assert_eq!(run.error_code.as_deref(), Some("sandbox_unavailable"));
+        assert!(run.certificate_b64.is_none());
+    }
+    #[test]
+    fn first_proposal_timeout_records_health_for_later_runs() {
         let (run, opened) = fake_run(solver_timeout(), Behavior::healthy(), 0, later());
         assert_eq!(run.stage, "failed");
         assert_eq!(run.error_code.as_deref(), Some("infrastructure_timeout"));
         assert!(run.certificate_b64.is_none() && !run.canary_failed);
-        assert_eq!(opened.len(), 1);
+        assert_eq!(opened.len(), 2);
     }
     #[test]
     fn second_timeout_with_a_completing_canary_is_a_signed_solver_reject() {
         let (run, opened) = fake_run(solver_timeout(), Behavior::healthy(), 1, later());
         rejected(&run, 2, 23);
         assert_eq!(canary_stage(&run), Some(StageStatus::Pass));
-        assert_eq!(opened, [m_reference(), CANARY.contract.clone()]);
+        assert_eq!(
+            opened
+                .iter()
+                .filter(|name| *name == &CANARY.contract)
+                .count(),
+            1
+        );
         let evidence = run.evidence.as_ref().unwrap();
         assert_eq!(
             (evidence.r2.status, evidence.r2.detail_code),
             (StageStatus::Incomplete, 23)
         );
-    }
-    fn m_reference() -> String {
-        manifest().reference.contract_name
     }
     #[test]
     fn second_timeout_with_a_failing_canary_is_an_environment_failure() {
@@ -1651,7 +1773,10 @@ mod replay_stage_tests {
             solvency: Ok((StageStatus::Incomplete, 23)),
             ..Behavior::healthy()
         };
-        let (run, _) = fake_run(incomplete.clone(), Behavior::healthy(), 0, later());
+        let (cold, _) = fake_run(incomplete.clone(), Behavior::healthy(), 0, later());
+        assert_eq!(cold.stage, "failed");
+        assert!(cold.certificate_b64.is_none());
+        let (run, _) = fake_run(incomplete.clone(), Behavior::healthy(), 1, later());
         rejected(&run, 2, 23);
         assert_eq!(canary_stage(&run), Some(StageStatus::Pass));
         // Load made the honest fixture time out too: the solver result is environmental.

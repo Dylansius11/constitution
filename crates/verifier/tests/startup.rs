@@ -23,6 +23,17 @@ fn startup_names_missing_origin_and_local_configuration() {
     );
 }
 #[test]
+fn chain_mode_requires_an_explicit_peer_source() {
+    let env = [
+        ("PAGE_ORIGIN", "http://page.local"),
+        ("GATE_ACCOUNT_ID", "gate.testnet"),
+    ];
+    assert!(startup(&[], &env).contains("VERIFIER_PEER_SOURCE"));
+    let mut invalid = env.to_vec();
+    invalid.push(("VERIFIER_PEER_SOURCE", "header:bad header"));
+    assert!(startup(&[], &invalid).contains("VERIFIER_PEER_SOURCE"));
+}
+#[test]
 fn startup_rejects_unrecognized_flags() {
     assert!(startup(&["--production"], &[]).contains("usage:"));
 }

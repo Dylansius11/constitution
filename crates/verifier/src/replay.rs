@@ -50,6 +50,7 @@ pub enum IncompleteKind {
 pub struct Incomplete {
     pub message: String,
     pub kind: IncompleteKind,
+    pub rpc_transport: bool,
 }
 impl fmt::Display for Incomplete {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -63,12 +64,14 @@ fn incomplete(message: &str) -> Incomplete {
     Incomplete {
         message: message.into(),
         kind: IncompleteKind::Environment,
+        rpc_transport: false,
     }
 }
 fn contradiction(message: &str) -> Incomplete {
     Incomplete {
         message: message.into(),
         kind: IncompleteKind::Contradiction,
+        rpc_transport: false,
     }
 }
 fn require(condition: bool, message: &str) -> Result<(), Incomplete> {
@@ -329,7 +332,11 @@ impl Rpc {
             .timeout(remaining.min(RPC_TIMEOUT))
             .json(&json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}))
             .send()
-            .map_err(|_| incomplete(&format!("{method}: transport failure")))?;
+            .map_err(|_| Incomplete {
+                message: format!("{method}: transport failure"),
+                kind: IncompleteKind::Environment,
+                rpc_transport: true,
+            })?;
         require(
             response.status().is_success(),
             &format!("{method}: HTTP failure"),
@@ -381,8 +388,8 @@ fn collect_accesses(needed: &mut Accesses, trace: &Value) -> Result<(), Incomple
             }
         }
     }
-    // Tracer output is an untrusted discovery hint, not authenticated proposal evidence.
-    require(
+    // A repeated oversized candidate discovery is attributed to the proposal.
+    require_contradiction(
         needed.len() <= 256 && needed.values().map(BTreeSet::len).sum::<usize>() <= 4096,
         "witness exceeds account/slot bound",
     )
@@ -646,7 +653,7 @@ fn fetch_witness_inner(
     }
     let proxy_slots = needed.entry(proxy).or_default();
     proxy_slots.extend([IMPL, CAP, INITIALIZABLE]);
-    require(
+    require_contradiction(
         needed.len() <= 256 && needed.values().map(BTreeSet::len).sum::<usize>() <= 4096,
         "witness exceeds account/slot bound",
     )?;
@@ -1037,6 +1044,10 @@ fn environmental(mut error: Incomplete) -> Incomplete {
     error.kind = IncompleteKind::Environment;
     error
 }
+fn candidate_fault(mut error: Incomplete) -> Incomplete {
+    error.kind = IncompleteKind::Contradiction;
+    error
+}
 fn replay_inner(
     w: &Witness,
     corpus: &Corpus,
@@ -1081,7 +1092,8 @@ fn replay_inner(
             w.proxy,
             value,
             call.data.clone(),
-        )?;
+        )
+        .map_err(candidate_fault)?;
         if original != changed
             || metadata_before
                 != [IMPL, CAP, INITIALIZABLE]
@@ -1237,7 +1249,8 @@ fn prepared_states(
             w.proxy,
             U256::ZERO,
             Bytes::copy_from_slice(init),
-        )?;
+        )
+        .map_err(candidate_fault)?;
         if !outcome.success {
             return Ok(None);
         }
@@ -1329,5 +1342,31 @@ impl CandidateReplay {
         )?;
         require(result.success, "R2 predicate getter reverted")?;
         Ok(result.output)
+    }
+}
+
+#[cfg(test)]
+mod attribution_tests {
+    use super::*;
+
+    #[test]
+    fn candidate_incomplete_and_discovery_bounds_are_contradictions() {
+        for message in ["unwitnessed blockhash read", "EVM execution incomplete"] {
+            assert_eq!(
+                candidate_fault(incomplete(message)).kind,
+                IncompleteKind::Contradiction
+            );
+        }
+        let trace = Value::Object(
+            (0..257u32)
+                .map(|i| (format!("0x{i:040x}"), json!({})))
+                .collect(),
+        );
+        assert_eq!(
+            collect_accesses(&mut Accesses::new(), &trace)
+                .unwrap_err()
+                .kind,
+            IncompleteKind::Contradiction
+        );
     }
 }

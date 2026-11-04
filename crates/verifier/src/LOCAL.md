@@ -57,14 +57,15 @@ Admission [I]: `GATE_ACCOUNT_ID` pins the only chain-connected gate;
 other gates return `400 wrong_gate` before any RPC. The order is fixed so that an
 unauthenticated caller can only ever spend its own budget:
 
-1. **Peer limiter** (`PEER_REQUESTS` = 6 per `PEER_WINDOW` = 10 s per peer address;
-   IPv6 peers share one budget per /64) and the per-proposal **cool-down** (below).
-   Neither does any RPC or sandbox work. The peer is the socket address
-   (`ConnectInfo`, so the listener must be started through `api::serve`). Behind a
-   reverse proxy every client then shares the proxy's budget: set
-   `VERIFIER_TRUSTED_PROXY_HEADER` (default **off**) to a header the proxy always
-   overwrites; the **last** comma-separated entry is used, and a missing or
-   unparseable value falls back to the socket address. Startup prints which key is in use.
+1. **Peer limiter**, before reading the POST body: 6 per 10 s per peer, IPv6 /64.
+   Chain mode requires `VERIFIER_PEER_SOURCE=socket` or `header:<name>`; local
+   insecure mode defaults to `socket`. Behind an ingress use the header only if
+   the trusted proxy overwrites it or appends the actual client as its final entry.
+   The last comma-separated address is used; absent or invalid headers return
+   `400 invalid_peer`, never a socket fallback. Deployment must verify its ingress
+   configuration; the dstack gateway header is not established here.
+   GET run and evidence reads have a separate limit of 60 per peer per 10 s.
+   Bundles contain at most 128 source files.
 2. **Pre-authentication RPC**: a semaphore of `PREAUTH_RPC_SLOTS` = 4 bounds the
    concurrent `get_proposal` reads; none free returns `429 busy`. The slot is
    released the moment the commitment check passes.
@@ -88,33 +89,29 @@ run. IDs are monotonic; evicted status/evidence returns 404, not a lifetime
 queue refusal. Export evidence before eviction if it must be retained.
 The allowed CORS origin can read `Retry-After` via `Access-Control-Expose-Headers`.
 
-**Cool-down (N5).** A run that ends `failed` with `infrastructure_timeout` or
-`tool_output_invalid` (exit 124/137, Halmos exception, malformed tool output: all
-causable by the proposal's own source) starts a per-proposal cool-down of 10 min,
-doubling per further such failure (20, 40), capped at 1 h (`COOLDOWN_BASE`,
-`COOLDOWN_CAP`); failures are forgotten after 2 h (`COOLDOWN_MEMORY`) or by any run
-that finishes `done`. It is enforced before any RPC or sandbox work and returns
-`429 cooling_down` with `Retry-After`. Environment failures (`sandbox_unavailable`,
-`storage_error`, `tool_unavailable`, `rpc_unavailable`, `committed_data_unavailable`,
-`worker_panic`) never count.
+**Cool-down.** Failed and withheld runs without a certificate accrue strikes:
+10, 20, 40, then 60 minutes, forgotten after two hours; a signed certificate clears
+them. Clearly verifier-owned `sandbox_unavailable`, `worker_panic`, RPC transport
+faults, RPC/AI deadline overruns and a failed health canary do not add a strike.
+Other faults, including storage errors and incomplete AI review, do. The response
+is `429 cooling_down` with `Retry-After`.
 
-**Honest canary (N5/N6).** After the 2nd failed run of a proposal with
-`infrastructure_timeout`/`tool_output_invalid` in a sandbox stage, the pipeline runs the
-repository's known-honest fixture (`CanaryPolicy`: `VaultV2Honest` with its reference
-sources, the files the sandbox tests use) through the *same* stage once. If it completes
-within bounds the failure is attributed to the proposal and the run ends in a signed
-Reject: compile `0/2`, R1 `1/11`, R2 `2/23` (the existing reasons). If the canary also
-fails, the run stays `failed` (verifier environment) and the proposal is not cooled
-down. A Halmos report that is incomplete (solver timeout/unknown, reason 23) is subject
-to the canary on its first occurrence: only a completing canary lets it become `Reject{2,23}`;
-otherwise the run is `failed`/`infrastructure_timeout`. The canary adds a `canary` stage
-(`Pass`/`Fail`) to the run's `stages`.
+**Honest canary.** On a timeout or invalid tool output, the same stage of the
+honest fixture is checked after the failure and its completion time is cached.
+The second-failure Reject requires a healthy same-stage canary from before the
+candidate stage, at most 30 minutes old, and a fresh healthy canary afterwards.
+An incomplete solver result uses the same before/after rule. A failed or absent
+pre-check leaves the proposal retryable. Ordinary successful runs perform no
+extra canary work. A transient host fault between the cached check and the failing
+stage remains a residual attribution risk. Before a diagnostic-based compile
+Reject the honest fixture must compile; otherwise the run fails without signing.
+Canary checks add `canary` stages to run JSON.
 
 ### Outcome classification
 
 | Cause | HTTP / run outcome | Certificate / gate |
 | --- | --- | --- |
-| Bad sealed bundle, malformed plaintext, wrong source commitment | `400 bad_bundle`; no run or attempt; no limiter charged | None; Pending |
+| Bad sealed bundle, malformed plaintext, wrong source commitment | `400 bad_bundle`; no run or authenticated admission charge; peer budget applies | None; Pending |
 | Other gate | `400 wrong_gate` before RPC | None |
 | Per-peer flood / pre-auth RPC slots busy | `429 rate_limited` / `429 busy`, `Retry-After` | None |
 | Authenticated rate / busy worker | `429 rate_limited` / `429 queue_full`, `Retry-After`; same active proposal otherwise 409; a busy refusal charges nothing | None |
@@ -123,21 +120,21 @@ otherwise the run is `failed`/`infrastructure_timeout`. The canary adds a `canar
 | Unsupported rule-set hash, malformed proxy slot, gate/proposal id mismatch, expired proposal | `400 unsupported_proposal` | None |
 | Too few blocks for the manifest confirmations, no current implementation yet | `409 not_ready` (retry later) | None |
 | Gate/Base RPC transport or protocol fault, evidence block change during reads | `502 rpc_unavailable` | None; Pending |
-| Source compilation failure carrying a compiler diagnostic (`Error:`, `Error (`, `ParserError`, `DeclarationError`, `TypeError`, `SyntaxError`), runtime mismatch, incompatible R1, R3/R4 violation | Signed Reject with existing rule/reason | Terminal Reject |
-| Host-level compile text (out of memory, too many open files, resource unavailable, fork failures, any output without a compiler diagnostic) | `failed`, `tool_output_invalid` (disk faults: `storage_error`); canary rule | None; Pending and retryable |
-| Halmos solver timeout/unknown in a completed solver report | R2 Incomplete, reason 23 only if the honest canary completes; otherwise `failed`/`infrastructure_timeout` | Signed Reject / none |
-| R5 contradiction reproduced over a proof-checked witness | R5 Incomplete, reason 51 | Signed Reject |
-| R5 provider lag (null block, insufficient confirmations), transport/HTTP/protocol failure, malformed/oversized replies, unverifiable provider data, a contradiction that does not reproduce, or committed verifier data unavailable | `failed`: `rpc_unavailable` / `committed_data_unavailable` | None; Pending and retryable |
+| Source compilation diagnostic | Signed Reject 0/2 only after healthy canary compile | Terminal Reject, otherwise failed |
+| Compiler output without an allowlisted diagnostic | `failed`, `tool_output_invalid`; canary and cooldown apply | None; Pending |
+| Halmos solver timeout/unknown | Reject 2/23 only with healthy same-stage canaries before and after | Otherwise failed |
+| R5 repeated candidate execution incomplete or witness bound exceeded | R5 Incomplete, reason 51 | Signed Reject |
+| R5 provider lag, transport/HTTP/protocol failure, malformed replies, unauthenticated code mismatch or committed data unavailable | `failed`: `rpc_unavailable`, `replay_unavailable`, or `committed_data_unavailable` | None; Pending and retryable |
 | Sandbox/Docker unavailable, disk/tempdir failure, missing verifier tools | `failed`: `sandbox_unavailable`, `storage_error`, `tool_unavailable` | None; Pending and retryable |
 | Tool wall timeout/OOM (exit 124/137), malformed/inconsistent tool artifacts, unavailable committed harness | `failed`: `infrastructure_timeout`, `tool_output_invalid`; counts toward the cool-down and canary rule | None, or signed Reject once the canary attributes it to the proposal |
 | Run exceeds `RUN_DEADLINE` (20 minutes: sandbox stages, replay RPCs, AI candidates) | `failed`, `infrastructure_timeout` | None; Pending and retryable |
 | Incomplete required AI review | Withheld, no Pass | None; Pending and retryable |
 
-Replay `Incomplete` carries an Environment or Contradiction kind. Missing witness
-data, unauthenticated code responses and tracer output are environmental, even when
-repeated. Only proposal-attributable execution failures over a proof-checked witness
-can be treated as contradictions. The configured archive URL is a single provider,
-not two independent providers.
+Replay `Incomplete` distinguishes Environment and Contradiction. Candidate execution
+incompleteness, including unwitnessed reads and blockhash, and repeated witness bound
+excesses are Contradictions. RPC transport and unauthenticated code mismatches remain
+environmental. The same configured provider supplies both observations; an untrusted
+provider may repeat misleading tracer hints.
 
 Failure details expose static codes/digests, never tool diagnostics, keys or RPC
 URLs. A generic container wall timeout is infrastructure, not a solver timeout.
@@ -225,12 +222,11 @@ endpoint internally through `ProposalSource::archive_rpc()`; prefer
 included in evidence or run details. LocalRegistry has no archive endpoint:
 reaching R5 in offline mode fails with `rpc_unavailable`, never a pass.
 
-R5 records Pass 0, divergence Fail 50, or Incomplete 51. An incomplete execution
-over a proof-checked witness may produce a signed Reject only if the same
-contradiction recurs on a second fetch. Both fetches use the configured provider,
-not independent providers. Unauthenticated code responses, missing witness data,
-provider lag, RPC outages and unavailable committed corpus instead fail without
-a certificate. Evidence hashes witness bytes or sanitized incomplete details.
+R5 records Pass 0, divergence Fail 50, or Incomplete 51. Candidate execution
+incompleteness and witness bound excesses may Reject after the same contradiction
+recurs on a second fetch. Both fetches use the configured provider, not independent
+providers. Environment outcomes end the run without a certificate. Evidence hashes
+witness bytes or sanitized incomplete details.
 
 After all deterministic rules pass, the verifier calls the loopback AI sidecar.
 An unavailable sidecar, gateway signature, timeout, malformed response or incomplete
