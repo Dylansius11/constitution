@@ -255,10 +255,26 @@ pub fn propose(
     let credit: U128Str = near
         .view(gate, "get_credit", json!({"account": input.account}))
         .map_err(read_error)?;
-    let shortfall = constitution
+    let proposal_fee: U128Str = near
+        .view(gate, "get_proposal_fee", json!({}))
+        .map_err(read_error)?;
+    let mut shortfall = constitution
         .params
         .proposal_deposit
         .saturating_sub(credit.0);
+    if credit.0 == 0 {
+        // A zero balance may be a missing entry. The gate takes a one-time entry fee out of the
+        // first deposit to a missing entry; if the entry exists, the same amount is only extra
+        // refundable credit, so paying it is safe either way.
+        let entry_fee: U128Str = near
+            .view(
+                gate,
+                "get_credit_entry_fee",
+                json!({"account": input.account}),
+            )
+            .map_err(read_error)?;
+        shortfall = shortfall.saturating_add(entry_fee.0);
+    }
     if shortfall > 0 {
         println!("depositing credit: {shortfall} yoctoNEAR");
         writer.call(
@@ -269,7 +285,11 @@ pub fn propose(
             "fund the signing account or top up credit with a full-access key, then retry",
         )?;
     }
-    let called = writer.call(gate, "propose", json!({"args": args}), 0, "wait for your active proposal to finish (or expire it after its deadline), then propose again; inspect with constitution status <id>")?;
+    println!(
+        "paying the non-refundable proposal storage fee: {} yoctoNEAR",
+        proposal_fee.0
+    );
+    let called = writer.call(gate, "propose", json!({"args": args}), proposal_fee.0, "wait for your active proposal to finish (or expire it after its deadline), then propose again; inspect with constitution status <id>")?;
     let id = called.value.as_u64().ok_or_else(|| {
         Failure::new(
             "propose landed but returned no proposal id",

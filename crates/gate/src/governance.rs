@@ -14,11 +14,23 @@ impl Gate {
         if self.pending_changes.len() >= MAX_PENDING_CHANGES {
             env::panic_str(PENDING_CHANGE_LIMIT);
         }
-        if self.pending_changes.iter().any(|id| {
-            self.changes
-                .get(id)
-                .is_some_and(|c| same_authority_kind(&c.kind, &kind))
-        }) {
+        // Authority kinds are unique; every other kind has a small cap so one kind cannot take
+        // every slot of the queue.
+        let same_kind = self
+            .pending_changes
+            .iter()
+            .filter(|id| {
+                self.changes.get(id).is_some_and(|c| {
+                    std::mem::discriminant(&c.kind) == std::mem::discriminant(&kind)
+                })
+            })
+            .count();
+        let cap = if is_authority_kind(&kind) {
+            1
+        } else {
+            MAX_PENDING_PER_KIND
+        };
+        if same_kind >= cap {
             env::panic_str(DUPLICATE_AUTHORITY_CHANGE);
         }
         let now = env::block_timestamp();
@@ -117,7 +129,7 @@ impl Gate {
             }
         }
         // All validation precedes state mutation. Move rather than clone the queued payload.
-        let mut change = self.changes.remove(&change_id).unwrap();
+        let change = self.changes.remove(&change_id).unwrap();
         match &change.kind {
             ChangeKind::SetRuleSet {
                 rule_set_hash,
@@ -151,8 +163,8 @@ impl Gate {
             ChangeKind::Unpause => self.signing_paused = false,
             ChangeKind::MigrateAuthority { .. } => unreachable!(),
         }
-        change.status = ChangeStatus::Applied;
-        self.changes.insert(change_id, change);
+        // The body is deleted, not kept: terminal records would be permanent storage that the
+        // public governor key could create for free. Events carry the history.
         self.pending_changes.retain(|id| *id != change_id);
         self.assert_solvent(0);
         emit("change_applied", json!({"change_id":change_id}));
@@ -163,14 +175,14 @@ impl Gate {
         self.assert_guardian();
         let change = self
             .changes
-            .get_mut(&change_id)
+            .get(&change_id)
             .unwrap_or_else(|| env::panic_str(GateError::ChangeNotFound.code()));
         check(
             change.status == ChangeStatus::Pending,
             GateError::NotPending,
             "change status",
         );
-        change.status = ChangeStatus::Cancelled;
+        self.changes.remove(&change_id);
         self.pending_changes.retain(|id| *id != change_id);
         emit("change_cancelled", json!({"change_id":change_id}));
     }
@@ -276,18 +288,11 @@ impl Gate {
     }
 }
 
-fn same_authority_kind(left: &ChangeKind, right: &ChangeKind) -> bool {
+fn is_authority_kind(kind: &ChangeKind) -> bool {
     matches!(
-        (left, right),
-        (
-            ChangeKind::MigrateAuthority { .. },
-            ChangeKind::MigrateAuthority { .. }
-        ) | (
-            ChangeKind::SetGuardian { .. },
-            ChangeKind::SetGuardian { .. }
-        ) | (
-            ChangeKind::SetGovernor { .. },
-            ChangeKind::SetGovernor { .. }
-        )
+        kind,
+        ChangeKind::MigrateAuthority { .. }
+            | ChangeKind::SetGuardian { .. }
+            | ChangeKind::SetGovernor { .. }
     )
 }

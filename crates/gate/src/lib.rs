@@ -32,6 +32,21 @@ const STORAGE_INSOLVENT: &str = "E12_STORAGE_INSOLVENT";
 const AI_SIGNATURE_KIND: &str = "E58_AI_SIGNATURE_KIND";
 const PENDING_CHANGE_LIMIT: &str = "E59_PENDING_CHANGE_LIMIT";
 const DUPLICATE_AUTHORITY_CHANGE: &str = "E60_DUPLICATE_AUTHORITY_CHANGE";
+const STORAGE_FEE: &str = "E61_STORAGE_FEE";
+const BUMP_TOO_EARLY: &str = "E62_BUMP_TOO_EARLY";
+/// Pending changes of each non-authority kind that may be queued at once.
+const MAX_PENDING_PER_KIND: usize = 2;
+/// A fee bump is allowed only this long after the previous signing request.
+const MIN_BUMP_AGE: u64 = 600_000_000_000;
+const MAX_PROPOSAL_DEPOSIT: u128 = 10_000_000_000_000_000_000_000_000;
+const MAX_GAS_LIMIT: u64 = 2_000_000;
+const MAX_FEE_CAP: u128 = 1_000_000_000_000;
+/// Upper bound of all storage a proposal can ever occupy (record at maximum calldata, signed
+/// transaction, fee-bump counter, signing indexes). A test measures the real worst case.
+pub(crate) const PROPOSAL_STORAGE_BYTES: u64 = 4096;
+/// NEAR charges the key, the value and a fixed 40-byte record overhead per entry. The credit key
+/// is one storage-prefix byte plus a 4-byte length plus the account id; the value is 16 bytes.
+const CREDIT_ENTRY_FIXED_BYTES: u64 = 80;
 #[derive(borsh::BorshSerialize, BorshStorageKey)]
 enum StorageKey {
     Verifiers,
@@ -191,8 +206,11 @@ fn validate_params(params: &Params) {
             && (MIN_SIGN_VALIDITY_S..=MAX_SIGN_VALIDITY_S).contains(&params.sign_validity_s)
             && (MIN_PROPOSAL_TTL_S..=MAX_PROPOSAL_TTL_S).contains(&params.proposal_ttl_s)
             && params.gas_limit > 0
+            && params.gas_limit <= MAX_GAS_LIMIT
+            && params.proposal_deposit <= MAX_PROPOSAL_DEPOSIT
             && params.max_priority_fee_per_gas <= params.max_fee_per_gas
-            && params.max_fee_per_gas <= params.fee_cap,
+            && params.max_fee_per_gas <= params.fee_cap
+            && params.fee_cap <= MAX_FEE_CAP,
         GateError::InvalidChange,
         "unsafe gas, time or fee parameters",
     );
@@ -232,6 +250,25 @@ impl Gate {
             (Some(liquid), Some(required)) => liquid >= required,
             _ => false,
         }
+    }
+
+    /// Storage cost charged once when a credit entry is created.
+    pub(crate) fn credit_entry_fee(account: &AccountId) -> u128 {
+        (u128::from(CREDIT_ENTRY_FIXED_BYTES) + account.as_str().len() as u128)
+            * env::storage_byte_cost().as_yoctonear()
+    }
+
+    /// Non-refundable fee attached to `propose`; it keeps a proposal record's storage funded.
+    pub(crate) fn proposal_storage_fee() -> u128 {
+        u128::from(PROPOSAL_STORAGE_BYTES) * env::storage_byte_cost().as_yoctonear()
+    }
+
+    /// Liquid balance minus everything owed to users (including in-flight withdrawals).
+    pub(crate) fn operating_surplus(&self) -> u128 {
+        let owed = self
+            .total_liabilities
+            .saturating_add(self.pending_withdrawals);
+        self.liquid_balance().unwrap_or(0).saturating_sub(owed)
     }
 
     fn assert_solvent(&mut self, outgoing: u128) {

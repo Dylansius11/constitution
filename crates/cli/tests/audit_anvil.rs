@@ -100,8 +100,9 @@ async fn near(State(s): State<Arc<OfflineMpc>>, Json(q): Json<Value>) -> Json<Va
     )
 }
 
-const PRECONDITIONS: [&str; 11] = [
+const PRECONDITIONS: [&str; 12] = [
     "gate_has_no_access_keys",
+    "gate_operating_surplus",
     "gate_code_is_committed_build",
     "executor_code_is_committed_build",
     "gate_binds_this_deployment",
@@ -308,7 +309,7 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
     assert_checks(&honest, &[], &[]);
     assert!(text(&honest).contains("PASS pending_governance_changes: 0 pending change(s)"));
     assert!(!text(&honest).contains("pending_authority_change"));
-    assert!(text(&honest).contains("audit passed: 14 named checks/information lines"));
+    assert!(text(&honest).contains("audit passed: 15 named checks/information lines"));
     deployment
         .as_object_mut()
         .unwrap()
@@ -470,7 +471,12 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
             .into_result()?;
     }
     let paged = audit("authority change after 50 real changes", &deployment);
-    assert_checks(&paged, &[], &["pending_authority_change"]);
+    // The SetRuleSet change changes what a Pass means, so an unplanned one warns too.
+    assert_checks(
+        &paged,
+        &[],
+        &["pending_authority_change", "pending_authority_change"],
+    );
     assert!(text(&paged).contains("WARN pending_authority_change: id=50"));
     assert!(text(&paged).contains("SetParams") && text(&paged).contains("SetRuleSet"));
     assert!(text(&paged).contains("3 pending change(s)"));
@@ -484,7 +490,11 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
     assert_checks(
         &paused,
         &[],
-        &["signing_paused", "pending_authority_change"],
+        &[
+            "signing_paused",
+            "pending_authority_change",
+            "pending_authority_change",
+        ],
     );
     assert!(text(&paused).contains("WARN signing_paused: signing_paused=true"));
     // A warning cannot conceal a failed precondition.
@@ -496,7 +506,11 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
     assert_checks(
         &warning_and_fail,
         &["gate_code_is_committed_build"],
-        &["signing_paused", "pending_authority_change"],
+        &[
+            "signing_paused",
+            "pending_authority_change",
+            "pending_authority_change",
+        ],
     );
     server.abort();
     eprintln!(

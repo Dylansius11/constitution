@@ -50,6 +50,10 @@ fn exported_abi_is_exactly_the_allowed_surface() {
         "list_changes",
         "get_credit",
         "get_active",
+        "get_proposal_fee",
+        "get_required_credit",
+        "get_credit_entry_fee",
+        "get_operating_surplus",
         "submit_verdict",
         "on_signed",
         "retry_sign",
@@ -104,17 +108,32 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
         "roles":Roles {governor:governor.id().clone(),guardian:guardian.id().clone()},
         "verifiers":[(Base64([7;32]),VerifierRecord {release_hash:[6;32],attestation_uri:"ipfs://quote".into(),added_at_ns:0})],
         "initial_evm_nonce":42})).transact().await?.into_result()?;
+    let entry_fee: String = contract
+        .view("get_credit_entry_fee")
+        .args_json(json!({"account":proposer.id()}))
+        .await?
+        .json()?;
+    let entry_fee: u128 = entry_fee.parse()?;
+    let proposal_fee: String = contract.view("get_proposal_fee").await?.json()?;
+    let proposal_fee: u128 = proposal_fee.parse()?;
+    // Fund the gate with an operating surplus first, as the activation ceremony does.
+    let details = contract.view_account().await?;
+    worker
+        .patch(contract.id())
+        .account(AccountDetailsPatch::from(details).balance(NearToken::from_near(5)))
+        .transact()
+        .await?;
     proposer
         .call(contract.id(), "deposit_credit")
         .args_json(json!({"account":null}))
-        .deposit(NearToken::from_yoctonear(150))
+        .deposit(NearToken::from_yoctonear(150 + entry_fee))
         .transact()
         .await?
         .into_result()?;
     let result = proposer.call(contract.id(),"propose").args_json(json!({"args":{
         "new_impl":format!("0x{}","08".repeat(20)),"new_impl_codehash":format!("0x{}","09".repeat(32)),
         "expected_current_impl":format!("0x{}","0a".repeat(20)),"init_calldata":"0x","source_commitment":format!("0x{}","0b".repeat(32))
-    }})).transact().await?.into_result()?;
+    }})).deposit(NearToken::from_yoctonear(proposal_fee)).transact().await?.into_result()?;
     assert_eq!(result.json::<u64>()?, 0);
     let proposal: Value = contract
         .view("get_proposal")
@@ -164,12 +183,18 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
     let cfg: Config = contract.view("get_config").await?.json()?;
     assert_eq!(cfg, config);
     // Local sandbox storage staking, not just the unit host's byte accounting:
-    // leave exactly the current storage stake plus the two users' liabilities.
+    // leave exactly the current storage stake plus the users' liabilities, so no surplus.
     let second = worker.dev_create_account().await?;
+    let second_fee: String = contract
+        .view("get_credit_entry_fee")
+        .args_json(json!({"account":second.id()}))
+        .await?
+        .json()?;
+    let second_fee: u128 = second_fee.parse()?;
     second
         .call(contract.id(), "deposit_credit")
         .args_json(json!({"account":null}))
-        .deposit(NearToken::from_yoctonear(100))
+        .deposit(NearToken::from_yoctonear(100 + second_fee))
         .transact()
         .await?
         .into_result()?;
@@ -182,23 +207,28 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
         )
         .transact()
         .await?;
-    let denied = second.call(contract.id(), "propose").args_json(json!({"args":{
-        "new_impl":format!("0x{}","08".repeat(20)),"new_impl_codehash":format!("0x{}","09".repeat(32)),
-        "expected_current_impl":format!("0x{}","0a".repeat(20)),"init_calldata":"0x","source_commitment":format!("0x{}","0b".repeat(32))
-    }})).max_gas().transact().await?;
+    let surplus: String = contract.view("get_operating_surplus").await?.json()?;
+    assert_eq!(surplus, "0");
+    // A write that pays nothing for its storage is refused rather than eating user credit.
+    let denied = governor
+        .call(contract.id(), "schedule_change")
+        .args_json(json!({"kind":{"SetRuleSet":{"rule_set_hash":format!("0x{}", "08".repeat(32)),"manifest_uri":"ipfs://next","ai_required":true}}}))
+        .max_gas()
+        .transact()
+        .await?;
     assert!(denied.is_failure());
     assert!(
         format!("{:?}", denied.failures()).contains("E12_STORAGE_INSOLVENT"),
         "{denied:?}"
     );
     let missing: Option<Value> = contract
-        .view("get_proposal")
-        .args_json(json!({"id":1}))
+        .view("get_change")
+        .args_json(json!({"id": id + 1}))
         .await?
         .json()?;
     assert!(
         missing.is_none(),
-        "failed storage write must roll back the proposal"
+        "failed storage write must roll back the change"
     );
     let credit: String = contract
         .view("get_credit")
@@ -206,5 +236,31 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
         .await?
         .json()?;
     assert_eq!(credit, "100");
+    // The same exactly backed gate still accepts a proposal: its attached fee pays the record.
+    let more = worker.dev_create_account().await?;
+    let more_fee: String = contract
+        .view("get_credit_entry_fee")
+        .args_json(json!({"account":more.id()}))
+        .await?
+        .json()?;
+    let more_fee: u128 = more_fee.parse()?;
+    more.call(contract.id(), "deposit_credit")
+        .args_json(json!({"account":null}))
+        .deposit(NearToken::from_yoctonear(100 + more_fee))
+        .transact()
+        .await?
+        .into_result()?;
+    let details = contract.view_account().await?;
+    let backed = u128::from(details.storage_usage) * 10u128.pow(19) + 350;
+    worker
+        .patch(contract.id())
+        .account(AccountDetailsPatch::from(details).balance(NearToken::from_yoctonear(backed)))
+        .transact()
+        .await?;
+    let accepted = more.call(contract.id(), "propose").args_json(json!({"args":{
+        "new_impl":format!("0x{}","18".repeat(20)),"new_impl_codehash":format!("0x{}","19".repeat(32)),
+        "expected_current_impl":format!("0x{}","0a".repeat(20)),"init_calldata":"0x","source_commitment":format!("0x{}","0c".repeat(32))
+    }})).deposit(NearToken::from_yoctonear(proposal_fee)).max_gas().transact().await?;
+    assert!(accepted.is_success(), "{accepted:?}");
     Ok(())
 }

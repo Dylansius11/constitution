@@ -56,6 +56,6 @@ Deleting the gate's last access key is irreversible: after step 7 nobody can red
 7. **Founder deletes every gate access key** (explicit founder authorization at that moment):
    `./.tools/bin/near account list-keys constitution-gate.testnet network-config testnet now`, then
    `./.tools/bin/near account delete-keys constitution-gate.testnet public-keys <every key> network-config testnet sign-with-legacy-keychain send`.
-8. **Audit after deletion** (planned, not run): repeat the exact step-6 command. Expected exit **0**, all 11 named preconditions PASS, the governance information lines PASS with exactly the planned F11 change pending, no unplanned WARN/FAIL. Save the full observed output as the activation receipt; the expected text here is not evidence.
+8. **Audit after deletion** (planned, not run): repeat the exact step-6 command. Expected exit **0**, all 12 named preconditions PASS (including `gate_operating_surplus`), the governance information lines PASS with exactly the planned F11 change pending, no unplanned WARN/FAIL. Save the full observed output as the activation receipt; the expected text here is not evidence.
 9. **Matured apply**: at or after `eta_ns` (about 2026-11-14T12:00Z) anyone runs `apply_change` for the F11 change (BUILD-PLAN P4.5).
 10. **Record**: every address, tx hash, code hash and the audit output in SMART-CONTRACT "Deployment"; note the CVM uptime start (D18).

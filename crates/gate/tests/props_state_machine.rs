@@ -69,10 +69,11 @@ struct Machine {
     gate: Option<Gate>,
     now: u64,
     credit: [u128; 3],
+    entries: [bool; 3],
     deposits: u128,
     withdrawals: u128,
     proposals: Vec<ModelProposal>,
-    changes: Vec<PendingChange>,
+    changes: Vec<Option<PendingChange>>,
     verifiers: [bool; 2],
     paused: bool,
     rules: [u8; 32],
@@ -86,6 +87,7 @@ impl Machine {
             gate: Some(fresh_gate(nonce)),
             now: START,
             credit: [0; 3],
+            entries: [false; 3],
             deposits: 0,
             withdrawals: 0,
             proposals: vec![],
@@ -175,20 +177,28 @@ impl Machine {
         let mut accepted_callback = false;
         match *op {
             Op::Deposit(owner, amount) => {
-                context(account(owner), self.now, u128::from(amount), None);
+                let recipient = (owner + 1) % 3;
+                let fee = if amount > 0 && !self.entries[usize::from(recipient)] {
+                    g.get_credit_entry_fee(account(recipient)).0
+                } else {
+                    0
+                };
+                context(account(owner), self.now, u128::from(amount) + fee, None);
                 if amount == 0 {
                     expect_code("E10_ZERO_DEPOSIT", || g.deposit_credit(None));
                 } else {
-                    // Funding a different recipient also exercises the credit boundary.
-                    g.deposit_credit(Some(account((owner + 1) % 3)));
-                    self.credit[usize::from((owner + 1) % 3)] += u128::from(amount);
+                    g.deposit_credit(Some(account(recipient)));
+                    self.entries[usize::from(recipient)] = true;
+                    self.credit[usize::from(recipient)] += u128::from(amount);
                     self.deposits += u128::from(amount);
                 }
             }
             Op::Withdraw(owner, amount) => {
                 context(account(owner), self.now, 0, None);
                 let amount = u128::from(amount);
-                if amount > self.credit[usize::from(owner)] {
+                if amount == 0 {
+                    expect_code("E10_ZERO_DEPOSIT", || g.withdraw_credit(U128(amount)));
+                } else if amount > self.credit[usize::from(owner)] {
                     expect_code("E11_INSUFFICIENT_CREDIT", || {
                         g.withdraw_credit(U128(amount))
                     });
@@ -206,7 +216,7 @@ impl Machine {
                 }
             }
             Op::Propose(owner, token, bad) => {
-                context(account(owner), self.now, 0, None);
+                context(account(owner), self.now, g.get_proposal_fee().0, None);
                 let mut a = args(token);
                 if bad == 1 {
                     a.init_calldata.0.resize(1025, 0);
@@ -403,7 +413,9 @@ impl Machine {
                     )
                     .or_else(|| {
                         let p = &self.proposals[id as usize];
-                        if bump && p.bumps == 8 {
+                        if bump && self.now.saturating_sub(p.requested_at) < 600_000_000_000 {
+                            Some("E62_BUMP_TOO_EARLY")
+                        } else if bump && p.bumps == 8 {
                             Some("E49_TOO_MANY_BUMPS")
                         } else if bump && p.fee + p.fee.div_ceil(4) > self.parameters.fee_cap {
                             Some("E48_FEE_CAP")
@@ -497,14 +509,17 @@ impl Machine {
                     Some("E50_NOT_GOVERNOR")
                 } else if self.invalid_change(&kind) {
                     Some("E51_INVALID_CHANGE")
+                } else if self.changes.iter().filter(|c| c.is_some()).count() == 8 {
+                    Some("E59_PENDING_CHANGE_LIMIT")
                 } else if self
                     .changes
                     .iter()
-                    .filter(|c| c.status == ChangeStatus::Pending)
+                    .flatten()
+                    .filter(|c| std::mem::discriminant(&c.kind) == std::mem::discriminant(&kind))
                     .count()
-                    == 8
+                    >= 2
                 {
-                    Some("E59_PENDING_CHANGE_LIMIT")
+                    Some("E60_DUPLICATE_AUTHORITY_CHANGE")
                 } else {
                     None
                 };
@@ -513,7 +528,7 @@ impl Machine {
                 } else {
                     let id = g.schedule_change(kind.clone());
                     assert_eq!(id, self.changes.len() as u64);
-                    self.changes.push(PendingChange {
+                    self.changes.push(Some(PendingChange {
                         id,
                         kind,
                         scheduled_by: "governor.testnet".parse().unwrap(),
@@ -521,16 +536,14 @@ impl Machine {
                         eta_ns: self.now + 604_800_000_000_000,
                         status: ChangeStatus::Pending,
                         evm: None,
-                    });
+                    }));
                 }
             }
             Op::Apply(slot) => {
                 let id = self.change_id(slot);
-                let change = self.changes.get(id as usize);
+                let change = self.changes.get(id as usize).and_then(Option::as_ref);
                 let error = if let Some(c) = change {
-                    if c.status != ChangeStatus::Pending {
-                        Some("E54_NOT_PENDING")
-                    } else if self.now < c.eta_ns {
+                    if self.now < c.eta_ns {
                         Some("E53_TIMELOCK_NOT_ELAPSED")
                     } else if self.invalid_change(&c.kind) {
                         Some("E51_INVALID_CHANGE")
@@ -561,8 +574,7 @@ impl Machine {
                     expect_code(code, || g.apply_change(id));
                 } else {
                     drop(g.apply_change(id));
-                    let c = &mut self.changes[id as usize];
-                    c.status = ChangeStatus::Applied;
+                    let c = self.changes[id as usize].take().unwrap();
                     match &c.kind {
                         ChangeKind::Unpause => self.paused = false,
                         ChangeKind::AddVerifier { .. } => self.verifiers[1] = true,
@@ -587,18 +599,21 @@ impl Machine {
                 );
                 let error = if !authorized {
                     Some("E56_NOT_GUARDIAN")
+                } else if self
+                    .changes
+                    .get(id as usize)
+                    .and_then(Option::as_ref)
+                    .is_none()
+                {
+                    Some("E52_NOT_FOUND")
                 } else {
-                    match self.changes.get(id as usize) {
-                        None => Some("E52_NOT_FOUND"),
-                        Some(c) if c.status != ChangeStatus::Pending => Some("E54_NOT_PENDING"),
-                        _ => None,
-                    }
+                    None
                 };
                 if let Some(code) = error {
                     expect_code(code, || g.cancel_change(id));
                 } else {
                     g.cancel_change(id);
-                    self.changes[id as usize].status = ChangeStatus::Cancelled;
+                    self.changes[id as usize] = None;
                 }
             }
             Op::Advance(delta) => {
@@ -720,6 +735,12 @@ impl Machine {
             liabilities <= liquid,
             "model liabilities exceed liquid balance"
         );
+        // This model leaves withdrawals in flight, so both liabilities and the pending
+        // withdrawal total remain excluded from operating surplus.
+        assert_eq!(
+            g.get_operating_surplus().0,
+            liquid.saturating_sub(liabilities + self.withdrawals)
+        );
         assert_eq!(g.is_signing_paused(), self.paused);
         for owner in 0..3 {
             assert_eq!(
@@ -746,13 +767,28 @@ impl Machine {
         assert_eq!(g.get_config().executor, [1; 20]);
         let listed = g.list_verifiers(0, 50);
         assert_eq!(listed.len(), self.verifiers.iter().filter(|v| **v).count());
-        assert!(
-            self.changes
+        assert!(self.changes.iter().filter(|c| c.is_some()).count() <= 8);
+        let live = g.list_changes(0, 50);
+        assert!(live.len() <= 8);
+        for change in &live {
+            let same_kind = live
                 .iter()
-                .filter(|c| c.status == ChangeStatus::Pending)
-                .count()
-                <= 8
-        );
+                .filter(|other| {
+                    std::mem::discriminant(&other.kind) == std::mem::discriminant(&change.kind)
+                })
+                .count();
+            let cap = if matches!(
+                change.kind,
+                ChangeKind::SetGovernor { .. }
+                    | ChangeKind::SetGuardian { .. }
+                    | ChangeKind::MigrateAuthority { .. }
+            ) {
+                1
+            } else {
+                2
+            };
+            assert!(same_kind <= cap);
+        }
         for index in 0..2 {
             assert_eq!(
                 listed.iter().any(|(k, v)| {
@@ -763,8 +799,12 @@ impl Machine {
             );
         }
         assert_eq!(TIMELOCK_NS, 604_800_000_000_000);
-        for expected in &self.changes {
-            let actual = g.get_change(expected.id).unwrap();
+        for (id, expected) in self.changes.iter().enumerate() {
+            let Some(expected) = expected else {
+                assert!(g.get_change(id as u64).is_none());
+                continue;
+            };
+            let actual = g.get_change(id as u64).unwrap();
             assert_eq!(actual, expected);
             assert_eq!(actual.eta_ns - actual.scheduled_at_ns, 604_800_000_000_000);
             assert_eq!(
@@ -845,14 +885,15 @@ proptest! {
         // Duplicate delivery cannot sign twice, refund twice, or clear a newer proposal.
         m.step(&Op::Callback(0, 1, false));
         m.step(&Op::Propose(0, 1, 0));
+        m.step(&Op::Verdict(1, 0, 0));
         for _ in 0..bumps {
+            m.now += 600_000_000_000;
             m.step(&Op::Bump(0));
             m.step(&Op::Callback(0, 1, true));
             m.step(&Op::Callback(0, 0, false));
             m.step(&Op::Retry(0));
             m.step(&Op::Callback(0, 1, false));
         }
-        m.step(&Op::Verdict(1, 0, 0));
         prop_assert_eq!(m.proposals[1].nonce, Some(initial_nonce + 1));
     }
 
@@ -1066,14 +1107,14 @@ proptest! {
     ) {
         let mut g = fresh_gate(42);
         let now = START + offset_ns;
-        context(account(0), now, 100, None);
-        g.deposit_credit(None);
+        deposit(&mut g, account(0), now, 100);
         let mut input = args(0);
         input.init_calldata.0.resize(calldata_len, 0);
+        proposal_context(&g, account(0), now);
         let id = g.propose(input.clone());
         g = roundtrip(g);
-        context(account(1), now, 100, None);
-        g.deposit_credit(None);
+        deposit(&mut g, account(1), now, 100);
+        proposal_context(&g, account(1), now);
         let other = g.propose(input.clone());
         prop_assert_eq!(other, id + 1);
         prop_assert_eq!(g.get_active(account(0)), Some(id));
@@ -1099,7 +1140,7 @@ proptest! {
         g = roundtrip(g);
         expect_code("E31_WRONG_STATE", || g.expire(id));
         g = roundtrip(g);
-        context(account(0), expiry + 1, 0, None);
+        proposal_context(&g, account(0), expiry + 1);
         let reopened = g.propose(input);
         prop_assert_eq!(reopened, id + 2);
         prop_assert_eq!(g.get_active(account(1)), Some(other));
@@ -1160,8 +1201,8 @@ proptest! {
         expect_code("E54_NOT_PENDING", || g.apply_change(change));
         prop_assert!(sign_requests().is_empty());
         g = roundtrip(g);
-        context(account(0), now, 100, None);
-        g.deposit_credit(None);
+        deposit(&mut g, account(0), now, 100);
+        proposal_context(&g, account(0), now);
         let id = g.propose(args(0));
         g = roundtrip(g);
         context(account(0), now, 0, None);
@@ -1227,8 +1268,8 @@ proptest! {
             drop(g.apply_change(change));
             g = roundtrip(g);
         }
-        context(account(0), now, 100, None);
-        g.deposit_credit(None);
+        deposit(&mut g, account(0), now, 100);
+        proposal_context(&g, account(0), now);
         let id = g.propose(args(0));
         g = roundtrip(g);
         context(account(0), now, 0, None);
@@ -1266,9 +1307,15 @@ proptest! {
             expect_code("E60_DUPLICATE_AUTHORITY_CHANGE", || g.schedule_change(kind.clone()));
             g = roundtrip(g);
         }
-        for _ in 0..5 {
+        for kind in [
+            ChangeKind::SetParams { params: params() },
+            ChangeKind::SetParams { params: params() },
+            ChangeKind::Unpause,
+            ChangeKind::Unpause,
+            ChangeKind::SetRuleSet { rule_set_hash: [8; 32], manifest_uri: "ipfs://rules".into(), ai_required: true },
+        ] {
             context("governor.testnet".parse().unwrap(), START, 0, None);
-            ids.push(g.schedule_change(ChangeKind::SetParams { params: params() }));
+            ids.push(g.schedule_change(kind));
             g = roundtrip(g);
         }
         prop_assert_eq!(g.list_changes(0, 50).len(), 8);
@@ -1292,9 +1339,9 @@ proptest! {
         g.cancel_changes(ids.clone());
         g = roundtrip(g);
         for id in &ids {
-            prop_assert_eq!(&g.get_change(*id).unwrap().status, &ChangeStatus::Cancelled);
+            prop_assert!(g.get_change(*id).is_none());
         }
-        expect_code("E54_NOT_PENDING", || g.cancel_changes(vec![ids[0]]));
+        expect_code("E52_NOT_FOUND", || g.cancel_changes(vec![ids[0]]));
         g = roundtrip(g);
         context("governor.testnet".parse().unwrap(), START, 0, None);
         for kind in kinds { g.schedule_change(kind); g = roundtrip(g); }
@@ -1310,21 +1357,19 @@ proptest! {
         amount in 100u128..1_001,
     ) {
         let mut g = fresh_gate(42);
-        context(account(0), START, amount, None);
-        g.deposit_credit(None);
+        let amount = if operation == 1 { amount + g.get_proposal_fee().0 } else { amount };
+        deposit(&mut g, account(0), START, amount);
         g = roundtrip(g);
         prop_assert_eq!(g.get_total_liabilities().0, amount);
         if operation == 4 {
-            context(account(0), START, 0, None);
+            proposal_context(&g, account(0), START);
             g.propose(args(0));
             g = roundtrip(g);
         }
         let storage_cost = u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear();
         let who = if operation == 2 { "governor.testnet".parse().unwrap() } else { account(0) };
-        context_with_balance(who, START, if operation == 0 { 1 } else { 0 }, storage_cost);
-        // The mocked runtime adds attached deposit to account_balance.
-        prop_assert_eq!(env::account_balance().as_yoctonear().saturating_sub(storage_cost),
-            u128::from(operation == 0));
+        let attached = if operation == 0 { 1 } else if operation == 1 { g.get_proposal_fee().0 } else { 0 };
+        context_with_balance(who, START, attached, storage_cost);
         match operation {
             0 => expect_code("E12_STORAGE_INSOLVENT", || g.deposit_credit(None)),
             1 => expect_code("E12_STORAGE_INSOLVENT", || g.propose(args(0))),
@@ -1363,6 +1408,7 @@ proptest! {
         g = roundtrip(g);
         let mut prior_signed = g.get_change(id).unwrap().evm.as_ref().unwrap().signed_tx.clone();
         for index in 0..bumps {
+            now += 600_000_000_000;
             context(account(0), now, 0, None);
             let before = g.get_change(id).unwrap().evm.clone().unwrap();
             if index == 8 {
@@ -1426,10 +1472,9 @@ proptest! {
         succeeds in any::<bool>(),
     ) {
         let mut g = fresh_gate(42);
-        context(account(0), START, deposit, None);
-        g.deposit_credit(None);
+        props_support::deposit(&mut g, account(0), START, deposit);
         g = roundtrip(g);
-        let withdrawn = deposit * fraction / 100;
+        let withdrawn = 1 + (deposit - 1) * fraction / 100;
         context(account(0), START, 0, None);
         drop(g.withdraw_credit(U128(withdrawn)));
         prop_assert_eq!(get_created_receipts().len(), 2);
@@ -1451,5 +1496,67 @@ proptest! {
             u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear(),
         );
         prop_assert!(g.get_total_liabilities().0 <= liquid);
+    }
+}
+
+proptest! {
+    #![proptest_config(property_config())]
+    #[test]
+    fn proposal_fee_must_be_exact(delta in 1u128..1_000_000) {
+        let mut g = fresh_gate(42);
+        context(account(0), START, 0, None);
+        expect_code("E11_INSUFFICIENT_CREDIT", || g.propose(args(0)));
+        deposit(&mut g, account(0), START, 100);
+        g = roundtrip(g);
+        let fee = g.get_proposal_fee().0;
+        context(account(0), START, 0, None);
+        let mut too_long = args(0);
+        too_long.init_calldata.0.resize(1025, 0);
+        expect_code("E22_INIT_CALLDATA_TOO_LONG", || g.propose(too_long));
+        let mut zero = args(0);
+        zero.new_impl.0 = [0; 20];
+        expect_code("E23_ZERO_ADDRESS", || g.propose(zero));
+        for attached in [fee - delta, fee + delta] {
+            context(account(0), START, attached, None);
+            expect_code("E61_STORAGE_FEE", || g.propose(args(0)));
+            prop_assert_eq!(g.get_total_liabilities().0, 100);
+            prop_assert_eq!(g.get_active(account(0)), None);
+        }
+        proposal_context(&g, account(0), START);
+        prop_assert_eq!(g.propose(args(0)), 0);
+        context(account(0), START, 0, None);
+        expect_code("E21_ACTIVE_PROPOSAL_EXISTS", || g.propose(args(0)));
+    }
+
+    #[test]
+    fn bump_age_boundary_is_inclusive(offset in 0u64..1_000_000_000) {
+        let mut m = Machine::new(42);
+        m.now += offset;
+        m.step(&Op::Deposit(2, 300));
+        m.step(&Op::Propose(0, 0, 0));
+        m.step(&Op::Verdict(0, 0, 0));
+        m.step(&Op::Callback(0, 1, false));
+        m.now += 600_000_000_000 - 1;
+        m.step(&Op::Bump(0));
+        prop_assert_eq!(m.proposals[0].bumps, 0);
+        m.now += 1;
+        m.step(&Op::Bump(0));
+        prop_assert_eq!(m.proposals[0].bumps, 1);
+    }
+}
+
+proptest! {
+    #![proptest_config(property_config())]
+    #[test]
+    fn zero_withdrawal_never_creates_credit_entry(owner in 0u8..3) {
+        let mut g = fresh_gate(42);
+        g = roundtrip(g);
+        let before = env::storage_usage();
+        context(account(owner), START, 0, None);
+        expect_code("E10_ZERO_DEPOSIT", || g.withdraw_credit(U128(0)));
+        g = roundtrip(g);
+        prop_assert_eq!(g.get_credit(account(owner)).0, 0);
+        prop_assert_eq!(g.get_total_liabilities().0, 0);
+        prop_assert_eq!(env::storage_usage(), before);
     }
 }

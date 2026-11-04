@@ -75,6 +75,16 @@ fn context_with_resources(
     INSTALL_CONTEXT.with(|install| install(ctx, result.into_iter().collect()));
 }
 
+pub fn deposit(gate: &mut Gate, who: AccountId, now: u64, amount: u128) {
+    let fee = gate.get_credit_entry_fee(who.clone()).0;
+    context(who, now, amount + fee, None);
+    gate.deposit_credit(None);
+}
+
+pub fn proposal_context(gate: &Gate, who: AccountId, now: u64) {
+    context(who, now, gate.get_proposal_fee().0, None);
+}
+
 pub fn key(index: u8) -> SigningKey {
     SigningKey::from_bytes(&[42 + index; 32])
 }

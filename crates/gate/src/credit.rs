@@ -5,11 +5,25 @@ use crate::GateExt;
 impl Gate {
     #[payable]
     pub fn deposit_credit(&mut self, account: Option<AccountId>) {
-        let amount = env::attached_deposit().as_yoctonear();
-        check(amount > 0, GateError::ZeroDeposit, "attach credit");
+        let attached = env::attached_deposit().as_yoctonear();
+        check(attached > 0, GateError::ZeroDeposit, "attach credit");
         let account = account.unwrap_or_else(env::predecessor_account_id);
-        let balance = self.credit.get(&account).copied().unwrap_or(0);
-        let balance = balance
+        let existing = self.credit.get(&account).copied();
+        // A new entry occupies permanent storage; the depositor pays for it out of the deposit so
+        // an unprivileged caller can never consume the gate's operating surplus.
+        let fee = if existing.is_none() {
+            Gate::credit_entry_fee(&account)
+        } else {
+            0
+        };
+        if attached <= fee {
+            env::panic_str(&format!(
+                "{STORAGE_FEE}: first deposit must exceed the entry storage fee {fee}"
+            ));
+        }
+        let amount = attached - fee;
+        let balance = existing
+            .unwrap_or(0)
             .checked_add(amount)
             .unwrap_or_else(|| env::panic_str(GateError::InsufficientCredit.code()));
         self.total_liabilities = self
@@ -22,6 +36,13 @@ impl Gate {
 
     pub fn withdraw_credit(&mut self, amount: U128) -> Promise {
         let account = env::predecessor_account_id();
+        // A zero withdrawal must not create a credit entry for free (storage metering): only an
+        // account that already paid its entry fee has an entry, and moving no funds is a no-op.
+        check(
+            amount.0 > 0,
+            GateError::ZeroDeposit,
+            "withdraw a positive amount",
+        );
         let balance = self.credit.get(&account).copied().unwrap_or(0);
         check(
             balance >= amount.0,
@@ -30,11 +51,13 @@ impl Gate {
         );
         self.credit.insert(account.clone(), balance - amount.0);
         self.total_liabilities -= amount.0;
+        // The at-call check runs before the refund-window reserve is added: a gate that backs its
+        // liabilities exactly can still pay a full withdrawal out.
+        self.assert_solvent(amount.0);
         self.pending_withdrawals = self
             .pending_withdrawals
             .checked_add(amount.0)
             .unwrap_or_else(|| env::panic_str(GateError::InsufficientCredit.code()));
-        self.assert_solvent(amount.0);
         Promise::new(account.clone())
             .transfer(NearToken::from_yoctonear(amount.0))
             .then(

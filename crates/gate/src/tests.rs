@@ -86,9 +86,26 @@ fn args() -> ProposeArgs {
     }
 }
 fn fund(g: &mut Gate, who: &str, amount: u128) {
-    context(who, 1_000_000_000, amount);
+    // The first deposit of an account also pays its credit entry's storage, so the credit that
+    // results equals `amount`.
+    let account: AccountId = who.parse().unwrap();
+    let entry_fee = if g.credit.contains_key(&account) {
+        0
+    } else {
+        Gate::credit_entry_fee(&account)
+    };
+    context(who, 1_000_000_000, amount + entry_fee);
     g.deposit_credit(None);
     context(who, 1_000_000_000, 0);
+}
+/// `propose` with the exact non-refundable storage fee attached; context is restored afterwards.
+fn propose_fee(g: &mut Gate, args: ProposeArgs) -> u64 {
+    let who = env::predecessor_account_id();
+    let now = env::block_timestamp();
+    context(who.as_str(), now, Gate::proposal_storage_fee());
+    let id = g.propose(args);
+    context(who.as_str(), now, 0);
+    id
 }
 fn fails<T>(code: &str, f: impl FnOnce() -> T) -> String {
     let error = match catch_unwind(AssertUnwindSafe(f)) {
@@ -134,7 +151,7 @@ fn matured(g: &mut Gate, kind: ChangeKind) -> u64 {
 fn t_gate_1_proposal_reserves_credit_and_binds_rules() {
     let mut g = gate();
     fund(&mut g, "alice.testnet", 150);
-    let id = g.propose(args());
+    let id = propose_fee(&mut g, args());
     let p = g.get_proposal(id).unwrap();
     assert_eq!(id, 0);
     assert_eq!(p.state, ProposalState::Pending);
@@ -144,17 +161,28 @@ fn t_gate_1_proposal_reserves_credit_and_binds_rules() {
     assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, 50);
     assert_eq!(g.get_active("alice.testnet".parse().unwrap()), Some(id));
     fails("E21_ACTIVE_PROPOSAL_EXISTS", || {
-        g.propose(args());
+        propose_fee(&mut g, args());
     });
     assert_eq!(g.next_evm_nonce, 42);
 }
 #[test]
 fn credit_funding_recipient_and_withdrawal_effects() {
     let mut g = gate();
-    context("bob.testnet", 1_000_000_000, 150);
-    g.deposit_credit(Some("alice.testnet".parse().unwrap()));
+    let alice: AccountId = "alice.testnet".parse().unwrap();
+    let entry_fee = Gate::credit_entry_fee(&alice);
+    // A first deposit that does not exceed the entry fee is refused and records nothing.
+    context("bob.testnet", 1_000_000_000, entry_fee);
+    let msg = fails("E61_STORAGE_FEE", || g.deposit_credit(Some(alice.clone())));
+    assert!(msg.contains(&entry_fee.to_string()));
+    assert_eq!(g.total_liabilities, 0);
+    // The fee is taken from the first deposit only: credit is the deposit minus the fee.
+    context("bob.testnet", 1_000_000_000, 150 + entry_fee);
+    g.deposit_credit(Some(alice.clone()));
+    assert_eq!(g.get_credit(alice.clone()).0, 150);
+    assert_eq!(g.total_liabilities, 150);
+    assert_eq!(g.get_operating_surplus().0, g.operating_surplus());
     context("alice.testnet", 1_000_000_000, 0);
-    g.propose(args());
+    propose_fee(&mut g, args());
     fails("E11_INSUFFICIENT_CREDIT", || {
         drop(g.withdraw_credit(U128(51)));
     });
@@ -167,42 +195,91 @@ fn credit_funding_recipient_and_withdrawal_effects() {
         matches!(receipts[0].actions[0], near_sdk::mock::MockAction::Transfer { deposit, .. } if deposit.as_yoctonear()==50)
     );
     fails("E10_ZERO_DEPOSIT", || g.deposit_credit(None));
+    // Later deposits for an existing entry pay no fee.
+    context("bob.testnet", 1_000_000_000, 7);
+    g.deposit_credit(Some(alice.clone()));
+    assert_eq!(g.get_credit(alice).0, 7);
+}
+#[test]
+fn propose_requires_the_exact_non_refundable_storage_fee() {
+    let mut g = gate();
+    fund(&mut g, "alice.testnet", 100);
+    let fee = Gate::proposal_storage_fee();
+    for wrong in [0, fee - 1, fee + 1] {
+        context("alice.testnet", 1_000_000_000, wrong);
+        let msg = fails("E61_STORAGE_FEE", || {
+            g.propose(args());
+        });
+        assert!(msg.contains(&fee.to_string()));
+    }
+    assert_eq!(g.get_active("alice.testnet".parse().unwrap()), None);
+    g.flush_storage();
+    let surplus_before = g.operating_surplus();
+    context("alice.testnet", 1_000_000_000, fee);
+    g.propose(args());
+    g.flush_storage();
+    // The reservation is refundable and still a liability; the attached fee is not a liability.
+    // The mocked balance does not add the attached deposit, so the surplus falls by the record's
+    // storage cost, which the fee must cover.
+    assert_eq!(g.total_liabilities, 100);
+    assert!(surplus_before.saturating_sub(g.operating_surplus()) <= fee);
+}
+#[test]
+fn exactly_backed_gate_can_pay_out_a_full_withdrawal() {
+    let mut g = gate();
+    fund(&mut g, "alice.testnet", 100);
+    g.flush_storage();
+    let storage = env::storage_usage();
+    let balance = u128::from(storage) * env::storage_byte_cost().as_yoctonear() + 100;
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id("gate.testnet".parse().unwrap())
+            .predecessor_account_id("alice.testnet".parse().unwrap())
+            .block_timestamp(1_000_000_000)
+            .account_balance(NearToken::from_yoctonear(balance))
+            .storage_usage(storage)
+            .build()
+    );
+    assert_eq!(g.operating_surplus(), 0);
+    drop(g.withdraw_credit(U128(100)));
+    assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, 0);
+    assert_eq!(g.pending_withdrawals, 100);
 }
 #[test]
 fn proposals_reject_insufficient_credit_long_calldata_zero_addresses_and_duplicates() {
     let mut g = gate();
     fails("E11_INSUFFICIENT_CREDIT", || {
-        g.propose(args());
+        propose_fee(&mut g, args());
     });
     fund(&mut g, "alice.testnet", 100);
     let mut a = args();
     a.init_calldata.0 = vec![0; 1025];
     fails("E22_INIT_CALLDATA_TOO_LONG", || {
-        g.propose(a);
+        propose_fee(&mut g, a);
     });
     let mut a = args();
     a.new_impl.0 = [0; 20];
     fails("E23_ZERO_ADDRESS", || {
-        g.propose(a);
+        propose_fee(&mut g, a);
     });
     let mut a = args();
     a.expected_current_impl.0 = [0; 20];
     fails("E23_ZERO_ADDRESS", || {
-        g.propose(a);
+        propose_fee(&mut g, a);
     });
-    g.propose(args());
+    propose_fee(&mut g, args());
     fund(&mut g, "bob.testnet", 100);
-    assert_eq!(g.propose(args()), 1);
+    assert_eq!(propose_fee(&mut g, args()), 1);
     fund(&mut g, "carol.testnet", 100);
     let mut a = args();
     a.init_calldata.0 = vec![0; 1024];
-    assert_eq!(g.propose(a), 2);
+    assert_eq!(propose_fee(&mut g, a), 2);
 }
 #[test]
 fn expire_boundary_releases_once_and_reopens_duplicate_slot_while_paused() {
     let mut g = gate();
     fund(&mut g, "alice.testnet", 100);
-    let id = g.propose(args());
+    let id = propose_fee(&mut g, args());
     fails("E30_NOT_FOUND", || g.expire(99));
     context("guardian.testnet", 7_201_000_000_000, 0);
     g.pause_signing();
@@ -215,8 +292,8 @@ fn expire_boundary_releases_once_and_reopens_duplicate_slot_while_paused() {
     assert_eq!(g.get_active("alice.testnet".parse().unwrap()), None);
     fails("E31_WRONG_STATE", || g.expire(id));
     context("alice.testnet", 7_201_000_000_001, 0);
-    assert_eq!(g.propose(args()), 1);
-    drop(g.withdraw_credit(U128(0)));
+    assert_eq!(propose_fee(&mut g, args()), 1);
+    fails("E10_ZERO_DEPOSIT", || g.withdraw_credit(U128(0)));
 }
 #[test]
 fn t_gate_6_timelock_before_eta_minus_one_and_at_eta() {
@@ -232,8 +309,8 @@ fn t_gate_6_timelock_before_eta_minus_one_and_at_eta() {
     drop(g.apply_change(id));
     assert_eq!(g.get_constitution().rule_set_hash, [12; 32]);
     assert!(!g.get_constitution().ai_required);
-    assert_eq!(g.get_change(id).unwrap().status, ChangeStatus::Applied);
-    fails("E54_NOT_PENDING", || g.apply_change(id));
+    assert!(g.get_change(id).is_none());
+    fails("E52_NOT_FOUND", || g.apply_change(id));
 }
 #[test]
 fn t_gate_7_roles_and_cancellation_fail_closed() {
@@ -252,16 +329,16 @@ fn t_gate_7_roles_and_cancellation_fail_closed() {
     context("guardian.testnet", 1_000_000_000, 0);
     fails("E52_NOT_FOUND", || g.cancel_change(99));
     g.cancel_change(id);
-    assert_eq!(g.get_change(id).unwrap().status, ChangeStatus::Cancelled);
-    fails("E54_NOT_PENDING", || g.cancel_change(id));
+    assert!(g.get_change(id).is_none());
+    fails("E52_NOT_FOUND", || g.cancel_change(id));
     context("anyone.testnet", 604_801_000_000_000, 0);
-    fails("E54_NOT_PENDING", || g.apply_change(id));
+    fails("E52_NOT_FOUND", || g.apply_change(id));
 }
 #[test]
 fn t_gate_8_rules_block_requested_and_unexpired_signed_but_allow_deadline_equality() {
     let mut g = gate();
     fund(&mut g, "alice.testnet", 100);
-    let pid = g.propose(args());
+    let pid = propose_fee(&mut g, args());
     let id = schedule(&mut g, rule_change());
     context("anyone.testnet", 604_801_000_000_000, 0);
     g.proposals.get_mut(&pid).unwrap().state = ProposalState::SignRequested;
@@ -453,6 +530,7 @@ fn initialization_rejects_every_invalid_binding() {
 fn views_paginate_and_events_have_canonical_hashes() {
     let mut g = gate();
     fund(&mut g, "alice.testnet", 100);
+    context("alice.testnet", 1_000_000_000, Gate::proposal_storage_fee());
     g.propose(args());
     let logs = get_logs();
     let event: serde_json::Value =
@@ -474,9 +552,14 @@ fn views_paginate_and_events_have_canonical_hashes() {
         context("guardian.testnet", 1_000_000_000, 0);
         g.cancel_change(id);
     }
-    assert_eq!(g.list_changes(0, 51).len(), 50);
-    assert_eq!(g.list_changes(50, 50)[0].id, 50);
+    // Cancelled changes are deleted; only the two live ones are listed and ids stay stable.
+    schedule(&mut g, ChangeKind::Unpause);
+    schedule(&mut g, ChangeKind::Unpause);
+    assert_eq!(g.list_changes(0, 51).len(), 2);
+    assert_eq!(g.list_changes(0, 51)[0].id, 51);
+    assert_eq!(g.list_changes(52, 50)[0].id, 52);
     assert!(g.list_changes(u64::MAX, 50).is_empty());
+    assert!(g.list_changes(0, 0).is_empty());
     assert!(g.list_verifiers(0, 0).is_empty());
 }
 
@@ -527,7 +610,7 @@ fn lifecycle_and_guardian_events_identify_the_actual_transition() {
         serde_json::to_value(Base64([8; 32])).unwrap()
     );
     fund(&mut g, "alice.testnet", 100);
-    let id = g.propose(args());
+    let id = propose_fee(&mut g, args());
     context("anyone.testnet", 7_201_000_000_001, 0);
     g.expire(id);
     assert_eq!(last_event("proposal_expired")["proposal_id"], id);
@@ -634,11 +717,29 @@ fn pending_queue_is_bounded_unique_and_guardian_can_cancel_batch() {
         fails("E60_DUPLICATE_AUTHORITY_CHANGE", || g.schedule_change(kind));
         assert_eq!(id, g.next_change_id - 1);
     }
-    for _ in 3..8 {
-        schedule(&mut g, ChangeKind::Unpause);
+    // Non-authority kinds are capped at two each, so one kind cannot take the whole queue.
+    for (cap_kind, extra) in [
+        (ChangeKind::Unpause, 2usize),
+        (
+            ChangeKind::SetRuleSet {
+                rule_set_hash: [3; 32],
+                manifest_uri: "ipfs://next".into(),
+                ai_required: true,
+            },
+            2,
+        ),
+    ] {
+        for _ in 0..extra {
+            schedule(&mut g, cap_kind.clone());
+        }
+        fails("E60_DUPLICATE_AUTHORITY_CHANGE", || {
+            g.schedule_change(cap_kind.clone())
+        });
     }
+    schedule(&mut g, ChangeKind::SetParams { params: params() });
+    assert_eq!(g.pending_changes.len(), 8);
     fails("E59_PENDING_CHANGE_LIMIT", || {
-        g.schedule_change(ChangeKind::Unpause)
+        g.schedule_change(ChangeKind::SetParams { params: params() })
     });
     fails("E56_NOT_GUARDIAN", || g.cancel_changes(vec![0, 1, 2]));
     context("guardian.testnet", 1_000_000_000, 0);
@@ -646,11 +747,9 @@ fn pending_queue_is_bounded_unique_and_guardian_can_cancel_batch() {
     fails("E52_NOT_FOUND", || g.cancel_changes(vec![0, 99]));
     assert_eq!(g.get_change(0).unwrap().status, ChangeStatus::Pending);
     g.cancel_changes((0..8).collect());
-    assert!(
-        g.list_changes(0, 50)
-            .iter()
-            .all(|c| c.status == ChangeStatus::Cancelled)
-    );
+    // Cancelled changes are deleted, not kept as permanent storage.
+    assert!(g.list_changes(0, 50).is_empty());
+    assert!(g.pending_changes.is_empty());
     assert_eq!(
         schedule(
             &mut g,
@@ -670,26 +769,61 @@ fn proposal_storage_growth_is_the_solvency_limiter_and_measurement() {
     let before = env::storage_usage();
     let mut a = args();
     a.init_calldata.0 = vec![0x55; 1024];
+    context("alice.testnet", 1_000_000_000, Gate::proposal_storage_fee());
     g.propose(a);
+    g.flush_storage();
     let delta = env::storage_usage() - before;
     println!("max_calldata_proposal_storage_bytes={delta}");
     assert!(delta > 1024);
+    assert!(
+        delta <= PROPOSAL_STORAGE_BYTES,
+        "the committed storage fee must cover the pending record"
+    );
     assert_eq!(g.total_liabilities, 100);
-    // Free the active slot, then leave exactly enough liquid backing for credit.
+    // Free the active slot. A gate with no prior surplus must still accept the next proposal,
+    // because the attached fee alone pays for its record.
     context("alice.testnet", 7_201_000_000_001, 0);
     g.expire(0);
+    g.flush_storage();
     let storage = env::storage_usage();
-    let balance = u128::from(storage) * env::storage_byte_cost().as_yoctonear() + 100;
+    let fee = Gate::proposal_storage_fee();
+    let balance = u128::from(storage) * env::storage_byte_cost().as_yoctonear() + 100 + fee;
     testing_env!(
         VMContextBuilder::new()
             .current_account_id("gate.testnet".parse().unwrap())
             .predecessor_account_id("alice.testnet".parse().unwrap())
             .block_timestamp(7_201_000_000_002)
             .account_balance(NearToken::from_yoctonear(balance))
+            .attached_deposit(NearToken::from_yoctonear(fee))
             .storage_usage(storage)
             .build()
     );
-    fails("E12_STORAGE_INSOLVENT", || g.propose(args()));
+    let mut again = args();
+    again.init_calldata.0 = vec![0x66; 1024];
+    g.propose(again);
+    // Accepted (no E12) with zero prior surplus: the attached fee alone covered the record.
+    g.flush_storage();
+}
+
+#[test]
+fn governance_writes_need_operating_surplus() {
+    let mut g = gate();
+    fund(&mut g, "alice.testnet", 100);
+    g.flush_storage();
+    let storage = env::storage_usage();
+    // Exactly backed: liquid balance equals liabilities, so a transient governance write is
+    // refused instead of eating user credit.
+    let balance = u128::from(storage) * env::storage_byte_cost().as_yoctonear() + 100;
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id("gate.testnet".parse().unwrap())
+            .predecessor_account_id("governor.testnet".parse().unwrap())
+            .block_timestamp(1_000_000_000)
+            .account_balance(NearToken::from_yoctonear(balance))
+            .storage_usage(storage)
+            .build()
+    );
+    fails("E12_STORAGE_INSOLVENT", || g.schedule_change(rule_change()));
 }
 
 #[test]

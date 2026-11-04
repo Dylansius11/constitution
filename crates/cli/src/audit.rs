@@ -4,7 +4,7 @@ use crate::failure::Failure;
 use crate::rpc::{Evm, Near};
 use constitution_types::{
     AccountId, Base64, ChangeKind, ChangeStatus, Config, Constitution, Hex20, Hex32, PendingChange,
-    Roles, VerifierRecord,
+    Roles, U128Str, VerifierRecord,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -14,6 +14,9 @@ use std::path::Path;
 pub const ADMIN_SLOT: &str = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
 pub const IMPLEMENTATION_SLOT: &str =
     "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+/// Documented activation minimum for the uncredited operating surplus (SMART-CONTRACT,
+/// "Activation operating minimum"): 1 NEAR in yoctoNEAR.
+pub const MIN_OPERATING_SURPLUS: u128 = 1_000_000_000_000_000_000_000_000;
 
 /// The committed deployment record the audit compares public state against (P2.8 writes it).
 #[derive(Debug, Clone, Deserialize)]
@@ -71,6 +74,8 @@ pub struct Observed {
     pub executor_runtime_hash: Option<[u8; 32]>,
     pub roles: Roles,
     pub signing_paused: bool,
+    /// `get_operating_surplus`: liquid balance after storage and every user liability.
+    pub operating_surplus: u128,
     pub changes: Vec<PendingChange>,
 }
 
@@ -217,6 +222,14 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
             o.roles.governor, o.roles.guardian
         ),
     ));
+    checks.push(check(
+        "gate_operating_surplus",
+        o.operating_surplus >= MIN_OPERATING_SURPLUS,
+        format!(
+            "operating_surplus={} yoctoNEAR, required at least {MIN_OPERATING_SURPLUS}; only plain transfers can top up a keyless gate",
+            o.operating_surplus
+        ),
+    ));
     checks.push(Check {
         name: "signing_paused",
         ok: !o.signing_paused,
@@ -241,12 +254,16 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
             .planned_changes
             .iter()
             .any(|p| p.id == c.id && p.kind == c.kind && p.eta_ns == c.eta_ns);
+        // SetRuleSet changes what a Pass means and RemoveVerifier shrinks the allowlist, so an
+        // unplanned one is as noteworthy as an authority change.
         let authority = matches!(
             c.kind,
             ChangeKind::MigrateAuthority { .. }
                 | ChangeKind::SetGuardian { .. }
                 | ChangeKind::SetGovernor { .. }
                 | ChangeKind::AddVerifier { .. }
+                | ChangeKind::RemoveVerifier { .. }
+                | ChangeKind::SetRuleSet { .. }
         );
         checks.push(Check {
             name: if authority && !planned {
@@ -347,6 +364,9 @@ pub fn observe(
     let signing_paused = near
         .view(gate, "is_signing_paused", json!({}))
         .map_err(read_failed)?;
+    let operating_surplus: U128Str = near
+        .view(gate, "get_operating_surplus", json!({}))
+        .map_err(read_failed)?;
     let mut changes = Vec::new();
     let mut from_id = 0u64;
     loop {
@@ -379,6 +399,7 @@ pub fn observe(
         .address_getter(executor, "proxyAdmin()")
         .map_err(read_failed)?;
     Ok(Observed {
+        operating_surplus: operating_surplus.0,
         access_keys: near.access_key_count(gate).map_err(read_failed)?,
         code_hash: near.code_hash(gate).map_err(read_failed)?,
         verifiers: listed.iter().map(|(k, r)| (k.0, r.release_hash)).collect(),
@@ -536,6 +557,7 @@ mod tests {
                 guardian: "guardian.testnet".parse().unwrap(),
             },
             signing_paused: false,
+            operating_surplus: 2 * MIN_OPERATING_SURPLUS,
             changes: vec![],
         }
     }
@@ -551,7 +573,7 @@ mod tests {
     #[test]
     fn healthy_deployment_passes_every_precondition() {
         let checks = evaluate(&deployment(), RULES, &healthy());
-        assert_eq!(checks.len(), 14);
+        assert_eq!(checks.len(), 15);
         assert!(checks.iter().all(|c| c.ok), "{checks:?}");
         assert!(report(&checks).is_ok());
     }
@@ -559,7 +581,10 @@ mod tests {
     #[test]
     fn t_aud_1_each_violation_fails_exactly_its_named_precondition() {
         type Break = fn(&mut Observed);
-        let cases: [(&str, Break); 13] = [
+        let cases: [(&str, Break); 14] = [
+            ("gate_operating_surplus", |o| {
+                o.operating_surplus = MIN_OPERATING_SURPLUS - 1
+            }),
             ("gate_has_no_access_keys", |o| o.access_keys = 1),
             ("gate_code_is_committed_build", |o| {
                 o.code_hash = "Other".into()
@@ -687,6 +712,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn unplanned_rule_set_and_verifier_removal_warn_like_authority_changes() {
+        for kind in [
+            ChangeKind::SetRuleSet {
+                rule_set_hash: [9; 32],
+                manifest_uri: "ipfs://other".into(),
+                ai_required: false,
+            },
+            ChangeKind::RemoveVerifier { pubkey: [7; 32] },
+        ] {
+            let mut o = healthy();
+            o.changes.push(PendingChange {
+                id: 3,
+                kind: kind.clone(),
+                scheduled_by: o.roles.governor.clone(),
+                scheduled_at_ns: 1,
+                eta_ns: 604_800_000_000_001,
+                status: ChangeStatus::Pending,
+                evm: None,
+            });
+            assert!(
+                evaluate(&deployment(), RULES, &o)
+                    .iter()
+                    .any(|c| c.name == "pending_authority_change" && c.warning),
+                "{kind:?}"
+            );
+        }
+    }
     #[test]
     fn near_derived_key_maps_to_the_recorded_spike_address() {
         // vectors/mpc-derivation.json and spikes/gate-min/README.md, finalized block 275927720.
