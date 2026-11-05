@@ -120,7 +120,7 @@ async fn start_stub(
             .await
             .unwrap()
     });
-    let source = GateSource::new(&url, &url, &m, "gate.testnet".parse().unwrap()).unwrap();
+    let source = GateSource::new(&url, &url, &url, &m, "gate.testnet".parse().unwrap()).unwrap();
     (source, calls, server)
 }
 async fn observe(
@@ -263,14 +263,18 @@ fn chain_provenance_exposes_hosts_not_rpc_credentials() {
     let source = GateSource::new(
         "https://alice:password@near.example/api/secret?key=hidden",
         "https://bob:password@base.example/secret?key=hidden",
+        "https://carol:password@proof.example/proof-secret?key=hidden",
         &manifest(),
         "gate.testnet".parse().unwrap(),
     )
     .unwrap();
-    assert_eq!(
-        source.archive_provider(),
-        "NEAR near.example final + Base base.example at latest-5"
-    );
+    let provenance = source.archive_provider();
+    for host in ["near.example", "base.example", "proof.example"] {
+        assert!(provenance.contains(host));
+    }
+    for secret in ["alice", "bob", "carol", "password", "secret", "hidden"] {
+        assert!(!provenance.contains(secret));
+    }
     assert_eq!(
         source.archive_rpc().as_deref(),
         Some("https://bob:password@base.example/secret?key=hidden"),

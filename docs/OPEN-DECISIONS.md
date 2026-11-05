@@ -23,7 +23,7 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D7 | Visual direction for the public page | founder | open, founder collecting logo and references (2026-11-02) | P3.4 | Candidates in `docs/DESIGN.md`; page work waits |
 | D8 | Hosting for the public page | founder | open, Cloudflare Pages or Vercel (2026-11-02) | P3.6 | Deferred by founder |
 | D9 | Public repo and X accounts | founder | resolved 2026-10-26, refined 2026-11-02 | P4 | GitHub `Dylansius11`, founder creates the repo; lead commits locally until asked to push; founder's X |
-| D10 | Archive / debug RPC for replay | founder | resolved 2026-10-26, confirm in spike | P1.7 | Validation Cloud free tier |
+| D10 | Archive / debug and proof RPC for replay | founder | resolved 2026-10-26, refined 2026-11-05 | P1.7 | Validation Cloud free tier for archive/trace; Base public RPC for recent-block proofs; no QuickNode purchase |
 | D11 | NEAR AI Cloud inference access | founder | in progress | P2.6 | Founder applied for hackathon credits |
 | D12 | EVM authority shape | lead | resolved 2026-10-26 | P1.3 | `ConstitutionExecutor` owns ProxyAdmin |
 | D13 | Effect of rule changes on already-signed transactions | lead | resolved 2026-10-26 | P2.3 | Valid only until their short deadline; disclosed |
@@ -94,6 +94,8 @@ Founder response, 2026-10-26: public repo `constitution` under GitHub account `D
 
 Founder response, 2026-10-26: Validation Cloud free tier. [V, 2026-10-26] docs list Base Sepolia archive, `debug_traceCall` with `prestateTracer`, `eth_getProof`, 50M CU/month, 120 requests/s, no card (https://docs.validationcloud.io/nodeapi/base/overview, https://docs.validationcloud.io/nodeapi/about/billing). Spike P1.7 must exercise the methods at a fixed block before R5 depends on them.
 
+Founder-approved refinement, 2026-11-05: keep Validation Cloud for archive state and debug traces, and use `https://sepolia.base.org` for proofs via `BASE_SEPOLIA_PROOF_RPC_URL`. The endpoints must serve the same pinned Base block; verify both chain ids/headers and every account/storage proof. Public RPC rate limits and bounded proof retention are accepted hackathon liveness risks, not permission to use `latest` or skip authentication. No paid provider or node self-hosting is authorized by this decision.
+
 ### D11. NEAR AI Cloud access
 
 Founder response, 2026-10-26: hackathon credits already requested. Grant amount and timing are [U]. No inference runs until a key exists in the founder's local `.env`. If credits do not arrive by 2026-11-04, the founder decides on a small top-up (new row).
@@ -154,10 +156,11 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B2 | Base Sepolia ETH for the derived EOA and a deployer EOA | founder | resolved 2026-11-03 | P1.3, P1.4, P2.8 | A friend of the founder sent 0.05 ETH to the deployer on Ethereum Sepolia; with founder approval the lead bridged 0.049 ETH through the Base L1StandardBridge `0xfd0Bf71F60660E2f608ed56e1659C450eB113120` (address from docs.base.org "Contract Addresses", `otherBridge()` = `0x4200…0010` checked on chain): Sepolia tx `0xa3b4c26bc922789c6abec82b446605ffe275983fbedf8f1b6edd7d5bebc4f2cd`; deployer balance on Base Sepolia read as 0.049 ETH at block 53763980 (2026-11-03T02:57Z). The derived EOAs are funded from the deployer when needed |
 | B3 | Phala Cloud account, card verification, USD 20 credit | founder | open; steps sent to founder 2026-11-02 | P1.6 | INTEGRATIONS "Phala Cloud"; confirm credit visible in workspace |
 | B4 | NEAR AI Cloud credits and API key in local `.env` | founder | resolved 2026-11-04: key present in `.env`; one live `provider_tee` completion verified (BUILD-PLAN P2.6). Needs a synced host clock (LESSONS 2026-11-04) | P2.6 | none |
-| B5 | Base Sepolia RPC with historical `eth_getProof` and `prestateTracer` | founder (provider access), lead (probe) | open; URL supplied and probed 2026-11-05: traces/overrides/diff work, but proof at fixed and recent numeric blocks fails with `-32602` maximum proof window | P1.7, P2.5 live R5 integration | Ask provider to enable/fix historical `eth_getProof` on Base Sepolia (including tip minus 2); do not pay or switch providers without founder approval. See P1.7 evidence and LESSONS |
+| B5 | Base Sepolia state/trace and fixed-block proof endpoints | founder (provider access), lead (probe) | resolved 2026-11-05 under refined D10: production witness fetch from Validation Cloud + public Base RPC verified 8 accounts/7 slots at fixed block 54,676,922 | P1.7, P2.5 live R5 integration | No new account or payment required. Keep both endpoints configured in the CVM; public RPC rate limits/window expiry remain liveness risks. Final deployment/corpus proof remains P2.8 |
 | B6 | GitHub repo `Dylansius11/constitution` | founder | resolved 2026-11-03: repo exists (private, empty at start); `main` and `dev` pushed; default branch `dev`; work via branch then PR into `dev`, `dev` into `main` by PR. Open: the repo is PRIVATE, so make it public before submission (founder) | P4 | `git ls-remote origin` lists `main` and `dev` |
 | B7 | Hosting choice | founder | open | P3.6 | Resolve D8 |
 | B8 | Visual direction | founder | open | P3.4 | Resolve D7 |
+| B9 | Local Docker Desktop Linux engine and Ubuntu WSL integration for the compiler regression | founder (Desktop/WSL settings), lead (focused rerun) | open 2026-11-05: Docker backend pipes unavailable; CLI restart timed out; direct WSL Docker command unavailable. `proposal_compilation_error_remains_a_signed_reject` failed while the live split-RPC witness succeeded | Split-RPC PR merge verification, P4.1 | Start the Docker Linux engine and enable Ubuntu WSL integration, then rerun only the compiler regression (no R2/solver). Keep the feature PR unmerged until this check passes |
 
 ### B1. NEAR testnet accounts
 
@@ -183,9 +186,9 @@ Unblock evidence: workspace shows the credit; CVM creation is a later agent step
 
 Unblock evidence: an authenticated `GET /v1/attestation/report?model=z-ai/glm-5.3-flash` succeeds from the founder's machine (planned check, non-billable per docs, not run).
 
-### B5. Validation Cloud
+### B5. Split Base Sepolia archive / proof RPC
 
-Unblock evidence: chain id `0x14a34` already passed on the configured endpoint (2026-11-05). Remaining: `eth_getProof` at a pinned numeric block must succeed and its account/storage proofs verify against that header's `stateRoot`; the same endpoint must keep the observed `prestateTracer`, `stateOverrides` and `diffMode` support. A `latest` proof response alone does not meet P1.7 or the production R5 contract.
+[V, exercised on Base Sepolia 2026-11-05] Resolved with the founder-approved endpoint split: Validation Cloud serves state/trace; `BASE_SEPOLIA_PROOF_RPC_URL=https://sepolia.base.org` serves proofs. Production `fetch_witness` authenticated the two headers and all account/storage proofs at fixed block 54,676,922 (BUILD-PLAN P1.7). The original Validation Cloud fixed-block proof restriction remains unconfirmed provider behavior; it is not bypassed with `latest`. This closes the RPC prerequisite, not CVM deployment or a final upgrade rehearsal.
 
 ### B6. Public repo
 

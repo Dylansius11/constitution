@@ -34,6 +34,7 @@ flowchart LR
     X[TransparentUpgradeableProxy<br/>Vault]
   end
   ARC[(Validation Cloud<br/>archive + debug RPC)]
+  PROOF[(Base public RPC<br/>recent-block proofs)]
 
   U -- propose --> G
   U -- sealed source bundle --> V
@@ -41,6 +42,7 @@ flowchart LR
   V --> S
   S -- E2EE chat, verifyResponse --> A
   V -- prestate at evidence block --> ARC
+  V -- proofs at same pinned block --> PROOF
   V -- submit_verdict(cert, sig) --> G
   G -- sign(payload_v2) --> M
   M -- signature --> G
@@ -146,7 +148,7 @@ All rows observed 2026-10-26. "Index" = official crates.io sparse index (`https:
 | Page QR | qrcode | 1.5.4 (Node >= 10.13.0) | `npm view` | Renders the public demo key; text alternative always shown |
 | Page checks | Biome 2.6.3, Vitest 5.0.5, Playwright 1.64.1 | as listed | `npm view` | |
 | Attested host | Phala Cloud dstack CVM | instance size from P1.6 | phala.com/pricing | USD 20 verified-account credit (D2) |
-| Archive RPC | Validation Cloud Base Sepolia | free tier | docs.validationcloud.io | `prestateTracer`, `eth_getProof` (D10) |
+| Archive / proof RPC | Validation Cloud Base Sepolia for state/debug; Base public RPC for proofs | free tier / rate-limited public | docs.validationcloud.io; docs.base.org | Separate endpoints, one pinned header and verified account/storage proofs (D10, refined 2026-11-05) |
 | NEAR RPC | FastNEAR testnet | `https://test.rpc.fastnear.com` | docs.near.org/api/rpc/providers | near.org RPC deprecated after 2025-08-01 [V] |
 | Base RPC | public | read `https://sepolia.base.org`, send `https://sepolia-sequencer.base.org` | docs.base.org | No numeric quota published [U] |
 

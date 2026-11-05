@@ -74,6 +74,84 @@ fn deploy(repo: &Path, url: &str, actor: &str, contract: &str) -> Address {
         .unwrap()
 }
 
+// Real Anvil remains the state source; these gateways model providers with
+// complementary capabilities and allow corrupt proof responses to be rejected.
+struct RpcGateway {
+    url: String,
+    fault: std::sync::Arc<std::sync::Mutex<&'static str>>,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+impl Drop for RpcGateway {
+    fn drop(&mut self) {
+        let _ = self.stop.take().unwrap().send(());
+        let _ = self.thread.take().unwrap().join();
+    }
+}
+fn gateway(upstream: &str, proofs: bool) -> RpcGateway {
+    use axum::{Json, Router, routing::post};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let upstream = upstream.to_owned();
+    let fault = std::sync::Arc::new(std::sync::Mutex::new(""));
+    let faults = fault.clone();
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let thread = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async move {
+                let client = reqwest::Client::new();
+                let app = Router::new().route("/", post(move |Json(query): Json<Value>| {
+                    let (client, upstream, faults) =
+                        (client.clone(), upstream.clone(), faults.clone());
+                    async move {
+                        let method = query["method"].as_str().unwrap();
+                        if (!proofs && method == "eth_getProof")
+                            || (proofs && method == "debug_traceCall")
+                        {
+                            return Json(json!({"jsonrpc":"2.0","id":query["id"],
+                                "error":{"code":-32602,"message":"provider does not serve this method"}}));
+                        }
+                        let mut response: Value = client.post(upstream).json(&query)
+                            .send().await.unwrap().json().await.unwrap();
+                        let fault = *faults.lock().unwrap();
+                        match (fault, method) {
+                            ("reorg", "eth_getBlockByNumber") => {
+                                // Serve the pinned header first, then change it on the final read.
+                                *faults.lock().unwrap() = "header";
+                            }
+                            ("unavailable", _) => {
+                                response = json!({"jsonrpc":"2.0","id":query["id"],
+                                    "error":{"code":-32000,"message":"provider unavailable"}});
+                            }
+                            ("chain", "eth_chainId") => response["result"] = json!("0x1"),
+                            ("header", "eth_getBlockByNumber") =>
+                                response["result"]["hash"] = json!(B256::ZERO),
+                            ("proof", "eth_getProof")
+                                if response["result"]["storageProof"][0].is_object() =>
+                            {
+                                response["result"]["storageProof"][0]["value"] = json!("0xdead");
+                            }
+                            _ => {}
+                        }
+                        Json(response)
+                    }
+                }));
+                axum::serve(tokio::net::TcpListener::from_std(listener).unwrap(), app)
+                    .with_graceful_shutdown(async { let _ = stopped.await; })
+                    .await.unwrap();
+            });
+    });
+    RpcGateway {
+        url,
+        fault,
+        stop: Some(stop),
+        thread: Some(thread),
+    }
+}
 #[test]
 fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -170,8 +248,11 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
             .trim_start_matches("0x"),
     )
     .unwrap();
+    let archive_rpc = gateway(&url, false);
+    let proof_rpc = gateway(&url, true);
     let witness = fetch_witness(
-        &url,
+        &archive_rpc.url,
+        &proof_rpc.url,
         block,
         &corpus,
         proxy,
@@ -181,9 +262,32 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         Instant::now() + std::time::Duration::from_secs(300),
     )
     .expect("anvil prestateTracer and state-root proofs");
+    for fault in ["chain", "header", "proof", "reorg", "unavailable"] {
+        *proof_rpc.fault.lock().unwrap() = fault;
+        let error = fetch_witness(
+            &archive_rpc.url,
+            &proof_rpc.url,
+            block,
+            &corpus,
+            proxy,
+            honest_address,
+            honest_hash,
+            &init,
+            Instant::now() + Duration::from_secs(60),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind,
+            constitution_verifier::replay::IncompleteKind::Environment,
+            "unverifiable {fault} must not become a proposal rejection"
+        );
+        assert!(!error.message.contains(&proof_rpc.url));
+    }
+    *proof_rpc.fault.lock().unwrap() = "";
     // Candidate code that does not hash to the proposal's code hash at a confirmed block is a
     // contradiction, not a provider fault.
     let error = fetch_witness(
+        &url,
         &url,
         block,
         &corpus,
@@ -212,6 +316,7 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     let negative_r2 = runtime(&repo, "VaultV2Drain");
     let negative_hash = B256::from(constitution_verifier::keccak(&negative_r2));
     let candidate_witness = fetch_witness(
+        &url,
         &url,
         block,
         &corpus,
@@ -346,6 +451,7 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     assert!(
         fetch_witness(
             &url,
+            &url,
             wrong_hash,
             &corpus,
             proxy,
@@ -360,6 +466,7 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     unconfirmed.confirmations = 3;
     assert!(
         fetch_witness(
+            &url,
             &url,
             block,
             &unconfirmed,
@@ -441,7 +548,8 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         constitution_verifier::ai::candidate_corpus(&candidates[0], actor.parse().unwrap(), 2)
             .unwrap();
     let ai_witness = constitution_verifier::ai::fetch_candidate_witness(
-        &url,
+        &archive_rpc.url,
+        &proof_rpc.url,
         ai_block,
         &calls,
         proxy,
@@ -521,7 +629,8 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
             constitution_verifier::ai::candidate_corpus(&withdraw_only, actor.parse().unwrap(), 2)
                 .unwrap();
         let outcome = constitution_verifier::ai::fetch_candidate_witness(
-            &url,
+            &archive_rpc.url,
+            &proof_rpc.url,
             ai_block,
             &bounded,
             proxy,

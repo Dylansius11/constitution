@@ -19,6 +19,7 @@ Default mode reads real gate and Base JSON-RPC endpoints and submits issued verd
 ```text
 NEAR_RPC_URL=http://127.0.0.1:<sandbox-port>
 BASE_SEPOLIA_RPC_URL=http://127.0.0.1:<anvil-port>
+BASE_SEPOLIA_PROOF_RPC_URL=http://127.0.0.1:<anvil-port>
 GATE_ACCOUNT_ID=<one-protected-gate-account>
 VERIFIER_RELAY_ACCOUNT_ID=<sandbox-relay-account>
 VERIFIER_RELAY_KEY_FILE=<near-cli-legacy-credential.json>
@@ -26,8 +27,13 @@ cargo run -p constitution-verifier
 ```
 
 `BASE_SEPOLIA_ARCHIVE_RPC_URL`, when nonempty, takes precedence over
-`BASE_SEPOLIA_RPC_URL`. When `VERIFIER_RELAY_KEY_FILE` is unset, `NEAR_NETWORK_ID`
-is required and the file defaults to
+`BASE_SEPOLIA_RPC_URL` for observation, code/storage and trace calls.
+`BASE_SEPOLIA_PROOF_RPC_URL` is required in chain mode; use the same Anvil URL
+locally, or `https://sepolia.base.org` for recent-block proofs on Base Sepolia.
+For the hackathon, keep the keyed Validation Cloud URL for archive/trace and
+use the public Base URL only for proofs. Public RPC is rate-limited and has no
+production availability guarantee. When `VERIFIER_RELAY_KEY_FILE` is unset,
+`NEAR_NETWORK_ID` is required and the file defaults to
 `.secrets/near-credentials/<NEAR_NETWORK_ID>/<VERIFIER_RELAY_ACCOUNT_ID>.json`.
 The credential contains `account_id`, `public_key`, and `private_key`; never
 publish it. Missing required environment variables stop startup with their name.
@@ -215,12 +221,20 @@ compiling stage. It parses `rules/r5/corpus.json`, enforces the manifest's seven
 bound and exact corpus SHA-256, fetches proof-authenticated witness data at the
 observed block, then executes the bounded differential replay.
 
-The stage requires an RPC supporting `debug_traceCall` / `prestateTracer`,
-`eth_getProof`, and historical code/storage reads. `GateSource` passes its Base
-endpoint internally through `ProposalSource::archive_rpc()`; prefer
-`BASE_SEPOLIA_ARCHIVE_RPC_URL` for an archive provider. The full URL is never
-included in evidence or run details. LocalRegistry has no archive endpoint:
-reaching R5 in offline mode fails with `rpc_unavailable`, never a pass.
+R5 uses `ProposalSource::archive_rpc()` for block observation, code/storage reads
+and `debug_traceCall` / `prestateTracer`, including state overrides and diff mode.
+It uses `ProposalSource::proof_rpc()` for `eth_getProof`. Both endpoints must report
+chain id 84532 and the same hash-verified header at the proposal's fixed numeric
+block. Every account/storage proof is checked against that header's `stateRoot`;
+the pinned hash is rechecked on both providers after the fetch. AI candidate
+witnesses use the same endpoint split and authentication.
+
+Full endpoint URLs are never included in evidence or run details; provenance names
+only provider hosts. LocalRegistry has neither endpoint: reaching R5 in offline
+mode fails with `rpc_unavailable`, never a pass. An unavailable/rate-limited proof,
+expired proof-history window, wrong proof chain/header or invalid proof withholds
+the certificate as an environmental failure; there is no fallback to `latest` or
+to unauthenticated state.
 
 R5 records Pass 0, divergence Fail 50, or Incomplete 51. Candidate execution
 incompleteness and witness bound excesses may Reject after the same contradiction

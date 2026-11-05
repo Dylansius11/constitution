@@ -4,6 +4,12 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-05: Complementary Base RPC endpoints can preserve pinned-state authentication
+
+- [V, exercised on Base Sepolia] What happened: the public Base Sepolia RPC supplied account/storage proofs for recent numbered blocks while the configured Validation Cloud endpoint supplied archive state and traces. The production witness fetch, using both providers, passed at block 54,676,922 for 8 accounts and 7 storage slots in 12,189 ms. No transactions, upgrade verdict, AI call or R2/solver was involved.
+- Root cause boundary: state/trace and proof capabilities need not come from one provider. Archive access does not guarantee historical proof retention; Base documents separate historical-proof infrastructure (https://docs.base.org/base-chain/node-operators/run-a-base-node). The exact reason for Validation Cloud's restriction remains unverified.
+- Rule: explicitly configure both endpoints, independently verify their chain ids and the same pinned header, then verify every account/storage proof against that header's `stateRoot` and recheck both pinned hashes. Rate limits, proof-window expiry and provider disagreement fail closed. Local regression uses real Anvil behind complementary gateways; wrong proof chain/header, tampering, unavailability and a final-read reorg are environmental failures, never proposal rejections.
+
 ### 2026-11-05: Archive state and working traces do not guarantee historical state proofs
 
 - [V, exercised on Base Sepolia] What happened: the configured B5 endpoint served historical code/storage and `debug_traceCall` with `prestateTracer`, applied `stateOverrides`, and reported an override storage write in `diffMode` at spike-proxy block 53,766,464. `eth_getProof` at that block and at tip minus 2, 128 and 1,024 failed with `-32602`, "distance to target block exceeds maximum proof window". `latest` returned a proof response only; it was not authenticated against a pinned header.

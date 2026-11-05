@@ -92,6 +92,8 @@ pub trait ProposalSource: Send + Sync {
     fn archive_provider(&self) -> String;
     /// Used only for archive calls; never include this credential-bearing URL in evidence.
     fn archive_rpc(&self) -> Option<String>;
+    /// Proof provider for the same pinned Base block; never publish this URL.
+    fn proof_rpc(&self) -> Option<String>;
 }
 pub struct LocalRegistry {
     entries: Vec<LocalProposal>,
@@ -112,6 +114,9 @@ impl LocalRegistry {
 }
 impl ProposalSource for LocalRegistry {
     fn archive_rpc(&self) -> Option<String> {
+        None
+    }
+    fn proof_rpc(&self) -> Option<String> {
         None
     }
     fn archive_provider(&self) -> String {
