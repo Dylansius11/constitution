@@ -384,6 +384,26 @@ SDK integration reference: https://docs.near.ai/cloud/inference-sdk/javascript.m
 (read 2026-11-03); constructor/request types also inspected in installed SDK 0.1.0.
 
 
+## Local R2 readiness rerun (2026-11-05)
+
+[V, WSL2/Docker Desktop 28.5.1, not TDX or testnet] The existing tool image
+`sha256:1b2a2c17ba038dfb1047e5089faadeb92a5ea713eddb438e34c9ee7263b7e038`
+passed the focused honest/drain depth-four sandbox test: honest Pass/0 in
+109,801 ms; drain Fail/20 in 94,857 ms. Honest symbolic exploration completed
+341 paths, then 2,000 seeded fuzz runs passed. The explicitly enabled real
+Docker canary also passed compile/layout/solvency in 146,723 ms total.
+
+Reproduce each once, sequentially, with the existing image and one Cargo job:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test -p constitution-verifier --test sandbox t_rule_2_committed_depth_four_harness_passes_honest_and_fails_drain --offline --locked -- --exact --nocapture --test-threads=1
+CARGO_BUILD_JOBS=1 cargo test -p constitution-verifier --lib pipeline::replay_stage_tests::real_docker_canary_completes_the_honest_fixture --offline --locked -- --exact --ignored --nocapture --test-threads=1
+```
+
+The production tool runner caps each sandbox at 1 CPU / 1 GiB; those are
+limits, not measured peak consumption. No image rebuild, AI request or cloud
+deployment was needed. Final deployed-image/TDX timing remains unverified.
+
 ## Commitments and limits
 
 - Rule-set hash: SHA-256 over canonical Borsh `RuleSetManifest`.
