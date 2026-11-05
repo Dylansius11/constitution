@@ -160,7 +160,7 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B6 | GitHub repo `Dylansius11/constitution` | founder | resolved 2026-11-03: repo exists (private, empty at start); `main` and `dev` pushed; default branch `dev`; work via branch then PR into `dev`, `dev` into `main` by PR. Open: the repo is PRIVATE, so make it public before submission (founder) | P4 | `git ls-remote origin` lists `main` and `dev` |
 | B7 | Hosting choice | founder | open | P3.6 | Resolve D8 |
 | B8 | Visual direction | founder | open | P3.4 | Resolve D7 |
-| B9 | Local Docker Desktop Linux engine and Ubuntu WSL integration for the compiler regression | founder (Desktop/WSL settings), lead (focused rerun) | open 2026-11-05: Docker backend pipes unavailable; CLI restart timed out; direct WSL Docker command unavailable. `proposal_compilation_error_remains_a_signed_reject` failed while the live split-RPC witness succeeded | Split-RPC PR merge verification, P4.1 | Start the Docker Linux engine and enable Ubuntu WSL integration, then rerun only the compiler regression (no R2/solver). Keep the feature PR unmerged until this check passes |
+| B9 | Local Docker Desktop Linux engine and Ubuntu WSL integration for the compiler regression | founder (Desktop/WSL settings), lead (focused rerun) | resolved 2026-11-05: Docker server 28.5.1 available from Ubuntu; focused `proposal_compilation_error_remains_a_signed_reject` rerun passed (1 passed, 0 failed) after the founder enabled integration | Split-RPC PR merge verification, P4.1 | Merge blocker cleared; no code/test changes, R2/solver, image build or full-suite rerun |
 
 ### B1. NEAR testnet accounts
 
