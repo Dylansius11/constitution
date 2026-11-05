@@ -50,14 +50,16 @@ Spikes live in `spikes/` and are deleted (or reduced to tests) by P2; spike cont
   - Cut rule: if Phala credit is unavailable (B3), founder decides D2 fallback; no automatic switch.
 - [ ] **P1.7 Archive RPC probes** (needs B5). Owned: `spikes/archive-probe/`.
   - Acceptance: `prestateTracer` and `eth_getProof` succeed at a fixed historical block of the spike proxy; proof verifies against `stateRoot`; results in LESSONS if anything differs from docs.
+  - [V, exercised on Base Sepolia 2026-11-05] The configured B5 endpoint returns chain id `0x14a34`; at spike-proxy block 53,766,464 (`0x6393619998b83e3cd0a1df58def8503c1b165617e7fcbac0490f25be8e283fce`) historical code (1,005 bytes), storage, `prestateTracer`, `stateOverrides` and `diffMode` work. `eth_getProof` fails with `-32602`, "distance to target block exceeds maximum proof window", at that block and at tip minus 2, 128 and 1,024. `latest` returns a proof response, not yet authenticated against a pinned header. P1.7 remains unchecked: no fixed-block proof could be verified against `stateRoot`. B5 now requires provider support/configuration, not another key paste. Seventeen read-only RPC calls; no transactions or R2/solver run.
 
 Phase acceptance: P1.4 and P1.6 evidence recorded in SMART-CONTRACT "Deployment" (spike rows labeled spike). No mock counts.
 
 ## Phase 2: core product and invariants (2026-11-03 to 2026-11-07)
 
-- [ ] **P2.1 Shared types** (F1, F3, F5). Owned: `crates/constitution-types/`. Certificate, Proposal, ChangeKind, Params, manifests, reason codes, EVM encoder, derivation helper.
+- [x] **P2.1 Shared types** (F1, F3, F5). Owned: `crates/constitution-types/`. Certificate, Proposal, ChangeKind, Params, manifests, reason codes, EVM encoder, derivation helper.
   - Acceptance: T-ENC-1, T-ENC-2 vectors pass; Borsh round-trip property test; `constitution rules hash rules/manifest.json` deterministic across runs.
   - Progress (2026-11-02 UTC, local WSL): T-ENC-1 green (P1.5); Borsh and JSON round-trip properties and the independent Python certificate-hash oracle pass (`cargo test -p constitution-types`); `constitution rules hash` is stable across runs and JSON formatting on a resolved fixture (`cargo test -p constitution-cli`). R2 values committed 2026-11-03 (`c150662`). Open: T-ENC-2 against the page decoder (in progress with the page data layer).
+  - [V, locally tested 2026-11-05] The remaining T-ENC-2 check is complete: the Rust committed-certificate-vector test passes, and the real page decoder decodes and hashes all five committed vectors in a direct Node smoke run. Page tests: 160 passed (including certificate field/hash comparisons, u64 boundaries and malformed input); Rust Borsh/JSON round-trip properties: 6 passed. The independent viem T-ENC-1 oracle matches all six transaction vectors. Two executions of the existing CLI `rules hash rules/manifest.json` return `0x8060ddbf63635e14a955b4fef81c8e696c01e349c9f959cae135d48056e89455`. No source changes, image build or R2/solver run.
 - [x] **P2.2 Gate: credit and proposals** (F1, D3). Owned: `crates/gate/src/{lib,credit,proposal}.rs`, tests.
   - Acceptance: T-GATE-1, T-GATE-11 (partial), expire path, duplicate active rejection, init calldata length limit.
 - [x] **P2.3 Gate: verdicts, signing, nonces, fee bump** (F3, D12, D13). Owned: `crates/gate/src/{verdict,signing,evm}.rs`.

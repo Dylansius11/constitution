@@ -154,7 +154,7 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B2 | Base Sepolia ETH for the derived EOA and a deployer EOA | founder | resolved 2026-11-03 | P1.3, P1.4, P2.8 | A friend of the founder sent 0.05 ETH to the deployer on Ethereum Sepolia; with founder approval the lead bridged 0.049 ETH through the Base L1StandardBridge `0xfd0Bf71F60660E2f608ed56e1659C450eB113120` (address from docs.base.org "Contract Addresses", `otherBridge()` = `0x4200…0010` checked on chain): Sepolia tx `0xa3b4c26bc922789c6abec82b446605ffe275983fbedf8f1b6edd7d5bebc4f2cd`; deployer balance on Base Sepolia read as 0.049 ETH at block 53763980 (2026-11-03T02:57Z). The derived EOAs are funded from the deployer when needed |
 | B3 | Phala Cloud account, card verification, USD 20 credit | founder | open; steps sent to founder 2026-11-02 | P1.6 | INTEGRATIONS "Phala Cloud"; confirm credit visible in workspace |
 | B4 | NEAR AI Cloud credits and API key in local `.env` | founder | resolved 2026-11-04: key present in `.env`; one live `provider_tee` completion verified (BUILD-PLAN P2.6). Needs a synced host clock (LESSONS 2026-11-04) | P2.6 | none |
-| B5 | Validation Cloud account and Base Sepolia endpoint | founder | open; steps sent to founder 2026-11-02 | P1.7, P2.5 | Endpoint URL in local `.env` |
+| B5 | Base Sepolia RPC with historical `eth_getProof` and `prestateTracer` | founder (provider access), lead (probe) | open; URL supplied and probed 2026-11-05: traces/overrides/diff work, but proof at fixed and recent numeric blocks fails with `-32602` maximum proof window | P1.7, P2.5 live R5 integration | Ask provider to enable/fix historical `eth_getProof` on Base Sepolia (including tip minus 2); do not pay or switch providers without founder approval. See P1.7 evidence and LESSONS |
 | B6 | GitHub repo `Dylansius11/constitution` | founder | resolved 2026-11-03: repo exists (private, empty at start); `main` and `dev` pushed; default branch `dev`; work via branch then PR into `dev`, `dev` into `main` by PR. Open: the repo is PRIVATE, so make it public before submission (founder) | P4 | `git ls-remote origin` lists `main` and `dev` |
 | B7 | Hosting choice | founder | open | P3.6 | Resolve D8 |
 | B8 | Visual direction | founder | open | P3.4 | Resolve D7 |
@@ -185,7 +185,7 @@ Unblock evidence: an authenticated `GET /v1/attestation/report?model=z-ai/glm-5.
 
 ### B5. Validation Cloud
 
-Unblock evidence: `eth_chainId` returns `0x14a34` from the keyed endpoint, then the P1.7 method probes.
+Unblock evidence: chain id `0x14a34` already passed on the configured endpoint (2026-11-05). Remaining: `eth_getProof` at a pinned numeric block must succeed and its account/storage proofs verify against that header's `stateRoot`; the same endpoint must keep the observed `prestateTracer`, `stateOverrides` and `diffMode` support. A `latest` proof response alone does not meet P1.7 or the production R5 contract.
 
 ### B6. Public repo
 

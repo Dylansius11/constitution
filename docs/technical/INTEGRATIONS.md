@@ -110,6 +110,8 @@ Human steps: create a free account, create a Base Sepolia endpoint, paste the UR
 
 Agent verification (P1.7): `eth_chainId` returns `0x14a34`; `eth_getCode(proxy, <block N>)` at a historical block; `debug_traceCall` with `{"tracer":"prestateTracer"}` on a vault call at block N returns touched accounts and slots; `eth_getProof` for the proxy at block N verifies against that block's `stateRoot`. Stop condition: any method unsupported means R5 scope is reduced by a founder decision, never silently.
 
+Observed (2026-11-05, exercised on Base Sepolia): the supplied endpoint passes chain id, historical code/storage and `prestateTracer` with verified override/diff behavior, but `eth_getProof` at fixed and recent numeric blocks fails with `-32602` maximum proof window. `latest` returns a proof response only. P1.7/B5 remain open; archive/trace support alone is insufficient. Ask provider support about fixed-block proofs before buying an upgrade; see LESSONS and BUILD-PLAN for the tested block and limits. No RPC URL or key is recorded here.
+
 ### 5. Phala Cloud dstack CVM (B3, D2, D18)
 
 Docs: https://docs.phala.com/phala-cloud/getting-started/sign-up-for-cloud-account ; https://docs.phala.com/dstack/getting-started.md ; https://phala.com/pricing ; https://cloud.phala.com/about/pricing ; https://docs.phala.com/phala-cloud/key-management/get-a-key.md (checked 2026-10-26).
