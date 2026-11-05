@@ -4,6 +4,12 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-05: Archive state and working traces do not guarantee historical state proofs
+
+- [V, exercised on Base Sepolia] What happened: the configured B5 endpoint served historical code/storage and `debug_traceCall` with `prestateTracer`, applied `stateOverrides`, and reported an override storage write in `diffMode` at spike-proxy block 53,766,464. `eth_getProof` at that block and at tip minus 2, 128 and 1,024 failed with `-32602`, "distance to target block exceeds maximum proof window". `latest` returned a proof response only; it was not authenticated against a pinned header.
+- Root cause boundary: historical state/trace access and fixed-block proof access have different effective availability on this endpoint. [U] Whether this is backend lag, provider configuration or a plan limit is not established; do not infer that every account or tier has the same restriction.
+- Rule: qualify the exact endpoint with a fixed block and verify account/storage proofs against its `stateRoot`. Do not replace pinned evidence with `latest`, weaken proof checks or buy an upgrade without founder approval. B5 stays open until the provider resolves the proof failure or an explicitly approved replacement passes.
+
 ### 2026-11-04: NVIDIA attestation JWTs fail closed when the host clock is a few seconds behind
 
 - What happened: `live-review.mjs` returned `inference_or_verification_failed` with no completion id; a direct SDK call showed `[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid`.
