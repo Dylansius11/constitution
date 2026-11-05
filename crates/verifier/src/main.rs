@@ -71,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(value) if !value.trim().is_empty() => value,
             _ => required("BASE_SEPOLIA_RPC_URL")?,
         };
+        let proof_rpc = required("BASE_SEPOLIA_PROOF_RPC_URL")?;
         let account = required("VERIFIER_RELAY_ACCOUNT_ID")?;
         let keyfile = match std::env::var("VERIFIER_RELAY_KEY_FILE") {
             Ok(value) if !value.trim().is_empty() => std::path::PathBuf::from(value),
@@ -79,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .join(required("NEAR_NETWORK_ID")?)
                 .join(format!("{account}.json")),
         };
-        let source = GateSource::new(&near_rpc, &base_rpc, &manifest, gate)?;
+        let source = GateSource::new(&near_rpc, &base_rpc, &proof_rpc, &manifest, gate)?;
         let submitter = NearSubmitter::new(&near_rpc, &account, &keyfile)?;
         Service::with_submitter(
             identity,

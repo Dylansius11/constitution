@@ -180,6 +180,7 @@ fn precheck_tamper_never_signs_and_runtime_mismatch_signs_decodable_reject() {
             1,
             "local registry, not chain observed",
             None,
+            None,
         );
         if reason == 1 {
             assert_eq!(run.stage, "failed");

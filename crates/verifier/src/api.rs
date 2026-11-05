@@ -598,6 +598,7 @@ async fn start(
         });
         let archive_provider = s.proposals.archive_provider();
         let archive_rpc = s.proposals.archive_rpc();
+        let proof_rpc = s.proposals.proof_rpc();
         let result = pipeline::execute_observed(
             &s.repo,
             &s.manifest,
@@ -608,6 +609,7 @@ async fn start(
             RunContext {
                 archive_provider: &archive_provider,
                 archive_rpc: archive_rpc.as_deref(),
+                proof_rpc: proof_rpc.as_deref(),
                 ai_transport: s.ai_transport.as_ref(),
                 tools: s.tools.as_ref(),
                 canary: &s.canary,
@@ -698,6 +700,9 @@ mod tests {
             "local test".into()
         }
         fn archive_rpc(&self) -> Option<String> {
+            None
+        }
+        fn proof_rpc(&self) -> Option<String> {
             None
         }
     }

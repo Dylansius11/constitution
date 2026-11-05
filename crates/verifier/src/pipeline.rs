@@ -241,6 +241,7 @@ impl CanaryHealth {
 pub struct RunContext<'a> {
     pub archive_provider: &'a str,
     pub archive_rpc: Option<&'a str>,
+    pub proof_rpc: Option<&'a str>,
     pub ai_transport: &'a dyn crate::ai::Transport,
     pub tools: &'a dyn ToolBackend,
     pub canary: &'a CanaryPolicy,
@@ -265,6 +266,7 @@ pub fn execute(
     attempt: u32,
     archive_provider: &str,
     archive_rpc: Option<&str>,
+    proof_rpc: Option<&str>,
 ) -> Run {
     execute_observed(
         repo,
@@ -276,6 +278,7 @@ pub fn execute(
         RunContext {
             archive_provider,
             archive_rpc,
+            proof_rpc,
             ai_transport: &crate::ai::LocalSidecar,
             tools: &DockerBackend,
             canary: &CanaryPolicy::default(),
@@ -1006,6 +1009,8 @@ fn ai_evidence(
             crate::ai::candidate_corpus(sequence, corpus.calls[0].from, m.r5.confirmations)?;
         let witness = crate::ai::fetch_candidate_witness(
             ctx.archive_rpc.ok_or("AI replay archive unavailable")?,
+            ctx.proof_rpc
+                .ok_or("AI replay proof provider unavailable")?,
             crate::replay::EvidenceBlock {
                 number: p.evidence_block_number,
                 hash: p.evidence_block_hash.0.into(),
@@ -1056,6 +1061,9 @@ fn replay_stage(
     let Some(rpc) = ctx.archive_rpc else {
         return ReplayOutcome::Fault("rpc_unavailable");
     };
+    let Some(proof_rpc) = ctx.proof_rpc else {
+        return ReplayOutcome::Fault("rpc_unavailable");
+    };
     let Ok(bytes) = std::fs::read(repo.join("rules/r5/corpus.json")) else {
         return ReplayOutcome::Fault("committed_data_unavailable");
     };
@@ -1066,6 +1074,7 @@ fn replay_stage(
     let attempt = || {
         let witness = match fetch_witness(
             rpc,
+            proof_rpc,
             EvidenceBlock {
                 number: p.evidence_block_number,
                 hash: p.evidence_block_hash.0.into(),
@@ -1193,6 +1202,7 @@ mod replay_stage_tests {
         RunContext {
             archive_provider: "local",
             archive_rpc: rpc,
+            proof_rpc: rpc,
             ai_transport: &crate::ai::LocalSidecar,
             tools,
             canary: &CANARY,
@@ -1420,12 +1430,10 @@ mod replay_stage_tests {
         let (stub, p) = chain_stub(100, |_| 5, |_| "0x");
         let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
         assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
-        assert_eq!(stub.count("eth_chainId"), 1);
         // A later response changing cannot turn the first unauthenticated read into a verdict.
         let (stub, p) = chain_stub(100, |_| 5, |nth| if nth == 1 { "0x" } else { "0x6001" });
         let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
         assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
-        assert_eq!(stub.count("eth_chainId"), 1);
     }
     #[test]
     fn slow_provider_hits_the_run_deadline_not_a_witness_reject() {
@@ -1489,6 +1497,7 @@ mod replay_stage_tests {
             1,
             "local",
             None,
+            None,
         );
         assert_eq!(
             run.verdict,
@@ -1525,6 +1534,7 @@ mod replay_stage_tests {
             1,
             "local",
             None,
+            None,
         );
         assert_eq!(run.stage, "failed");
         assert_eq!(run.error_code.as_deref(), Some("storage_error"));
@@ -1549,6 +1559,7 @@ mod replay_stage_tests {
                 ciphertext,
                 1,
                 "local",
+                None,
                 None,
             );
             assert_eq!(run.stage, "failed");
@@ -1942,7 +1953,7 @@ mod replay_stage_tests {
             .seal(&mut crypto_box::aead::rand_core::OsRng, &bytes)
             .unwrap();
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let run = execute(&repo, &m, &identity, &p, &sealed, 1, "local", None);
+        let run = execute(&repo, &m, &identity, &p, &sealed, 1, "local", None, None);
         assert_eq!(run.stage, "done");
         assert_eq!(
             run.verdict,

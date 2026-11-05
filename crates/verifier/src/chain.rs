@@ -18,6 +18,7 @@ const IMPLEMENTATION_SLOT: &str =
 pub struct GateSource {
     near_rpc: reqwest::Url,
     base_rpc: reqwest::Url,
+    proof_rpc: reqwest::Url,
     rule_set_hash: [u8; 32],
     confirmations: u64,
     gate: AccountId,
@@ -26,6 +27,7 @@ impl GateSource {
     pub fn new(
         near_rpc: &str,
         base_rpc: &str,
+        proof_rpc: &str,
         manifest: &RuleSetManifest,
         gate: AccountId,
     ) -> Result<Self, String> {
@@ -39,6 +41,7 @@ impl GateSource {
         Ok(Self {
             near_rpc: url(near_rpc)?,
             base_rpc: url(base_rpc)?,
+            proof_rpc: url(proof_rpc)?,
             rule_set_hash: rule_set_hash(manifest).map_err(|e| e.to_string())?,
             confirmations: u64::from(manifest.r5.confirmations),
             gate,
@@ -114,12 +117,16 @@ impl ProposalSource for GateSource {
     fn archive_rpc(&self) -> Option<String> {
         Some(self.base_rpc.as_str().to_owned())
     }
+    fn proof_rpc(&self) -> Option<String> {
+        Some(self.proof_rpc.as_str().to_owned())
+    }
     fn archive_provider(&self) -> String {
         format!(
-            "NEAR {} final + Base {} at latest-{}",
+            "NEAR {} final + Base {} at latest-{}; proofs {}",
             self.near_rpc.host_str().expect("http(s) URL host"),
             self.base_rpc.host_str().expect("http(s) URL host"),
             self.confirmations,
+            self.proof_rpc.host_str().expect("http(s) URL host"),
         )
     }
     fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, SourceError> {

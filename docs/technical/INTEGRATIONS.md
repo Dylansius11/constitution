@@ -102,15 +102,16 @@ Human steps: claim from a listed faucet (CDP advertises up to 0.1 ETH per 24 h) 
 
 Verification (planned): `cast balance <address> --rpc-url $BASE_SEPOLIA_RPC_URL` non-zero.
 
-### 4. Validation Cloud archive RPC (B5, D10)
+### 4. Base Sepolia archive / debug and proof RPC (B5, D10)
 
 Docs: https://docs.validationcloud.io/nodeapi/base/overview , `debug_tracecall.md`, `eth_getproof.md`, `about/billing` (checked 2026-10-26).
+Proof endpoint and retention context: https://docs.base.org/base-chain/node-operators/run-a-base-node (including historical proofs and public endpoint limits; checked 2026-11-05).
 
-Human steps: create a free account, create a Base Sepolia endpoint, paste the URL into `.env` as `BASE_SEPOLIA_ARCHIVE_RPC_URL`.
+Human steps: create a free account, create a Base Sepolia endpoint, paste the URL into `.env` as `BASE_SEPOLIA_ARCHIVE_RPC_URL`. Set `BASE_SEPOLIA_PROOF_RPC_URL=https://sepolia.base.org` for the founder-approved hackathon split. Chain mode requires the proof variable explicitly; for local Anvil, set it to the same Anvil URL as the archive endpoint. No QuickNode subscription is required.
 
-Agent verification (P1.7): `eth_chainId` returns `0x14a34`; `eth_getCode(proxy, <block N>)` at a historical block; `debug_traceCall` with `{"tracer":"prestateTracer"}` on a vault call at block N returns touched accounts and slots; `eth_getProof` for the proxy at block N verifies against that block's `stateRoot`. Stop condition: any method unsupported means R5 scope is reduced by a founder decision, never silently.
+Agent verification (P1.7): both endpoints return chain id `0x14a34` and the same hash-verified header for one fixed block N; the archive endpoint provides historical code/storage and `debug_traceCall` with `prestateTracer`, while the proof endpoint provides `eth_getProof` for every discovered account/slot at N. Verify all proofs against N's `stateRoot` and recheck N's hash on both endpoints at completion. Any unavailable, mismatched or invalid response withholds certification; never silently reduce R5 scope or fall back to `latest`.
 
-Observed (2026-11-05, exercised on Base Sepolia): the supplied endpoint passes chain id, historical code/storage and `prestateTracer` with verified override/diff behavior, but `eth_getProof` at fixed and recent numeric blocks fails with `-32602` maximum proof window. `latest` returns a proof response only. P1.7/B5 remain open; archive/trace support alone is insufficient. Ask provider support about fixed-block proofs before buying an upgrade; see LESSONS and BUILD-PLAN for the tested block and limits. No RPC URL or key is recorded here.
+Initial observation (2026-11-05, exercised on Base Sepolia): the supplied Validation Cloud endpoint passes chain id, historical code/storage and `prestateTracer` with verified override/diff behavior, but fixed/recent numeric-block proofs fail with `-32602` maximum proof window; `latest` only returns a proof response. Resolution under refined D10: the production split-provider witness fetch passed at fixed block 54,676,922 with 8 accounts and 7 slots fully proof-authenticated (BUILD-PLAN P1.7). The public endpoint is rate-limited and proof-history availability is bounded; this is a hackathon liveness tradeoff, not a production uptime guarantee. Revalidate the deployed CVM configuration and final corpus during activation. No credential-bearing URL is recorded here.
 
 ### 5. Phala Cloud dstack CVM (B3, D2, D18)
 

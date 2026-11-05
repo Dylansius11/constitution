@@ -14,6 +14,7 @@ Deleting the gate's last access key is irreversible: after step 7 nobody can red
 | D | `rules/manifest.json` committed and pushed; `constitution rules hash rules/manifest.json` printed the hash | lead | hash + commit SHA; `manifest_uri` = raw GitHub URL at that SHA |
 | E | Reproducible gate wasm from a clean clone of the activation commit | lead | `cargo near build reproducible-wasm` sha256 and NEAR code hash |
 | F | Derived EOA for `(constitution-gate.testnet, constitution/base-sepolia/v1)` re-read live | lead | MPC `derived_public_key` view maps to `0x3b20f46860d27d81917a45221c594fc051af7e94` (recorded 2026-11-02, `vectors/mpc-derivation.json`) |
+| G | B5: CVM config supplies both `BASE_SEPOLIA_ARCHIVE_RPC_URL` and `BASE_SEPOLIA_PROOF_RPC_URL`; split-provider P1.7 witness proof passes | lead | one pinned Base header agrees on both providers and every account/storage proof verifies; no `latest` fallback |
 
 ## Steps
 

@@ -466,6 +466,7 @@ fn initializer_overrides(
 #[allow(clippy::too_many_arguments)]
 pub fn fetch_witness(
     rpc_url: &str,
+    proof_rpc_url: &str,
     block: EvidenceBlock,
     corpus: &Corpus,
     proxy: Address,
@@ -476,6 +477,7 @@ pub fn fetch_witness(
 ) -> Result<Witness, Incomplete> {
     fetch_witness_inner(
         rpc_url,
+        proof_rpc_url,
         block,
         corpus,
         proxy,
@@ -490,6 +492,7 @@ pub fn fetch_witness(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn fetch_ai_witness(
     rpc_url: &str,
+    proof_rpc_url: &str,
     block: EvidenceBlock,
     corpus: &Corpus,
     proxy: Address,
@@ -501,6 +504,7 @@ pub(crate) fn fetch_ai_witness(
 ) -> Result<Witness, Incomplete> {
     fetch_witness_inner(
         rpc_url,
+        proof_rpc_url,
         block,
         corpus,
         proxy,
@@ -527,6 +531,7 @@ pub(crate) fn vault_token_slot() -> U256 {
 #[allow(clippy::too_many_arguments)]
 fn fetch_witness_inner(
     rpc_url: &str,
+    proof_rpc_url: &str,
     block: EvidenceBlock,
     corpus: &Corpus,
     proxy: Address,
@@ -542,6 +547,11 @@ fn fetch_witness_inner(
         "initializer exceeds byte bound",
     )?;
     let rpc = Rpc::new(rpc_url, deadline)?;
+    let proof_rpc = Rpc {
+        client: rpc.client.clone(),
+        url: proof_rpc_url.to_owned(),
+        deadline,
+    };
     require(
         number(&rpc.call("eth_chainId", json!([]))?)? == 84532,
         "wrong chain id",
@@ -549,6 +559,13 @@ fn fetch_witness_inner(
     let tag = format!("0x{:x}", block.number);
     let header = rpc.call("eth_getBlockByNumber", json!([tag, false]))?;
     let (state_root, environment) = verified_header(&header, block)?;
+    require(
+        number(&proof_rpc.call("eth_chainId", json!([]))?)? == 84532,
+        "wrong proof chain id",
+    )?;
+    // Different providers are allowed, different evidence blocks are not.
+    let proof_header = proof_rpc.call("eth_getBlockByNumber", json!([tag, false]))?;
+    verified_header(&proof_header, block)?;
     // A second provider node may be a block behind the one that served the header; read the
     // tip once more before concluding it is too shallow. Either outcome is environmental.
     let mut deep_enough = false;
@@ -667,7 +684,7 @@ fn fetch_witness_inner(
     };
     for (a, slots) in needed {
         let keys: Vec<_> = slots.iter().map(|s| format!("0x{s:064x}")).collect();
-        let p = rpc.call("eth_getProof", json!([a, keys, tag]))?;
+        let p = proof_rpc.call("eth_getProof", json!([a, keys, tag]))?;
         require(address(&p["address"])? == a, "proof address mismatch")?;
         let code = bytes(&rpc.call("eth_getCode", json!([a, tag]))?)?;
         let mut account = AccountWitness {
@@ -720,6 +737,11 @@ fn fetch_witness_inner(
     require(
         fixed(&final_header["hash"])? == block.hash,
         "evidence block reorged during fetch",
+    )?;
+    let final_proof_header = proof_rpc.call("eth_getBlockByNumber", json!([tag, false]))?;
+    require(
+        fixed(&final_proof_header["hash"])? == block.hash,
+        "proof evidence block reorged during fetch",
     )?;
     Ok(witness)
 }

@@ -352,6 +352,7 @@ pub fn candidate_corpus(
 #[allow(clippy::too_many_arguments)]
 pub fn fetch_candidate_witness(
     rpc: &str,
+    proof_rpc: &str,
     block: replay::EvidenceBlock,
     corpus: &Corpus,
     proxy: Address,
@@ -362,7 +363,7 @@ pub fn fetch_candidate_witness(
     deadline: std::time::Instant,
 ) -> Result<replay::Witness, replay::Incomplete> {
     replay::fetch_ai_witness(
-        rpc, block, corpus, proxy, new_impl, codehash, init, actor, deadline,
+        rpc, proof_rpc, block, corpus, proxy, new_impl, codehash, init, actor, deadline,
     )
 }
 alloy_sol_types::sol! {

@@ -319,7 +319,7 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .public_key()
         .seal(&mut crypto_box::aead::rand_core::OsRng, &bytes)
         .map_err(|_| "cannot seal local test bundle")?;
-    let source = GateSource::new(&worker.rpc_addr(), &rpc, &manifest, gate.id().clone())?;
+    let source = GateSource::new(&worker.rpc_addr(), &rpc, &rpc, &manifest, gate.id().clone())?;
     let mut service = Service::with_submitter(
         identity,
         manifest,
