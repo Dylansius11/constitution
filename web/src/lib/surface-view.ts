@@ -26,11 +26,11 @@ export const VERIFIER_LABELS = {
   },
   r2_solvency: {
     label: "R2 Solvency",
-    detail: "No sequence within the bound may let an account withdraw more than its balance.",
+    detail: "Within the bound, deposits and withdrawals never leave the vault owing more than it holds.",
   },
   r3_filter: {
     label: "R3 Opcode filter",
-    detail: "No reachable SELFDESTRUCT, CALLCODE or DELEGATECALL to a non-constant target.",
+    detail: "Rejects SELFDESTRUCT, CALLCODE, DELEGATECALL and literal proxy slots in the bytecode.",
   },
   r4_initializer: {
     label: "R4 Initializer allowlist",
