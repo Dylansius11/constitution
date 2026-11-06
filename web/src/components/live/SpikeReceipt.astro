@@ -1,0 +1,134 @@
+---
+import { getAddress } from "viem";
+import { spikeEvidence as evidence } from "../../data/evidence.ts";
+import { site } from "../../data/site.ts";
+import { utcDate } from "../../lib/display.ts";
+import HashText from "../ui/HashText.astro";
+import StatusBadge from "../ui/StatusBadge.astro";
+import "./live.css";
+
+interface Props {
+  id?: string;
+}
+
+const { id = "receipt-spike" } = Astro.props;
+const recordedDate = utcDate(Date.parse(evidence.observedAtUtc));
+const rows = [
+  {
+    label: "NEAR transaction",
+    value: evidence.honest.nearTxHash,
+    kind: "near" as const,
+  },
+  {
+    label: "Base Sepolia transaction",
+    value: evidence.honest.baseTxHash,
+    kind: "hash" as const,
+  },
+  {
+    label: "Protected spike proxy",
+    value: getAddress(evidence.addresses.proxy),
+    kind: "address" as const,
+  },
+  {
+    label: "New implementation · VaultV2Honest",
+    value: getAddress(evidence.addresses.vaultV2Honest),
+    kind: "address" as const,
+  },
+  {
+    label: "MPC-derived signer",
+    value: getAddress(evidence.signer),
+    kind: "address" as const,
+  },
+];
+---
+
+<article
+  id={id}
+  class="live-surface spike-receipt"
+  aria-labelledby={`${id}-title`}
+  data-spike
+  data-rpc={site.baseRpc}
+  data-explorer={site.baseExplorer}
+  data-tx={evidence.honest.baseTxHash}
+  data-proxy={evidence.addresses.proxy}
+  data-expected={evidence.addresses.vaultV2Honest}
+>
+  <h3 id={`${id}-title`}>A signature that crossed chains.</h3>
+  <StatusBadge tone="spike">
+    Spike, recorded <time datetime={recordedDate}>{recordedDate}</time>
+  </StatusBadge>
+  <p class="live-intro">
+    NEAR MPC signed an upgrade transaction for a NEAR contract and it executed on Base Sepolia;
+    the spike gate had no verifier in the loop.
+  </p>
+  <dl>
+    {
+      rows.map((row) => (
+        <div class="live-row">
+          <dt>{row.label}</dt>
+          <dd>
+            <HashText value={row.value} kind={row.kind} label={row.label} />
+          </dd>
+        </div>
+      ))
+    }
+    <div class="live-row">
+      <dt>Recorded inclusion</dt>
+      <dd>
+        Included, status 1
+        <span class="live-meta">
+          Base Sepolia block <span class="mono">{evidence.honest.block}</span>
+        </span>
+      </dd>
+    </div>
+    <div class="live-row">
+      <dt>Gas used</dt>
+      <dd class="mono">{evidence.honest.gasUsed.toLocaleString("en-US")}</dd>
+    </div>
+    <div class="live-row">
+      <dt>Expired-deadline variant</dt>
+      <dd>
+        Reverted: DeadlinePassed
+        <span class="live-meta">
+          Included, status 0 · {evidence.expired.gasUsed.toLocaleString("en-US")} gas
+        </span>
+        <HashText
+          value={evidence.expired.baseTxHash}
+          label="Expired variant Base Sepolia transaction"
+        />
+      </dd>
+    </div>
+  </dl>
+  <button type="button" class="live-action" data-check>Re-check on Base Sepolia</button>
+  <output aria-live="polite" data-result>
+    Recorded evidence. Re-check to read the transaction and current implementation from Base Sepolia.
+  </output>
+  <div class="live-observations" data-observations hidden>
+    <p data-observed-time></p>
+    <dl>
+      <div class="live-row">
+        <dt>Transaction now</dt>
+        <dd data-inclusion>Not observed</dd>
+      </div>
+      <div class="live-row">
+        <dt>Current implementation</dt>
+        <dd>
+          <span data-implementation></span>
+          <span class="live-meta" data-slot-block></span>
+          <span class="live-meta" data-comparison></span>
+        </dd>
+      </div>
+    </dl>
+    <a data-explorer-link hidden rel="noopener">View on Base Sepolia explorer</a>
+    <span class="live-meta" data-explorer-note hidden>Opens the explorer.</span>
+  </div>
+  <noscript>
+    <p class="live-meta">
+      JavaScript is needed only for the live re-check. The recorded receipt above remains readable.
+    </p>
+  </noscript>
+</article>
+
+<script>
+  import "./spike-receipt.ts";
+</script>
