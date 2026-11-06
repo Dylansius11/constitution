@@ -1,0 +1,77 @@
+---
+import { site } from "../../data/site.ts";
+import StatusBadge from "../ui/StatusBadge.astro";
+import "./live.css";
+
+interface Props {
+  id?: string;
+}
+
+const { id = "gate-ledger" } = Astro.props;
+const rows = [
+  ["gate", "Gate account"],
+  ["rules", "Active rule set"],
+  ["verifiers", "Verifier allowlist"],
+  ["changes", "Timelock queue"],
+  ["proxy", "Protected proxy implementation"],
+];
+---
+
+<div
+  id={id}
+  class="live-surface"
+  data-ledger
+  data-gate={site.gateAccount}
+  data-near-rpc={site.nearRpc}
+  data-base-rpc={site.baseRpc}
+>
+  <dl aria-label="Production deployment status">
+    {
+      rows.map(([key, label]) => (
+        <div class="live-row" data-ledger-row={key}>
+          <dt>{label}</dt>
+          <dd>
+            {site.gateAccount === null ? (
+              <StatusBadge tone="awaiting">Awaiting activation</StatusBadge>
+            ) : (
+              <>
+                <span data-value>Not read</span>
+                <span data-row-error class="live-meta"></span>
+                <span data-row-time class="live-meta"></span>
+              </>
+            )}
+          </dd>
+        </div>
+      ))
+    }
+  </dl>
+  {
+    site.gateAccount === null ? (
+      <p class="live-intro">
+        No production gate is deployed yet. These rows read the chain once the activation record exists.
+      </p>
+    ) : (
+      <>
+        <output aria-live="polite" data-ledger-status>
+          Reading the activated gate from NEAR testnet and Base Sepolia.
+        </output>
+        <button type="button" class="live-action" data-ledger-retry>
+          Retry now
+        </button>
+        <p class="live-meta">
+          Reads every 15 seconds while this tab is visible. Lists show the first 50 entries returned
+          by the gate.
+        </p>
+        <noscript>
+          <p>
+            JavaScript is needed for chain reads. No live data has been observed by this page.
+          </p>
+        </noscript>
+      </>
+    )
+  }
+</div>
+
+<script>
+  import "./gate-ledger.ts";
+</script>
