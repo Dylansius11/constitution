@@ -1,0 +1,161 @@
+---
+import { site } from "../../data/site.ts";
+import { utcStamp } from "../../lib/display.ts";
+import Mark from "../ui/Mark.astro";
+
+const built = utcStamp(site.builtAt.getTime());
+---
+
+<footer class="footer">
+  <div class="footer__inner container">
+    <div class="footer__cols">
+      <div>
+        <p class="footer__label">Project</p>
+        <ul>
+          {site.repoUrl && <li><a href={site.repoUrl}>Source on GitHub</a></li>}
+          {site.xPostUrl && <li><a href={site.xPostUrl}>Announcement on X</a></li>}
+          <li><a href="/llms.txt">Agent guide (llms.txt)</a></li>
+          <li><a href="#limits">What we do not claim</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="footer__label">Built for</p>
+        <ul>
+          <li>NEAR Chain Signatures</li>
+          <li>Base Sepolia testnet</li>
+        </ul>
+      </div>
+      <div>
+        <p class="footer__label">Status</p>
+        <ul>
+          <li>Testnet only. Not audited.</li>
+          <li>Built <time datetime={site.builtAt.toISOString()}>{built}</time></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- The wordmark runs the full width of the screen; its size follows the viewport, not the container. -->
+  <p class="footer__word">
+    <span class="visually-hidden">Constitution</span>
+    <span class="footer__mark"><Mark size="100%" /></span>
+    <span class="footer__letters" aria-hidden="true">
+      {
+        [..."Constitution"].map((c, i) => (
+          <span class="footer__clip">
+            <span class="footer__char" style={`--i:${i}`}>
+              {c}
+            </span>
+          </span>
+        ))
+      }
+    </span>
+  </p>
+</footer>
+
+<script>
+  import { initFooter } from "../motion/footer.ts";
+
+  initFooter();
+</script>
+
+<style>
+  .footer {
+    background: var(--night);
+    color: var(--night-text);
+    padding-top: var(--space-9);
+    overflow: clip;
+  }
+
+  .footer__inner {
+    display: grid;
+    gap: var(--space-8);
+  }
+
+  .footer__cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: var(--space-6);
+    padding-top: var(--space-6);
+    border-top: 1px solid color-mix(in oklab, var(--night-text) 14%, transparent);
+  }
+
+  .footer__label {
+    margin-bottom: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--night-muted);
+  }
+
+  ul {
+    list-style: none;
+    display: grid;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+  }
+
+  a {
+    color: var(--night-text);
+  }
+
+  a:focus-visible {
+    outline-color: var(--lav);
+  }
+
+  .footer__word {
+    display: flex;
+    align-items: center;
+    gap: 0.06em;
+    margin-top: var(--space-8);
+    padding-inline: var(--gutter);
+    /* "Constitution" plus the mark fills the width: about 0.8 em per letter at this tracking. */
+    font-size: 14.4vw;
+    font-weight: 600;
+    letter-spacing: -0.055em;
+    line-height: 0.82;
+    white-space: nowrap;
+    color: var(--night-text);
+    transform: translateY(0.1em);
+  }
+
+  .footer__mark {
+    display: block;
+    flex: none;
+    width: 0.74em;
+    height: 0.74em;
+    margin-right: 0.06em;
+    color: var(--lav);
+  }
+
+  .footer__mark > :global(.mark) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .footer__letters {
+    display: flex;
+  }
+
+  .footer__clip {
+    display: inline-block;
+    overflow: clip;
+    padding-bottom: 0.06em;
+  }
+
+  .footer__char {
+    display: inline-block;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .footer:global(.has-js) .footer__char {
+      transform: translateY(105%);
+      transition: transform 1s var(--ease-out) calc(var(--i, 0) * 40ms);
+    }
+
+    .footer:global(.has-js.is-on) .footer__char {
+      transform: none;
+    }
+  }
+</style>
