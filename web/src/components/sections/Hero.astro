@@ -1,0 +1,186 @@
+---
+import HeroLines from "../motion/HeroLines.astro";
+import Button from "../ui/Button.astro";
+
+// Two sentences, split into words at build time so the entrance can raise them one by one. The
+// words stay plain text in the h1; `mark` sets the word that carries the lavender highlight.
+const sentences = [
+  "Steal every admin key.",
+  "You still cannot violate the upgrade constitution.",
+].map((sentence) => sentence.split(" ").map((word) => ({ word, mark: word === "cannot" })));
+---
+
+<section id="top" class="hero" aria-labelledby="top-title">
+  <script is:inline>
+    // Start state for the entrance is in the first paint; without JavaScript the class never exists.
+    document.currentScript.parentElement.classList.add("has-js");
+  </script>
+  <figure class="hero__figure">
+    <HeroLines />
+    <figcaption class="visually-hidden">
+      Diagram: five keys aim at the vault's proxy. Each one stops at the gate. Only a certified
+      upgrade passes through.
+    </figcaption>
+  </figure>
+
+  <div class="hero__text container">
+    <h1 id="top-title">
+      {
+        sentences.map((words) => (
+          <>
+          <span class="hero__sentence">
+            {words.map(({ word, mark }) => (
+              <>
+                <span class:list={["hero__word", { "hero__word--mark": mark }]}>
+                  {mark && <span class="hero__highlight" aria-hidden="true" />}
+                  <span class="hero__word-in">{word}</span>
+                </span>{" "}
+              </>
+            ))}
+          </span>{" "}
+          </>
+        ))
+      }
+    </h1>
+    <div class="hero__aside">
+      <p class="hero__pitch">
+        One vault on Base Sepolia upgrades only through a keyless NEAR gate that signs what the
+        committed rules certify.
+      </p>
+      <div class="hero__actions">
+        <Button href="#story" size="lg">See the attack</Button>
+        <Button href="#rules" variant="secondary" size="lg">Read the rules</Button>
+      </div>
+      <p class="hero__scope mono">Testnet only. Not audited.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { initHero } from "../motion/hero.ts";
+
+  initHero();
+</script>
+
+<style>
+  .hero {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--header-h) - 1px);
+    padding-block: var(--space-5) var(--space-7);
+    background: var(--paper);
+    overflow-x: clip;
+  }
+
+  .hero__figure {
+    position: relative;
+    flex: 1;
+    display: grid;
+    align-items: center;
+    min-height: 13rem;
+    margin-bottom: var(--space-6);
+    overflow: clip;
+  }
+
+  .hero__text {
+    display: grid;
+    grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+    align-items: end;
+    column-gap: var(--space-8);
+    row-gap: var(--space-6);
+  }
+
+  .hero h1 {
+    font-size: clamp(2.5rem, 1.3rem + 4vw, 5.75rem);
+    line-height: 0.96;
+    letter-spacing: var(--tracking-display);
+    max-width: 19ch;
+  }
+
+  .hero__sentence {
+    display: block;
+  }
+
+  /* Each word clips its own rise; the padding keeps descenders inside the clip. */
+  .hero__word {
+    position: relative;
+    display: inline-block;
+    overflow: clip;
+    padding-block: 0.04em 0.1em;
+    margin-block: -0.04em -0.1em;
+    vertical-align: top;
+  }
+
+  .hero__word-in {
+    position: relative;
+    display: inline-block;
+  }
+
+  .hero__word--mark {
+    padding-inline: 0.08em;
+    margin-inline: -0.08em;
+  }
+
+  .hero__highlight {
+    position: absolute;
+    inset: 0.18em 0 0.12em;
+    background: var(--lav);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero:global(.has-js) .hero__word-in {
+      transform: translateY(108%);
+    }
+
+    .hero:global(.has-js) .hero__highlight {
+      clip-path: inset(0 100% 0 0);
+    }
+
+    .hero:global(.has-js) .hero__aside > * {
+      opacity: 0;
+    }
+  }
+
+  .hero__aside {
+    display: grid;
+    gap: var(--space-5);
+    justify-items: start;
+  }
+
+  .hero__pitch {
+    max-width: 34ch;
+    font-size: var(--text-base);
+    line-height: 1.5;
+  }
+
+  .hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .hero__scope {
+    display: none;
+    margin-top: calc(-1 * var(--space-2));
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink-muted);
+  }
+
+  /* The header chip carries the scope on wider screens; on a phone it is hidden, so say it here. */
+  @media (max-width: 34rem) {
+    .hero__scope {
+      display: block;
+    }
+  }
+
+  @media (max-width: 52rem) {
+    .hero__text {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hero h1 {
+      max-width: 14ch;
+    }
+  }
+</style>
