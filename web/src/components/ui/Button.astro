@@ -1,0 +1,111 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+/**
+ * Link or button with the page's three looks: `primary` (lavender fill), `secondary` (outlined),
+ * `ink` (ink fill, for lavender grounds). Renders an anchor when `href` is set.
+ */
+type Props = {
+  variant?: "primary" | "secondary" | "ink";
+  size?: "md" | "lg";
+  href?: string;
+  class?: string;
+} & Omit<HTMLAttributes<"button">, "class">;
+
+const { variant = "primary", size = "md", href, class: className, ...rest } = Astro.props;
+const classes = ["btn", `btn--${variant}`, `btn--${size}`, className];
+---
+
+{
+  href ? (
+    <a class:list={classes} href={href}>
+      <slot />
+    </a>
+  ) : (
+    <button class:list={classes} type="button" {...rest}>
+      <slot />
+    </button>
+  )
+}
+
+<style>
+  .btn {
+    --btn-bg: transparent;
+    --btn-fg: var(--ink);
+    --btn-border: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: 2.75rem;
+    padding: 0 var(--space-5);
+    border: 1px solid var(--btn-border);
+    border-radius: var(--radius-sm);
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      transform var(--dur-press) var(--ease-out),
+      background-color var(--dur-base) ease,
+      border-color var(--dur-base) ease;
+  }
+
+  .btn--lg {
+    min-height: 3.25rem;
+    padding: 0 var(--space-6);
+    font-size: var(--text-base);
+  }
+
+  .btn--primary {
+    --btn-bg: var(--lav);
+    --btn-border: var(--lav);
+  }
+
+  .btn--primary:hover {
+    --btn-bg: var(--lav-hover);
+    --btn-border: var(--lav-hover);
+  }
+
+  .btn--secondary {
+    --btn-border: var(--line-strong);
+  }
+
+  .btn--secondary:hover {
+    --btn-bg: rgb(23 21 31 / 0.04);
+    --btn-border: var(--ink);
+  }
+
+  .btn--ink {
+    --btn-bg: var(--ink);
+    --btn-fg: var(--paper);
+    --btn-border: var(--ink);
+  }
+
+  .btn--ink:hover {
+    --btn-bg: var(--ink-hover);
+  }
+
+  .btn:active {
+    transform: scale(0.97);
+  }
+
+  .btn[aria-disabled="true"],
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn:active {
+      transform: none;
+      filter: brightness(0.94);
+    }
+  }
+</style>
