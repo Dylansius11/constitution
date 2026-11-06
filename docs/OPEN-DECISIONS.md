@@ -5,7 +5,7 @@
 - [V] Founder chose stack **Option C (Phala TDX CVM verifier + Rust-first operations + Astro static page)** on 2026-10-26 in this planning session (D1). ARCHITECTURE is written against it.
 - [V] Founder resolved on 2026-10-26: attestation appraisal off-chain first, on-chain DCAP as P1 (D5); spam control by refundable deposit plus one active proposal per account (D3); verifier host Phala with the USD 20 verified-account credit, OutLayer only as a separately decided fallback (D2); archive RPC Validation Cloud free tier (D10); public repo on GitHub `Dylansius11`, X post from the founder's own account (D9).
 - [V] Founder answers on 2026-11-02 (UTC): the founder creates the GitHub repo personally and the lead commits locally only until told to push (D9); the lead creates NEAR testnet accounts via the faucet with keys in the repo-local gitignored `.secrets/` (B1, done); D7 waits for the founder's logo and references; D8 deferred between Cloudflare Pages and Vercel.
-- Open founder rows: D4 Act 2 (decide at core gate 2026-11-10), D7 visual direction, D8 hosting, D14 funding amounts, D18 verifier uptime budget (after spike P1.6). Open organizer questions: D16.
+- Open founder rows: D4 Act 2 (decide at core gate 2026-11-10), D8 hosting, D14 funding amounts, D18 verifier uptime budget (after spike P1.6). D7 visual direction resolved 2026-11-07. Open organizer questions: D16.
 - Build opened 2026-11-01T00:00:00Z; build work started 2026-11-02. Remaining BLOCKERS below are founder-owned manual prerequisites.
 
 Founder-owned rows are never silently decided by agents. Status: open, blocked or resolved. Lead-owned rows record the reasoning so the founder can overrule. Each row has its explanation below.
@@ -20,7 +20,7 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D4 | Ship Act 2 self-repair | founder | open | core gate 2026-11-10 | Decide after core gate |
 | D5 | Verifier key registration appraisal | founder | resolved 2026-10-26 | P2.4 | Off-chain appraisal + 7-day timelock; on-chain DCAP is P1 |
 | D6 | Gate code mutability | lead | resolved 2026-10-26 | P2.1 | Immutable gate; authority migration only via timelocked change |
-| D7 | Visual direction for the public page | founder | open, founder collecting logo and references (2026-11-02) | P3.4 | Candidates in `docs/DESIGN.md`; page work waits |
+| D7 | Visual direction for the public page | founder | resolved 2026-11-07 | P3.4 | Founder brand (`asset/` logos) and reference video, elevated; recorded in `docs/DESIGN.md` sections 2 to 4 |
 | D8 | Hosting for the public page | founder | open, Cloudflare Pages or Vercel (2026-11-02) | P3.6 | Deferred by founder |
 | D9 | Public repo and X accounts | founder | resolved 2026-10-26, refined 2026-11-02 | P4 | GitHub `Dylansius11`, founder creates the repo; lead commits locally until asked to push; founder's X |
 | D10 | Archive / debug and proof RPC for replay | founder | resolved 2026-10-26, refined 2026-11-05 | P1.7 | Validation Cloud free tier for archive/trace; Base public RPC for recent-block proofs; no QuickNode purchase |
@@ -83,6 +83,8 @@ Meaning [I]: the verifier's Ed25519 key, its release hash and the full TDX quote
 ### D7. Visual direction
 
 Founder response, 2026-10-26 (paraphrased from Indonesian): explore Awwwards and save.design for inspiration, relay browser allowed; the frontend must be as premium and semantic as possible and should amaze; references are fine if the direction is still unclear; frontend comes later. `docs/DESIGN.md` holds candidate directions and references. Open until the founder picks; blocks P3.4 only.
+
+Resolved 2026-11-07: the founder supplied the brand (mark and wordmark, lavender) and a reference video (Alia site scroll-through) in `asset/` (gitignored) and asked to follow the reference, then elevate it. `docs/DESIGN.md` sections 2 to 4 record the result: paper ground, ink, flat lavender, Geist and Geist Mono, GSAP ScrollTrigger scroll scenes. Retires the October directions A to C.
 
 ### D8. Hosting
 
@@ -163,7 +165,7 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B5 | Base Sepolia state/trace and fixed-block proof endpoints | founder (provider access), lead (probe) | resolved 2026-11-05 under refined D10: production witness fetch from Validation Cloud + public Base RPC verified 8 accounts/7 slots at fixed block 54,676,922 | P1.7, P2.5 live R5 integration | No new account or payment required. Keep both endpoints configured in the CVM; public RPC rate limits/window expiry remain liveness risks. Final deployment/corpus proof remains P2.8 |
 | B6 | GitHub repo `Dylansius11/constitution` | founder | resolved 2026-11-03: repo exists (private, empty at start); `main` and `dev` pushed; default branch `dev`; work via branch then PR into `dev`, `dev` into `main` by PR. Open: the repo is PRIVATE, so make it public before submission (founder) | P4 | `git ls-remote origin` lists `main` and `dev` |
 | B7 | Hosting choice | founder | open | P3.6 | Resolve D8 |
-| B8 | Visual direction | founder | open | P3.4 | Resolve D7 |
+| B8 | Visual direction | founder | resolved 2026-11-07 (D7) | P3.4 | Brand and reference supplied in `asset/` |
 | B9 | Local Docker Desktop Linux engine and Ubuntu WSL integration for the compiler regression | founder (Desktop/WSL settings), lead (focused rerun) | resolved 2026-11-05: Docker server 28.5.1 available from Ubuntu; focused `proposal_compilation_error_remains_a_signed_reject` rerun passed (1 passed, 0 failed) after the founder enabled integration | Split-RPC PR merge verification, P4.1 | Merge blocker cleared; no code/test changes, R2/solver, image build or full-suite rerun |
 
 ### B1. NEAR testnet accounts

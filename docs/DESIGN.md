@@ -1,282 +1,107 @@
 # CONSTITUTION: design direction and interaction spec for the public page
 
-Planning document. No application code, no installs. English only. Written 2026-10-26.
+English only. Direction rewritten 2026-11-07 after founder decision D7; sections 6 to 11 (state matrix, receipts, accessibility, copy, data honesty) predate it and still bind.
 
-Labels: [V] opened this session (URL in Sources, date 2026-10-26), [I] design inference, [U] unverified.
+Labels: [V] verified with a dated source, [I] design inference, [U] unverified.
 
-## TL;DR and status
+## TL;DR
 
-- Status: **visual direction is founder decision D7 and is OPEN.** This document gives three candidate directions and a recommendation [I]. Everything that is not a pure look (information architecture, semantics, state machine, microcopy, receipt anatomy, motion rules, accessibility) is **direction-neutral** and can be built now. Only token values, type families and the one signature moment change with D7.
-- Candidates: **A. Constitutional document** (light, editorial serif, rules as articles, verdicts as seals), **B. Forensic ledger** (dark, monospace receipts), **C. Broadside** (monochrome typographic poster; replaces the earlier "Swiss minimal" because the research found a stronger, more ownable third axis, see section 3C).
-- Recommendation [I]: **A, with B's ruled monospace discipline inside the receipts.** A document that contains ledgers. Reasons in section 4.
-- Hard design rules that hold in every direction: pending items never show fake links or fake progress; timestamps and hashes appear only once observed; local test evidence never looks like testnet evidence; stale data never looks live; the AI is shown as veto-only; no claim beyond PRD guarantees G1 to G4.
-- Net new product questions surfaced by this work (need lead answers, none blocks the spec): section 12, Q1 to Q7.
-- References: 20+ concrete pages opened, 28 screenshots in `scratch/design-refs/` (gitignored). Index in section 2.
+- **D7 resolved 2026-11-07 (founder):** follow the brand and the founder's reference video (`asset/reference.mp4`, gitignored), then elevate it. The October directions A, B and C, the old reference board and the "no purple" anti-goal are retired.
+- **World:** warm paper ground, near-black ink, one lavender used as a flat fill, thin lavender line art that explains the mechanism. Large tight grotesk headlines, small calm body, mono only for data, tags and commands.
+- **Signature moment:** the pinned story. One scroll walks a drain disguised as a fee update to a refusal on the night ground (`PROPOSED · CHECKED · REFUSED`), then the ground turns lavender for an honest upgrade to execution (`CERTIFIED · SIGNED · EXECUTED`). It is labeled an illustration of the flow, never chain data.
+- **Entrance (founder request 2026-11-07):** once per browser session the page opens on a short night curtain: the mark assembles, the wordmark rises, the certified line crosses and splits the ground onto the hero. It is skippable, bounded and never a loader (section 4).
+- **Honesty rules hold everywhere:** pending items never show fake links or fake progress; hashes, links and timestamps appear only once observed; local, spike and rehearsal evidence is always labeled; stale data never looks live; the AI is shown as veto-only; no claim beyond PRD guarantees G1 to G4.
+- **Today's data reality (2026-11-07):** no production gate is deployed and the CVM is off. The page therefore renders every live surface in `Awaiting activation`, shows recorded spike evidence with its label and date, and re-reads the spike's real Base Sepolia transaction on request. Live surfaces switch on from `PUBLIC_*` configuration once an activation record exists.
 
-## 1. Design thesis
+## 1. Thesis
 
-**What the page must make a judge feel in 10 seconds:** *authority, proof, calm under attack.*
+A judge must get *what it is, why it matters, how to verify it* in ten seconds, and feel *calm under attack*: when the drain is refused the page does not flash or shake; it states the rule, "no signature was requested", and "implementation unchanged". Calm is the evidence.
 
-- **Authority.** The page reads like an instrument of law, not a startup. Type is large, spacing is even, nothing blinks, nothing sells. The one-liner is stated, not shouted: "Steal every admin key. You still cannot violate the upgrade constitution."
-- **Proof.** The first screen already contains observed facts, not claims: the current proxy implementation hash with the Base Sepolia block it was read at, the active rule-set hash, the timelock queue length. A judge who sees a hash with a block number believes the page is wired to a chain before reading a sentence.
-- **Calm under attack.** When the drain proposal is refused, the page does not flash red or shake. It states the rule, the reproduced counterexample, "no signature was requested", and "implementation unchanged" as two equal hashes. Calm is the evidence: the system was not surprised.
+10-second test at 1280x800 with no scrolling: (1) what it is, (2) testnet and unaudited, (3) where to see the attack, (4) where to try it. Fail any and the hero is wrong.
 
-**Why this serves the product.** CONSTITUTION's claim is scoped and falsifiable (PRD TL;DR): for one protected proxy, no key we control can run an uncertified implementation or shorten the 7-day timelock. A flashy page would read as marketing for a security product. A page that is precise, scoped, and makes every statement traceable to a receipt matches the Design criterion evidence in the PRD ("Public page with real states, receipts a non-expert can read") and gives Claude Code and Codex judges a DOM they can read without running JavaScript (section 5, progressive enhancement).
+Anti-goals: glowing gradients, gradient text, glass, mascots, logo walls, vanity metrics, loading screens that fake progress or hold the page, autoplay media, fake dashboards, counters that imply progress, scroll that traps the keyboard. The one entrance curtain (section 4) obeys every limit there.
 
-**10-second test (use at review):** within one 1280x800 viewport and with no scrolling, a first-time viewer can say (1) what it is, (2) that it is testnet and unaudited, (3) that live chain data is shown, (4) where to take the key. Fail any and the hero is wrong.
+## 2. Brand and reference
 
-**Anti-goals:** AI-purple gradients, mascot illustration, dot-matrix art, "trusted by" logo walls (we have no customers, PRD), vanity volume stats (we have no metrics), intro gates, autoplay media, counters that imply progress.
+**Brand (founder, `asset/`, gitignored):** the mark is a geometric asterisk of nine bars around a negative-space triangle with a T stem at the base; the wordmark is `Constitution` in a round geometric sans. The page redraws the mark as inline SVG (`web/src/components/ui/Mark.astro`, three filled paths traced from `logo-only-black.png`, `currentColor`), so it themes and animates. The brand's lavender streak background is not reproduced; its lavender becomes the accent.
 
-## 2. Reference board
+**Reference (founder, Alia site scroll-through, frames read 2026-11-07 at 1 s, 4 s, 9 s, 14 s, 20 s, 25 s, 31 s, 42 s) [V]:**
 
-Every row was opened this session (2026-10-26). Screenshots are in `scratch/design-refs/` (gitignored). "Computed" values below were read from the live DOM with `getComputedStyle` in headless Chromium, so they are measurements, not impressions. Screenshot width 1280 unless named 390.
+| Reference pattern | CONSTITUTION use |
+| --- | --- |
+| Off-white ground, ink text, lavender flat CTA fill, outlined secondary | Same tokens; `See the attack` filled, `Read the rules` outlined |
+| Hero: thin lavender lines weave, converge through a circle node, exit as one line; headline bottom-left, pitch and CTAs bottom-right | Authority lines (admin, governor, deployer, relayer, verifier operator) run toward the proxy and are stopped at the gate node; only the certified path passes through |
+| Full-bleed lavender section, pinned, split headline with a product card between, mono step indicator | The story: split headline per act, product-like cards (proposal, stage ladder, verdict, signature, execution) between, `PROPOSED · CHECKED · REFUSED` / `CERTIFIED · SIGNED · EXECUTED` |
+| "How it works": vertical line and node, lavender mono number chip, product card | Six numbered steps on one rail; the number chips carry the real order of the pipeline |
+| Lines that branch into parallel tracks and rejoin | The verdict fork: every proposal enters one line, splits into certify and refuse tracks; the AI track joins only the refuse side |
+| Dark footer with a large logo | The wordmark runs the full screen width, the mark in lavender, letters rise once |
+| Solana "Agent Skills" code block with copy and a Human/Agent toggle | `Try it`: real CLI commands for humans; `/llms.txt` for agents |
 
-| # | Reference [V] | File | Borrow | Avoid |
-| --- | --- | --- | --- | --- |
-| R1 | Awwwards home, Site of the Day 2026-10-25 "Forge Automotive", score 7.24 (https://www.awwwards.com/) | `01-awwwards-home-1280.png` | Name-as-headline at 112 px Inter Tight (computed), credits strip under it, restraint of one big title. Used to select references from the SOTD list. | Nothing specific; it is a directory. |
-| R2 | Awwwards Sites of the Day listing (https://www.awwwards.com/websites/sites_of_the_day/) | `03-awwwards-sotd-list-1280.png` | Source of current winners: Forge Automotive, ESR Bespoke, Emotion Agency, Cartier "Le Choeur des Pierres", FORMAT, Signal-A, Belgrade Arbor, OFFFForum. | n/a |
-| R3 | save.design home and explore (https://save.design/, https://save.design/explore) | `02-savedesign-home-1280.png`, `04-savedesign-explore-1280.png` | Dark near-black `rgb(9,9,11)` with Geist and Geist Mono and a pixel face for headings (computed); filter by Industry including **cybersecurity** and finance; per-site tech stack metadata. | Their landscape hero render is decoration with no information. |
-| R4 | save.design detail, railgun.org (https://save.design/website/railgun-org) | `20-savedesign-detail-railgun-1280.png` | Shows how a reference is documented: framework React, animation GSAP/Three.js/Lenis/Rive, design system Radix UI, font Onest. Template for the "borrow" notes here. | n/a |
-| R5 | Forge Automotive, SOTD 2026-10-25 (https://forgeautomotive.co.uk/) | `05-forge-automotive-1280.png` | Full-black first screen with one statement in widely tracked caps and a serif display face (family named "editorial", 76.8 to 80 px, computed). Proof that big quiet type reads premium. | "ENTER" gate and cookie line before content: a judge has 10 seconds. Never gate the page. |
-| R6 | ESR Bespoke, on the Awwwards recent Sites of the Day list (https://www.esrbespoke.au/) | `06-esr-bespoke-1280.png` | Multi-zone header (name, descriptor, nav) with the headline left and a small caps paragraph far right. 62 px grotesk headline (computed). | Autoplay video with "UNMUTE". |
-| R7 | Heron AI, Awwwards entry by Bearplus (https://heronaiapp.com/) | `07-heron-ai-1280.png` | Hairline frame lines across a pale field; spec list in mono as `TYPE : ... FOUNDED : ... FOCUS : ...` and an index `001 INIT` (page text). Direct pattern for the receipt header `dl`. Fonts BT Grotesk and Geist Mono (computed). | Full-screen intro illustration that delays content. |
-| R8 | MilleDollars, Awwwards entry (https://milledollars.fr/) | `08-milledollars-1280.png` | Index rows: ordinal, title, party, year (`01 | THE DAZZLING DIVISION | RICHARD MILLE | 2026`, page text). Pattern for the receipts list. ABC Diatype and Migra (computed). | Media-heavy rounded image stack; nothing to learn for data. |
-| R9 | Signal-A Studio (https://signal-a.studio/) | `09-signal-a-1280.png` | Live local clock and city in the header (`03:09 CET`), hairline-underlined nav cells, GT America Mono for UI (computed). Clock pattern informs the timelock clock. | Letter-spaced justified display lines, and per-letter DOM splitting: the extracted page text came back as single letters, which is hostile to screen readers and to AI judges reading the DOM. |
-| R10 | RAILGUN (https://railgun.org/) | `10-railgun-1280.png`, `24-railgun-mobile-390.png` | Hairline-boxed 2x2 stat cells with large numerals and a label below; at 390 px the same 2x2 grid holds. Pattern for the ledger strip. Onest at 80 px (computed). | Dot-matrix mountain art, volume stats (we have no metrics), purple CTA. |
-| R11 | Cyera (https://cyera.com/) | `11-cyera-1280.png` | Two-weight headline: bold first line, light second line. Haffer Uprights (computed). | Purple gradient and mascot illustration: the AI-security cliche. |
-| R12 | Cotool (https://cotool.ai/) | `12-cotool-1280.png` | Small mono eyebrow above a 64 px grotesk headline with one emphasized word set in a serif inside a highlight box (Suisse Intl, Geist Mono, a serif; computed). | Dot-matrix wave and "Loved by" logos. Note: the skill guidance warns that mixed-family emphasis reads amateur, so only copy the box, not the family swap. |
-| R13 | HackFirst (https://hackfirst.io/) | `13-hackfirst-1280.png`, `26-hackfirst-scroll-1280.png` | Full-width wordmark; hairline-ruled stat rows with an index tag `DOC. [00-02]`, a 60 px numeral and a mono caption. Closest existing pattern to a ledger row. Neue Haas Display and Feature Mono (computed). | The loader shows a `0%` counter: this is exactly the fake-progress pattern we forbid. Noise video. |
-| R14 | Dicta: Legal Poetry (https://dicta.icaad.ngo/) | `14-dicta-1280.png`, `27-dicta-after-begin-1280.png` (`28-dicta-scroll-1280.png` is a blank frame, unused) | Legal-record subject matter handled with plain big type. A single phrase sits in a solid box whose fill inverts between frames (black field with white box, white field with black box). Reusable as the "verdict word" treatment. Neurial Grotesk 90 px (computed). | Sponsor logo wall and the multicolor stripe. |
-| R15 | Burkhalter Rechtsanwaelte, law firm, Awwwards nominee 2026-03-10 (https://drpb.ch/, https://drpb.ch/en) | `15-drpb-1280.png`, `22-drpb-scroll-1280.png` | Closest "legal authority" web reference: light display serif (GT Super Display, 90 px) over a Unica77 sans, body text in a single deep ink blue `rgb(1,30,147)` on white (computed). Ink-blue-on-white is the model for direction A. | Stock photo of lawyers, blurred glass header. |
-| R16 | Orchid Security, Awwwards nominee 2026-09-19 (https://www.orchid.security/) | `16-orchid-1280.png` | Shows what the category default looks like: centered headline, purple glow, mock dashboard. | All of it. This is the pattern to differ from; a div-built fake dashboard would also contradict "no fake progress". |
-| R17 | FORMAT by Obys, SOTD 2026-10-19, score 7.59 (https://format.obys.agency/) | `17-format-obys-1280.png` | Clause numbering `1`, `1.1 Usage`, `1.2 Geometry` on white sheets over grey `#222` (page text). Direct model for numbering rules and article clauses. | 10.7 px body text (computed): unreadable. |
-| R18 | OFFFForum, SOTD 2026-10-16, score 7.33 (https://www.offforum.com/) | `18-offforum-1280.png`, `23-offforum-scroll-1280.png`, `25-offforum-mobile-390.png` | A hairline-boxed two-column key/value table in the hero that survives unchanged at 390 px. Pattern for the receipt header and the ledger strip. Forvm serif caps with Baikal sans (computed). | Cookie modal covering the first screen. |
-| R19 | The Explora Journal, Awwwards honorable mention 2026-09-12 (https://explorajourneys.com/int/en/explora-journal) | `19-explora-journal-1280.png` | Calm light serif title with an italic descriptor line under it; visible accessibility affordance ("Press Alt+1 for screen-reader mode", page text). Pattern: italic subtitle, visible accessibility statement. | Warm beige ground `rgb(244,242,239)` (computed): the skill guidance flags warm cream as an AI default, so direction A uses a cool neutral instead. |
-| R20 | Constitute, US constitution text (https://www.constituteproject.org/constitution/United_States_of_America_1992) | `21-constitute-us-1280.png` | The real reading pattern for a constitution: topic labels in a left marginal column, permalink icon, "Preamble / Article I / Section 1" headings, text column about 700 px. Lato at 28 px for h1 (computed). Pattern for the rules section: marginalia plus anchors. | The pale grey marginal labels look low contrast [I]; keep marginalia at 4.5:1 or better. |
-| R21 | Motion `animate()` docs (https://motion.dev/docs/animate) | n/a | Page text states: "It comes in two sizes, mini (3.2kb) and hybrid (22kb)." Basis for the motion library proposal in section 9. | n/a |
+## 3. Tokens
 
-Directory pages also opened for selection (no screenshots): Awwwards typography, finance, editorial, legal, law, blockchain, security, magazine, fintech and banking listings, and the Awwwards entry pages for Forge Automotive, ESR Bespoke, Heron AI, MilleDollars, Signal-A Studio, Dicta, Swiss Precision in Law, Orchid Security, The Explora Journal, History of Blockchain, Cartier "Le Choeur des Pierres", FORMAT, Belgrade Arbor and OFFFForum (URLs in Sources).
+One file: `web/src/styles/tokens.css`. Component CSS never uses raw colors. Contrast computed 2026-11-07 with the WCAG relative-luminance formula.
 
-**Patterns that survive from the research into every direction:**
-
-1. Hairline rules and boxed key/value tables as the dominant structure (R7, R10, R13, R18). It is also the honest way to show data.
-2. A live clock or timestamp as a quiet header element (R9, R13). Liveness without spinners.
-3. Numbered clauses (R17, R20). The constitution is literally clauses.
-4. One very large typographic gesture per viewport and everything else small (R5, R11, R13).
-5. A boxed word that inverts (R14) as the verdict word.
-
-## 3. Three candidate directions
-
-All three use the same token names (section 3.0), so swapping direction is a token and type change, not a rebuild.
-
-### 3.0 Direction-neutral token contract
-
-Semantic names only; each direction supplies values. Component CSS never uses raw colors.
-
-```css
-:root {
-  /* surfaces and text */
-  --bg: ;            /* page ground */
-  --surface: ;       /* raised panel, receipt body */
-  --text: ;          /* primary text */
-  --text-muted: ;    /* secondary text, still >= 4.5:1 */
-  --line: ;          /* decorative hairline, may be < 3:1, never the only cue */
-  --line-strong: ;   /* control borders and meaningful dividers, >= 3:1 */
-  --accent: ;        /* links, focus ring, rule numbers. The single accent. */
-  /* semantic verdict colors, used ONLY for verdict state, never for decoration */
-  --pass: ;
-  --refuse: ;
-  --pending: ;
-  /* typography */
-  --font-display: ;
-  --font-text: ;
-  --font-ui: ;
-  --font-data: ;     /* hashes, addresses, receipts */
-  /* motion, identical across directions */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --dur-fast: 120ms;
-  --dur-base: 200ms;
-  --dur-seal: 280ms;
-}
-```
-
-Every state is conveyed by a text label plus a marker shape, never by color alone (section 8).
-
----
-
-### 3A. Constitutional document (light, editorial serif)
-
-**Concept.** The page is a published instrument. Rules are articles with clause numbers. Receipts are exhibits attached to the instrument, set in ruled monospace. Verdicts are impressed as seals. Ground is a cool neutral, ink is near-black, and the single accent is an ink blue like a notary stamp.
-
-**References [V]:** R15 (ink blue on white, display serif), R20 (marginalia, permalinks, clause headings), R17 (clause numbering), R19 (italic descriptor), R7 and R18 (boxed key/value for receipt headers), R14 (boxed verdict word).
-
-**Type pairing (proposal).**
-
-| Role | Family | Licence status |
+| Token | Value | Use and measured contrast |
 | --- | --- | --- |
-| Display and text | Newsreader (variable) | [V] SIL OFL 1.1, shipped as a variable font, per its repository README. Chosen because it was designed "for continuous on-screen reading", fits long rule text, and is not a banned default display serif. |
-| UI labels, buttons, table heads | Geist Sans | [V] SIL OFL 1.1 per the Geist repository. |
-| Hashes, addresses, receipts, code | Geist Mono | [V] same repository and licence. |
-| Paid upgrade path (not recommended, needs founder approval) | GT Super Display with a grotesk, the pairing seen on R15 | [U] commercial licence, price and web licence terms not checked. No spending is authorized. |
+| `--paper` | `#F2F1E8` | page ground |
+| `--paper-2` | `#E6E4D3` | alternate band (how it works) |
+| `--surface` | `#FBFAF5` | cards, receipts |
+| `--ink` | `#17151F` | text; 15.92 on paper, 7.37 on lavender |
+| `--ink-muted` | `#55525F` | secondary text; 6.72 on paper, 5.95 on paper-2. Never on lavender (3.11) |
+| `--ink-on-lav` | `#2A1F4D` | secondary text on lavender; 6.12 |
+| `--lav` | `#B794F6` | fills, line art, focus halo. Never text on paper (2.16) |
+| `--violet` | `#5B3CC4` | links and focus ring on light grounds; 6.41 on paper |
+| `--line` | `#D6D3C4` | decorative hairline |
+| `--line-strong` | `#8A8676` | control borders; 3.22 on paper |
+| `--night` | `#121019` | footer ground; `--night-text` `#EDEBF5` 15.98, `--night-muted` `#A9A5B8` 7.87, lavender 7.70 |
+| `--pass` / `--refuse` / `--pending` | `#1E6B47` / `#B3261E` / `#7A5200` | verdict state only, always with a word and a marker shape; 5.70 / 5.77 / 6.10 on paper |
 
-Scale [I], 1280 / 390: h1 64 / 34 px, line-height 1.05, weight 400. h2 40 / 28. h3 24 / 20. Body 18 / 17 px at 1.6, measure 62 to 68 characters. Data (mono) 14 / 13 px at 1.5, `font-variant-numeric: tabular-nums slashed-zero`. Section marginal label: sentence case 13 px, not uppercase-tracked (avoids the eyebrow-on-everything tell).
+**Type:** Geist (variable, OFL 1.1) for everything, Geist Mono (variable, OFL 1.1) for hashes, addresses, commands, step tags and the story indicator. Self-hosted through Fontsource `@fontsource-variable/geist` and `@fontsource-variable/geist-mono` 5.3.0 (licence field `OFL-1.1`, npm registry read 2026-11-07). Display: weight 600, tracking -0.035em, line-height 0.98; h1 clamps 2.6 rem to 5.2 rem. Body 1.0625 rem / 1.55, measure 62ch. Data: `tabular-nums slashed-zero`.
 
-**Color tokens.** Contrast ratios were computed this session with the WCAG relative-luminance formula.
+**Shape:** radius 4 px for buttons, chips and tags (the reference is near-square); 10 px for cards. Elevation is a border or one soft tinted shadow, never both.
 
-```css
-:root {                      /* direction A */
-  --bg: #F5F6F8;
-  --surface: #FFFFFF;
-  --text: #10131A;           /* on bg 17.18, on surface 18.58 */
-  --text-muted: #4A5163;     /* on bg 7.33, on surface 7.93 */
-  --line: #C9CED8;           /* on bg 1.46: decorative only */
-  --line-strong: #7A8296;    /* on bg 3.56: control borders pass 3:1 */
-  --accent: #1D2FA6;         /* on bg 9.66, on surface 10.45; white on accent 9.66 */
-  --pass: #0F6B4A;           /* on bg 6.03; white on pass 6.52 */
-  --refuse: #B3261E;         /* on bg 6.04; white on refuse 6.54 */
-  --pending: #7A5200;        /* on bg 6.40 */
-}
-```
+## 4. Motion
 
-Notes: the cool grey ground avoids the warm cream and brass family that the skill guidance flags as an AI default. Pass and refuse appear only on verdict markers, seals and verdict words. QR codes always render dark on a light quiet zone (`#10131A` on `#FFFFFF`, quiet zone at least 4 modules) [I].
+Library choice: **GSAP 3.15.1 with ScrollTrigger and MotionPathPlugin** (standard no-charge licence, both plugins ship in the `gsap` package, npm registry read 2026-11-07) for the entrance, the hero, and the scroll scenes. Component micro-interactions and scroll reveals are CSS transitions. Motion (motion.dev) is not shipped; one library, one scroll model.
 
-**Layout grid.**
-
-| Width | Grid | Detail |
+| Scene | What moves and what it explains | File |
 | --- | --- | --- |
-| 390 | 4 columns, 20 px margins, 16 px gutters | One column. Marginal labels (the `§` number and topic) sit above their block. Receipt `dl`: term above value. Rules table keeps real table semantics but shows ID and Rule only, with the check detail in a per-row `details`. |
-| 1280 | 12 columns, 1200 px max container, 40 px margins, 24 px gutters | Marginalia in columns 1 to 3, text in 4 to 10 (R20 pattern). Hero: headline columns 1 to 8, QR "take it" card columns 9 to 12. Receipt: term in 1 to 3, value in 4 to 12. Ledger strip is a 4-cell boxed row (R10, R18). |
+| Entrance | Night curtain, once per session: the mark's three parts lock together inside a drawn ring, `Constitution` rises letter by letter, the certified line crosses the screen and the ground splits open onto the hero (about 2.9 s). Any key, click or tap ends it; a 5 s fallback always releases the page. Never with reduced motion, without JavaScript, on a deep link (`#hash`) or a second time in the session. No percentage, bar or "loading" copy: it is a curtain, not progress. | `motion/Intro.astro`, `intro.ts` |
+| Hero | After the entrance: headline words rise, `cannot` gets a lavender highlight wipe, the lines draw into the gate and the mark assembles. Then, only while the hero is on screen, a loop: an attempt travels down each stolen-key line and dies at its tick (the tick turns refuse red, a small ring fades); the certified attempt passes behind the mark and lands on the proxy, which fills lavender. | `motion/hero.ts`, `HeroLines.astro` |
+| Story | Pinned by CSS `position: sticky`; GSAP reads progress only. Act one on the night ground, act two on lavender (700 ms ground swap); a 3 px rail shows scroll position through the illustration and turns refuse red on `REFUSED`; a large step numeral sits behind the card; act headlines rise from a 6 px blur. | `motion/story.ts`, `sections/Story.astro` |
+| Rules | Each rule row plays its schematic once when it scrolls in: R1 appends a slot, R2 lights the deposit/withdraw sequence and grows the held and owed bars, R3 scans and strikes the forbidden opcodes, R4 matches the committed selector, R5 pairs old and new outputs. Every figure is labeled `Illustration`. | `motion/RuleFigure.astro`, `rules.ts` |
+| Timelock | While the section scrolls past the sticky dial the seven days fill in order and a hand walks the ring; the count reads `Day N of 7`, then `Apply opens`. Scrubbed by scroll, an illustration of the fixed delay, never the clock of a real change. | `motion/timelock.ts` |
+| Reveals | Blocks marked `data-reveal` rise 28 px and fade in once, staggered 80 ms. Armed by an inline script only with motion allowed; a 2.5 s fallback drops the start state if the observer never loads. | `motion/reveal.ts`, `global.css` |
+| Terminal, footer | Command lines print in with a 70 ms stagger the first time the block scrolls in; the footer wordmark letters rise once. | `ui/CodeBlock.astro`, `motion/footer.ts` |
 
-**Signature moment: the Seal.** When a receipt reaches a terminal verdict, a circular seal is impressed on the receipt header: circle text reads `CERTIFIED` or `REFUSED`, the rule id (`R2`), and the short rule-set hash. It appears only after the verdict signature is observed. Motion: opacity 0 to 1 and scale 1.06 to 1 over `--dur-seal` with `--ease-out`, once. Under reduced motion it simply appears. The seal is an SVG with an `aria-label` that repeats the text verdict; all seal information also exists as plain text next to it. Local-test receipts get a different, hatched, unsealed outline marked `LOCAL TEST` so they can never be mistaken for chain evidence. The Seal is the memorable, screenshot-able artifact for the X post.
-
-**Risks.** (1) Reads as a law-firm brochure if the hero type scale is timid: mitigate with the 64 px display line, the live ledger strip and the seal. (2) Serif at small size in receipts: keep receipts in Geist Mono. (3) Light page under studio lighting in the demo video can glare: keep `--bg` off pure white (it is `#F5F6F8`). (4) Seal SVG text on a circle can be fussy: build it from a fixed-length string, test with the longest rule id.
-
----
-
-### 3B. Forensic ledger (dark, monospace receipts)
-
-**Concept.** A chain-of-custody ledger. Near-black ground, tabular monospace everywhere data appears, ruled rows with a document index tag, one amber accent. The page feels like an evidence terminal with the volume turned down.
-
-**References [V]:** R13 (HackFirst: hairline rows, `DOC. [00-02]` tag, big numerals, mono caption), R3 and R4 (save.design: near-black with Geist and Geist Mono), R10 (boxed stat cells), R7 (mono key/value spec list), R18 (boxed table).
-
-**Type pairing (proposal).**
-
-| Role | Family | Licence status |
-| --- | --- | --- |
-| Display and UI | Geist Sans | [V] OFL 1.1 (Geist repository). |
-| Data, receipts, labels | Geist Mono, alternative JetBrains Mono | [V] OFL 1.1 for both (Geist and JetBrains Mono repositories). |
-| Paid upgrade path | Neue Haas Display with Feature Mono (the pairing computed on R13) | [U] commercial. Not authorized. |
-
-Scale [I], 1280 / 390: h1 56 / 32 px Geist Sans 500, h2 32 / 24, body 17 / 16, data 14 / 13 mono. Ledger numerals up to 96 px at 1280 for the timelock and implementation counts.
-
-```css
-:root {                      /* direction B */
-  --bg: #0A0C0F;
-  --surface: #12151A;
-  --text: #E8EEF2;           /* on bg 16.73, on surface 15.63 */
-  --text-muted: #9AA6B2;     /* on bg 7.90, on surface 7.38 */
-  --line: #2A313A;           /* on bg 1.49: decorative only */
-  --line-strong: #55616E;    /* on bg 3.10 */
-  --accent: #E8B04B;         /* on bg 10.02; dark text on accent 10.02 */
-  --pass: #5FD39A;           /* on bg 10.51 */
-  --refuse: #FF7A6B;         /* on bg 7.69 */
-  --pending: #E8B04B;        /* on surface 9.36: same hue as accent by design */
-}
-```
-
-Notes: single accent is amber (evidence tape), not neon green or purple. Pending and accent share a hue, which is acceptable because pending is a state label with text, never a standalone cue.
-
-**Layout grid.**
-
-| Width | Grid | Detail |
-| --- | --- | --- |
-| 390 | 4 columns, 16 px margins | Rows are stacked: index tag (`[00-02]`), label, value, each on its own line. Ledger strip is a 2x2 boxed grid (R10 at 390 holds this). |
-| 1280 | 12 columns, 1200 px, 40 px margins | Rows are `index (cols 1-2) | label (3-5) | value (6-12)` as in R13. Hairline between every row. Full-width wordmark is optional, not required. |
-
-**Signature moment: Before equals after.** On the refusal receipt, the proxy implementation line shows the `before` and `after` hashes set in the same monospace columns, character for character, with an `=` between them and the text `unchanged, observed at block {n}`. On the executed receipt the same two lines appear with the differing characters highlighted. The point is visual: a judge sees two identical strings and understands "nothing happened". Rows commit one by one as they are observed (fade and 4 px rise, 200 ms), never typed or scrambled. This is the most data-honest signature of the three.
-
-**Risks.** (1) Dark neon-adjacent look is the crypto cliche and the Forge, HackFirst and ESR pages already cover dark; the page needs the amber discipline and generous spacing to feel like authority rather than a hacker theme. (2) Mono at long prose lengths is tiring: restrict mono to data, not explanation. (3) Dark mode screenshots for X compress poorly on some feeds [U]. (4) Amber on black plus red refusal needs the text labels, not color, to separate states.
-
----
-
-### 3C. Broadside (monochrome typographic poster)
-
-*Replaces "Swiss minimal".* Plain Swiss minimal in a grid of whitespace is safe but anonymous and does not give the founder the "amaze me" moment. The research (R6, R9, R13, R17, R18) shows a stronger version: a poster-scale grotesk wordmark, hairline boxed tables, clause numbers and one signal color on pure black and white.
-
-**Concept.** The page is a printed broadside nailed to a wall. A full-width `CONSTITUTION` wordmark, black ink on white, and one signal red-orange used only for the thing that is refused. Everything else is boxed hairlines and small type.
-
-**References [V]:** R13 (full-width wordmark, ruled rows), R17 (clause numbers, FORMAT), R18 (boxed table at 390), R9 (live clock, hairline nav), R6 (grotesk headline with a small caps paragraph far right), R5 (calm statement).
-
-**Type pairing (proposal).** Geist Sans for wordmark, headings and body, Geist Mono for data. [V] both OFL 1.1. Paid upgrade path: GT America or Neue Haas Display [U] commercial, not authorized. Wordmark sized with viewport units so the single word fills the container: roughly 146 px at 1280 and 43 px at 390 [I, measure in build].
-
-```css
-:root {                      /* direction C */
-  --bg: #FFFFFF;
-  --surface: #FFFFFF;
-  --text: #0A0A0A;           /* 19.80 on bg */
-  --text-muted: #4D4D4D;     /* 8.45 on bg */
-  --line: #D9D9D9;
-  --line-strong: #767676;    /* 4.54 on bg */
-  --accent: #0A0A0A;         /* the accent IS ink; signal is semantic only */
-  --pass: #0B6B3A;           /* 6.61 on bg */
-  --refuse: #C62D10;         /* 5.55 on bg; white on refuse 5.55 */
-  --pending: #4D4D4D;
-}
-```
-
-Note: `#E5391A` measured 4.26 on white, which fails 4.5:1 for text, so the signal is darkened to `#C62D10`.
-
-**Layout grid.**
-
-| Width | Grid | Detail |
-| --- | --- | --- |
-| 390 | 4 columns, 16 px margins | Wordmark full width, headline below, ledger strip 2x2, everything else single column with hairline rules. |
-| 1280 | 12 columns, 1200 px | Wordmark spans all 12, one-liner in columns 1 to 7, small paragraph and QR in 9 to 12. Rules as a numbered ruled list (`1.1`, `1.2`) in columns 1 to 12 with big numerals. |
-
-**Signature moment: The clock.** A very large numeral block for the timelock: `6 d 23 h 41 m` from the real `eta_ns` of a real queued change, updated in place each minute, no animation. Empty state is `No change queued` at the same size. The page says the same thing the product says: even the governor must wait, in 96 px type. Appears only from observed `eta`; never a decorative countdown.
-
-**Risks.** (1) Highest agency-site risk: poster type can bury the proof. The ledger strip must stay above the fold. (2) The wordmark must be real text (not letter-split spans, see R9 avoid) so screen readers and AI judges read it. (3) Pure white and black maximize contrast but feel colder and less "constitutional" than A. (4) Easy to over-style; strict discipline needed on one signal color.
-
----
-
-## 4. Recommendation [I]
-
-**A. Constitutional document, with B's ruled monospace inside receipts.** D7 stays open; this is advice.
-
-1. **Semantics match the metaphor.** The product's nouns are rules, articles, a rule-set hash, a timelock queue and receipts. A document maps them to the HTML that already exists for them: `table` for rules, `ol` for the proposal timeline and the queue, `dl` for receipt fields, `article` for receipts. The founder's "as semantic as possible" is satisfied literally and visually.
-2. **Judges are three kinds of reader.** A human skims for 10 seconds, Claude Code and Codex read the DOM. A document with real text, clause numbers and a full static HTML baseline serves all three (section 5).
-3. **Differentiation inside the reference set.** In the opened set, security and crypto pages skew dark, purple or dot-matrix (R10, R11, R12, R13, R16). The closest legal-authority reference (R15) is light with a display serif and ink blue. A restrained light instrument is rarer in this category [I].
-4. **Calm is easier to show on light type.** A refused proposal in `--refuse` on a quiet ground reads as a decision, not an alarm. On dark, red reads as alarm.
-5. **Screenshot and print friendly.** Receipts as clean document pages survive in an X post and in `@media print`.
-6. **Cost.** Newsreader, Geist Sans and Geist Mono are all OFL [V], no spend.
-7. **Why not B or C as the base.** B is the best pure proof aesthetic but the most generic category look; C is the most striking but the highest risk of burying proof under type. Both remain valid if the founder wants to be louder (C) or more technical (B).
-
-**How to avoid the "boring brochure" risk:** the 64 px display line, the live ledger strip in the first viewport, the seal, and the "before equals after" line from B on the refusal receipt.
+- Native scrolling is never hijacked, smoothed or snapped, so keyboard, find-in-page and screen readers work unchanged.
+- Animate `transform`, `opacity`, `clip-path`, `filter` and SVG `stroke-dashoffset` only. No layout properties.
+- Easing: `--ease-out: cubic-bezier(0.23, 1, 0.32, 1)` for entrances and state swaps, `--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1)` for on-screen moves and the curtain split. Buttons press to `scale(0.97)` over 160 ms.
+- What never animates: hashes, addresses, recorded figures (no scramble, no count-up), status text, the timelock remaining time of a real change, system progress (there is none). The story rail and the dial count describe the illustration being scrolled, not the system.
+- **Static first.** Without JavaScript, or with `prefers-reduced-motion: reduce`, every scene renders its final, complete content: no entrance, the hero lines drawn with no moving attempts, the story as an ordered list of six steps each with its card, every rule figure finished, the dial full, all blocks visible. GSAP runs inside `gsap.matchMedia()` under `(prefers-reduced-motion: no-preference)` only.
 
 ## 5. Information architecture (single page)
 
-One page, one `h1`, static HTML as the baseline, live data as enhancement.
+One page, one `h1`, static HTML as the baseline, live reads as enhancement. Landmarks: `header` with skip link and `nav aria-label="Sections"`, `main`, `footer`. Every section is `section aria-labelledby` with an `h2`.
 
-**Progressive enhancement rule [I].** The build embeds a snapshot: rules, limits, how-it-works text, and the latest recorded receipts rendered into HTML, each labeled `Recorded {date}`. Islands (Astro) upgrade only four things with live reads: ledger strip, Attack and Upgrade surfaces, Receipts, Audit. A client that never runs JavaScript still sees every claim and the recorded receipts. Live values replace the snapshot only after observation, and the label changes from `Recorded` to `Observed`.
+| # | Section (id) | Contents | Live data |
+| --- | --- | --- | --- |
+| 0 | Header | Mark and wordmark, nav (How it works, Rules, Timelock, Evidence, Limits), scope chip `Testnet · Not audited`, filled `Try it` | none |
+| 1 | Hero (`top`) | h1 one-liner, authority line art, pitch of at most 20 words, `See the attack`, `Read the rules` | none |
+| 2 | Story (`story`) | Pinned lavender scroll story, two acts of three steps, labeled illustration | none |
+| 3 | How it works (`how`) | Six numbered steps on a rail: propose, verify, red-team, gate, Chain Signature, execute; the verdict fork | none |
+| 4 | Rules (`rules`) | R1 to R5 rows: large rule id, what it checks, where it stops, and a labeled schematic figure per rule; the AI veto note; committed manifest facts read at build from `rules/manifest.json` | gate `get_constitution` once configured |
+| 5 | Timelock (`timelock`) | 7-day clock, roles (governor schedules, guardian cancels, nobody applies early), `E53_TIMELOCK_NOT_ELAPSED`, the queue | gate `list_changes` once configured |
+| 6 | Evidence (`evidence`) | Four recorded figures, each with its source label (spike signature, its gas, local gate tests, committed rules); status ledger per component; recorded spike receipt with a live re-check of the Base Sepolia transaction and proxy slot; proposal watcher | Base Sepolia RPC now; gate and verifier once configured |
+| 7 | Try it (`try`) | In the browser: `Run the attack` and `Run the honest upgrade` cards (PRD F10) with the stages a run reports; from a checkout: a terminal window with the Human/Agent commands that wrap instead of scrolling sideways, and `/llms.txt` | gate, verifier and Base Sepolia once configured |
+| 8 | Limits (`limits`) | G1 to G4, trust assumptions, not claimed | none |
+| 9 | Footer | links, scope, build time, then the full-width mark and wordmark; repo and X links only when configured | none |
 
-Page landmarks: `header` (banner) with skip link and `nav aria-label="Sections"`; `main`; `footer` (contentinfo). Every section is `section aria-labelledby="{id}-title"` with an `h2`. Single status region per interactive surface.
+**Activation-gated surfaces.** The in-browser Attack and Honest upgrade runs, the QR "take it" key (5.1) and the audit panel (6.18) need the activated gate, the CVM verifier and the disposable demo key. Until the run configuration is complete, both run cards render locked: `Awaiting activation` badge, a disabled `Opens at activation` button that says why, and a collapsed list of the stages a run will report; nothing on a locked card claims to have happened. With configuration, the same cards run `web/src/lib/run-flow.ts` (seal, `propose` with the demo key, verifier run, gate and Base observation, relay of a Signed transaction, slot readback) and render the state matrix below; a reload resumes observing and never resubmits. The QR card and the audit panel are not rendered before activation. Their specs below stay binding.
 
-| # | Section (id) | Elements and semantics | Contents | Live data |
-| --- | --- | --- | --- | --- |
-| 0 | Header | `header`, `nav`, skip link as first focusable | Wordmark text `CONSTITUTION`, anchor links, a UTC clock (`time`) | Clock is client-only; static page shows no clock |
-| 1 | Hero (`hero`) | `section` with the page `h1`; `figure` for the QR | One-liner h1. Subtext of at most 20 words. One primary link `See the attack` to `#attack`. Scope chip `Testnet demo. Not audited.` QR "take it" card (section 5.1). | none |
-| 1b | Ledger strip | `dl` inside a boxed row, `aria-labelledby` | Proxy implementation (hash, `Base Sepolia block {n}`), active rule-set hash, verifier allowlist count, timelock queue count. Each cell: `Observed {time} UTC` or `Recorded {date}` or `Not yet observed`. | Base RPC via viem, NEAR view |
-| 2 | The constitution (`constitution`) | `section`; rules in `table` with `caption`, `th scope="col"` and `th scope="row"` for rule ids; allowlist in `table`; queue in `ol` with `time` | Active rules R1 to R5 (id, name, what it checks, stated limit). Rule-set hash with copy. Verifier allowlist (pubkey short, release hash short, attestation link when it exists). Timelock queue: pending changes with `eta`, kind, status; fixed text "Delay: 7 days. No role can shorten it." and "Guardian can only cancel or reduce authority". | NEAR views |
-| 3 | Attack (`attack`) | `section`, `form` with one submit button, `output` for status, `ol` for stages | Fixture description for `VaultV2Drain`. Submit with the demo key. Stage ladder, verdict, proxy line. | NEAR, verifier status, Base RPC |
-| 4 | Honest upgrade (`upgrade`) | same as 3 | `VaultV2Honest`. Same state machine. | same |
-| 5 | Receipts (`receipts`) | `section` with `ol` of `article`s, each `article aria-labelledby`, `dl` for fields, `table` for rule results | One receipt per proposal and per governance refusal. Section 7. | receipts JSON, RPCs |
-| 6 | Audit panel (`audit`) | `section`, `button` Run audit, `output`, `ul` of checks | F7 checks, per-check status (section 6.9) | NEAR RPC (access keys), Base RPC |
-| 7 | How it works (`how`) | `ol` of 6 steps; optional decorative SVG with `aria-hidden` | Proposal, attested verifier, private red-team AI veto, gate, Chain Signature, executor on Base Sepolia. Text first. | none |
-| 8 | Limits and honesty (`limits`) | `section`, `dl` or `ul` | PRD guarantees G1 to G4, trust assumptions, "Not claimed" list (section 10) | none |
-| 9 | Footer | `footer` | Repo link, X link, build id and time, licence note, "Testnet. Not audited." | none |
+**Configuration (all optional, read at build):** `PUBLIC_NEAR_RPC`, `PUBLIC_GATE_ACCOUNT`, `PUBLIC_VERIFIER_URL`, `PUBLIC_BASE_RPC` (default `https://sepolia.base.org` for reads), `PUBLIC_REPO_URL`, `PUBLIC_X_POST_URL`. The run cards additionally need `PUBLIC_DEMO_ACCOUNT_ID`, `PUBLIC_DEMO_SECRET_KEY` (the disposable D17 function-call key, public on purpose) and `PUBLIC_{ATTACK,HONEST}_{IMPL,CODEHASH,CURRENT_IMPL,INIT_CALLDATA}`; any missing or malformed value keeps them locked. A missing gate account means `Awaiting activation`, never a sample value.
 
-### 5.1 QR "take it" card
+### 5.1 QR "take it" card (activation-gated)
 
 - `figure` containing the QR as inline SVG with `role="img"` and a text alternative: `QR code. Encodes a disposable, testnet-only NEAR key that holds the demo governor role. Not a production key.` The key itself is not put in `alt` (too long).
 - `figcaption` states: `This key is public on purpose. It can only act on the demo. Never reuse it.`
@@ -287,11 +112,11 @@ Page landmarks: `header` (banner) with skip link and `nav aria-label="Sections"`
 
 ### 5.2 Section order rationale
 
-Hero (what and where to take the key) then Constitution (what is committed) then Attack then Upgrade (the two proofs) then Receipts (evidence) then Audit (the claim's preconditions) then How it works then Limits. The order mirrors the demo: state the law, break it, obey it, show the paper.
+Claim, then the story of one attack and one honest upgrade, then the mechanism, then what is committed (rules, timelock), then the paper (evidence), then how to check it yourself, then the limits. A judge who stops after the story already knows what, why and where to verify.
 
 ### 5.3 Navigation
 
-Single line at 1280: `Constitution, Attack, Upgrade, Receipts, Audit, How it works, Limits` (seven items, no secondary nav). At 390 a `button aria-expanded` disclosure opens the same list. Header is not sticky at 390; at 1280 it may be sticky with `scroll-padding-top` equal to header height so focused elements are never hidden.
+Single line at 1280: `How it works, Rules, Timelock, Evidence, Limits` plus the filled `Try it`. At 390 the links collapse into a native `details` disclosure; the filled `Try it` stays visible. The header is sticky with a paper background; `scroll-padding-top` equals its height so focused elements and anchors are never hidden.
 
 ## 6. State matrix
 
@@ -382,7 +207,7 @@ Verifier stages `signing`, `submitting` and `done` are the verifier's own tail (
 ### 6.6 Certified
 
 - **Trigger:** verdict `Pass` recorded on the gate (`AiReview::Clean`).
-- **Visual:** ladder up to the verdict `Done`, `--pass` verdict marker and word `Certified`. Direction A: the seal is not impressed yet; it waits for execution (see 6.9) and a refusal seal is impressed at the verdict (see 6.10). The receipt article appears with `Pending` in the signing and EVM fields.
+- **Visual:** ladder up to the verdict `Done`, `--pass` verdict marker and word `Certified`. The receipt article appears with `Pending` in the signing and EVM fields.
 - **Copy:** title `Certified`. Body `All {n} rules passed under rule set {hash short}. No candidate counterexample reproduced. Next, the gate asks the MPC network to sign this exact transaction.`
 - **Live:** polite.
 - **Recovery:** none.
@@ -406,7 +231,7 @@ Verifier stages `signing`, `submitting` and `done` are the verifier's own tail (
 ### 6.9 Executed
 
 - **Trigger:** EVM `included` with success, and the page read implementation after equal to the expected implementation.
-- **Visual:** `--pass` verdict marker and word `Executed`. Direction A: the **seal is impressed now** (`CERTIFIED`, rule-set short hash) because the full chain of evidence is observed. Direction B: `before` and `after` lines with differing characters highlighted. Explorer links appear (7.4).
+- **Visual:** `--pass` verdict marker and word `Executed`. `before` and `after` implementation lines set in the same mono columns with the differing characters highlighted. Explorer links appear (7.4).
 - **Copy:** title `Executed on Base Sepolia`. Body `Block {n}. The proxy implementation changed from {before short} to {after short}. This upgrade passed through the gate, was signed by the MPC network, and executed through the constitution executor.`
 - **Live:** polite.
 - **Recovery:** link `View the receipt`, `Run the attack`.
@@ -414,7 +239,7 @@ Verifier stages `signing`, `submitting` and `done` are the verifier's own tail (
 ### 6.10 Rejected
 
 - **Trigger:** verdict `Reject {rule_id, reason_code}` or gate `Rejected`.
-- **Visual:** verdict word `Refused` in `--refuse` with the rule id (`R2`). Direction A: seal impressed with `REFUSED` and the rule id. Ladder rows after the verdict show `Not reached`. EVM rows read `Not requested`, never `Pending`. Proxy line: `before` and `after` equal, `unchanged, observed at block {n}`, rendered only after two observed reads agree.
+- **Visual:** verdict word `Refused` in `--refuse` with the rule id (`R2`). Ladder rows after the verdict show `Not reached`. EVM rows read `Not requested`, never `Pending`. Proxy line: `before` and `after` equal, set character for character in the same mono columns with `=` between them, `unchanged, observed at block {n}`, rendered only after two observed reads agree.
 - **Copy:** title `Refused under {rule_id} {rule name}`. Body `{plain reason from the evidence, for example: The verifier reproduced a sequence in which address {addr} withdraws {pct}% of the vault.} No signature was requested. The proxy implementation is unchanged.` If evidence detail is not available: `The verifier reproduced a sequence that violates {rule name}. No signature was requested. The proxy implementation is unchanged.` The two last sentences each render only when their facts are observed: `No signature was requested` requires gate state `Rejected` and no `sign_requested` event; `unchanged` requires the two slot reads.
 - **Live:** polite (a verdict is information, not an emergency).
 - **Recovery:** `View the evidence hash` (copy), `Run the upgrade`, and the line `The reviewer can only refuse, never approve.`
@@ -462,7 +287,7 @@ Verifier stages `signing`, `submitting` and `done` are the verifier's own tail (
 ### 6.15 Network unavailable
 
 - **Trigger:** three consecutive failed fetches to NEAR RPC, Base RPC, the verifier API or the receipts JSON.
-- **Visual:** a boxed banner at the top of the affected surface (and the ledger strip), text `Not live`. Last observed values stay visible but each gets `Last observed {time} UTC` and a hatched or dashed treatment; live styling (verdict colors, seal) is removed from stale data.
+- **Visual:** a boxed banner at the top of the affected surface (and the ledger strip), text `Not live`. Last observed values stay visible but each gets `Last observed {time} UTC` and a hatched or dashed treatment; live styling (verdict colors) is removed from stale data.
 - **Copy:** title `Cannot reach {Base Sepolia | NEAR testnet | the verifier}`. Body `Showing the last observed state from {time} UTC. Nothing here is live until the connection returns.`
 - **Live:** assertive once on first failure, polite afterwards and on recovery (`Connection restored. Live data resumed.`).
 - **Recovery:** `Retry now` (also retries automatically with backoff [I]: 2 s, 4 s, 8 s up to 30 s; stop polling when the tab is hidden).
@@ -518,8 +343,9 @@ One `article aria-labelledby` per receipt. Heading `Receipt {proposal id}: {fixt
 - **Evidence label** (a text badge with an icon, never color only):
   - `Testnet, observed`: data read live by this page. Solid border.
   - `Testnet, recorded {date}`: a real testnet receipt saved earlier (the rehearsal fallback). Solid border, the word `Recorded`. Never replayed as live (PRD never-cut demo).
-  - `Local test, not chain evidence`: dashed border and hatch fill, no explorer links, no seal. Maps to receipt `labels.network = "local"`.
-- Verdict word and marker, plus the Seal (direction A) or before and after (direction B).
+  - `Local test, not chain evidence`: dashed border and hatch fill, no explorer links. Maps to receipt `labels.network = "local"`.
+  - `Spike, recorded {date}`: real chain evidence from the minimal spike gate (no verifier in the loop). Solid border, the word `Spike`. Never presented as a production run.
+- Verdict word and marker, plus the before and after implementation lines.
 - Schema line in mono: `constitution.receipt/1`.
 
 ### 7.3 Field order and sources
@@ -569,12 +395,12 @@ Footer: `Download receipt JSON` (the exact bytes rendered, `download` attribute)
 
 ## 8. Accessibility and responsiveness checklist
 
-Targets: WCAG 2.2 AA minimum, AAA contrast for body text where the palette allows (all three directions already measure above 7:1 for body text, section 3).
+Targets: WCAG 2.2 AA minimum, AAA contrast for body text where the palette allows (section 3 measures ink at 15.92:1 on paper).
 
 **Keyboard and focus**
-- [ ] Tab order follows DOM order: skip link, header nav, hero link, QR copy button, QR text disclosure, constitution disclosures and copy buttons, Attack submit, Upgrade submit, receipts (each hash expand and copy), audit run, footer links.
-- [ ] Focus ring: 2 px solid `--accent`, 2 px offset, never removed. Measured against ground: A 9.66:1, B 10.02:1, C 19.80:1.
-- [ ] No sticky element obscures focus (2.4.11): `scroll-padding-top` on `html`, header not sticky at 390.
+- [ ] Tab order follows DOM order: skip link, header nav, hero links, story (no controls), section links and copy buttons, evidence re-check, try-it toggle and copy, footer links. After activation: QR copy and disclosure, Attack and Upgrade submit, receipt expand and copy, audit run.
+- [ ] Focus ring: 2 px solid `--violet` with 3 px offset on light grounds (6.41:1 on paper), `--ink` on lavender (7.37:1), `--lav` on night (7.70:1). Never removed.
+- [ ] No sticky element obscures focus (2.4.11): `scroll-padding-top` on `html` equals the sticky header height.
 - [ ] Every control reachable and operable with keyboard only; no hover-only information anywhere (tooltips are replaced by visible text or Expand buttons).
 - [ ] Disclosures use native `details` and `button aria-expanded`.
 
@@ -584,12 +410,12 @@ Targets: WCAG 2.2 AA minimum, AAA contrast for body text where the palette allow
 - [ ] One `output` (implicit status role) per interactive surface, plus explicit `aria-live` where needed. Live regions exist in the DOM before content changes. Text in them is full sentences. Countdowns are never in a live region.
 - [ ] `lang="en"`; descriptive `title`; every link text states its destination.
 - [ ] QR has a text alternative and a text-key fallback (section 5.1).
-- [ ] No letter-by-letter DOM splitting of headings (R9 avoid).
+- [ ] No letter-by-letter DOM splitting of headings; split headlines in the story are two real text nodes inside one heading.
 
 **Color and contrast**
 - [ ] Text at least 4.5:1, large text at least 3:1, UI component boundaries and focus indicators at least 3:1.
 - [ ] State is never color alone: marker shape plus text label on every state (section 6.1).
-- [ ] Respect `prefers-contrast: more` (raise `--line` to `--line-strong`) and `forced-colors: active` (seal, markers and borders keep meaning through borders and text) [I].
+- [ ] Respect `prefers-contrast: more` (raise `--line` to `--line-strong`) and `forced-colors: active` (markers and borders keep meaning through borders and text) [I].
 - [ ] Stale data loses verdict colors (section 6.15).
 
 **Targets and zoom**
@@ -601,12 +427,12 @@ Targets: WCAG 2.2 AA minimum, AAA contrast for body text where the palette allow
 
 | Section | 390 px | 1280 px |
 | --- | --- | --- |
-| Hero | One column: h1 (3 to 4 lines at about 34 px), subtext, link, scope chip, QR card, then ledger strip 2x2 | h1 in 2 lines at 64 px in columns 1 to 8, QR card columns 9 to 12, ledger strip 4 cells in one row inside the first viewport |
-| Constitution | Marginal label above; rules table with ID and Rule, detail in `details`; queue as stacked rows | Marginalia in columns 1 to 3, table columns 4 to 12, queue as a ruled table |
-| Attack and Upgrade | Panel full width; stage ladder vertical; button full width | Two panels side by side only if both fit without cramped ladders, otherwise stacked; ladder left, receipt preview right |
-| Receipts | `dl` term above value; hashes truncated to the 390 rule | `dl` as term and value columns; hashes at the 1280 rule |
-| Audit | Checks stacked | Checks as ruled rows with the observed value right-aligned |
-| Footer | Stacked links | One row |
+| Hero | Line art on top at reduced height, h1 at about 42 px in 4 to 5 lines, pitch, CTAs stacked full width | Line art across the upper viewport, h1 bottom-left in 2 to 3 lines, pitch and two CTAs bottom-right |
+| Story | Not pinned; six steps stacked, each with its card | Pinned split headline with the card between; mono indicator at the bottom |
+| How it works | Rail on the left edge, steps stacked | Rail in the centre column, text left, card right |
+| Rules | Each rule a stacked row with its limit below | Ruled table, id, rule, what it checks, limit |
+| Evidence | Status rows stacked; hashes truncated to the 390 rule | Status ledger as ruled rows; spike receipt as a two-column `dl` |
+| Footer | Stacked | Large mark left, links in a row |
 
 **Performance and robustness [I]**
 - [ ] Static HTML contains all non-live content and recorded receipts; page is understandable with JavaScript disabled.
@@ -616,34 +442,26 @@ Targets: WCAG 2.2 AA minimum, AAA contrast for body text where the palette allow
 
 ## 9. Motion
 
-**Principles [I, informed by the Emil Kowalski skill guidance].** Motion explains a state change or confirms a press. It is never ambient. Frequent actions get no animation. Nothing moves that the user did not cause or that was not caused by a real observed event. No looping animation. All motion is an enhancement inside `@media (prefers-reduced-motion: no-preference)`.
-
-**Durations and easings (proposal).**
+Section 4 sets the library, the scroll model and the static-first rule. Component timings:
 
 | Use | Duration | Easing |
 | --- | --- | --- |
-| Button press feedback (`:active` scale 0.98) | 120 ms | `--ease-out` |
+| Button press (`:active` scale 0.97) | 160 ms | `--ease-out` |
 | Stage marker change (color and shape swap) | 120 ms | `--ease-out` |
-| New receipt row or field commit on live update (opacity 0 to 1, translateY 4 px to 0) | 200 ms | `--ease-out` |
-| Disclosure open and close | 0 ms (instant) | n/a |
-| Seal impression (direction A): opacity 0 to 1, scale 1.06 to 1 | 280 ms | `--ease-out` |
-| Hero entrance (optional, once on load): headline, subtext, link, 40 ms stagger, total under 400 ms | 200 ms each | `--ease-out` |
+| Live field commit (opacity 0 to 1, translateY 4 px to 0) | 200 ms | `--ease-out` |
+| Story card swap (opacity, 28 px rise and 0.97 scale; outgoing card fades only) | 360 ms opacity, 600 ms transform | `--ease-out` |
+| Story act headline (opacity, 0.5 em rise, 6 px blur to none; right half 80 ms later) | 500 to 800 ms | `--ease-out` |
+| Story ground swap night to lavender | 700 ms | `--ease-in-out` |
+| Entrance curtain (mark, wordmark, line, split) | about 2.9 s total, split 850 ms | `expo.out`, split `expo.inOut` |
+| Hero entrance (words, highlight wipe, line draw, mark assembly) | 1.1 to 1.4 s, words staggered 45 ms | `expo.out`, `power3.out` |
+| Hero attempt loop | 1.6 s per attempt, certified 2.6 s, 0.9 s rest, paused off screen | `power2.in`, linear |
+| Rule figure plays, scroll reveals | 300 to 900 ms, staggered 80 to 220 ms | `--ease-out` |
+| Story step changes, timelock dial | scrubbed by scroll | direct progress |
+| Disclosure open and close, Human/Agent toggle | instant | n/a |
 
-No `transition: all`. Never animate from `scale(0)`. Interruptible CSS transitions, not keyframes, for anything that can retrigger.
+No `transition: all`. Never animate from `scale(0)`. Interruptible CSS transitions for anything that can retrigger.
 
-**What animates:** stage markers when a stage is observed; receipt rows arriving by live update (not on initial load); the seal once; button press; the hero on first load.
-
-**What never animates:** hashes and addresses (no scramble, decode, typing or count effects); numbers (no count-up; the timelock countdown updates in place); status text (instant swap); progress (there is none to animate); the QR; the proxy before and after lines; scroll position (no smooth-scroll hijack, no parallax, no scroll-triggered reveals, so a judge scrolling fast or a screenshot tool never sees empty space); backgrounds; cursor effects; marquees; autoplay media.
-
-**Library proposal [I].** CSS only: transitions, `@starting-style` and `prefers-reduced-motion` media query cover everything above [browser support of `@starting-style` and scroll-driven animation not checked, U]. If an engineer wants imperative sequencing for the seal or the receipt commit, the `motion` package's `animate()` has a mini build of 3.2 kb [V, motion.dev/docs/animate]. GSAP is not needed. Neither is an approved dependency; the lead and founder approve.
-
-**`prefers-reduced-motion: reduce` behavior (full).**
-- All transitions and animations are off: no fade, no translate, no scale, no stagger.
-- Stage markers, receipt rows and the seal appear in their final state instantly.
-- `:active` feedback becomes a background color change with no transform.
-- `scroll-behavior: auto`; anchors jump.
-- The hero is static.
-- No information depends on motion: every state change is also announced in text and in the live region.
+**`prefers-reduced-motion: reduce`:** no GSAP setup at all, no transitions, no transforms; the story is the static ordered list; anchors jump; `:active` feedback is a background change. No information depends on motion.
 
 ## 10. Copy voice
 
@@ -677,12 +495,7 @@ No `transition: all`. Never animate from `scale(0)`. Interruptible CSS transitio
 
 ## 12. Founder and lead decisions
 
-**D7 (founder): visual direction. OPEN.** Options A, B, C above; recommendation A with B's receipts. Decision needed before frontend build starts; not blocking spec work.
-
-**Font licensing to confirm (founder).**
-- Recommended set is Newsreader, Geist Sans, Geist Mono, optionally JetBrains Mono. All are SIL OFL 1.1 per their repositories [V]. Confirm that open fonts are acceptable.
-- Any commercial face (GT Super Display, Neue Haas Display, GT America, Feature Mono, Suisse) is [U] on price and web licence and requires founder approval and spend, which is not authorized.
-- Self-hosting plan (Astro's own font handling versus manual `@font-face`) is [U] for Astro 7.4.2; engineering decides.
+**D7 (founder): visual direction. RESOLVED 2026-11-07.** Follow the founder's brand (`asset/` logos) and reference video, elevated for CONSTITUTION; sections 2 to 4 record the result. Open licences only: Geist and Geist Mono (OFL 1.1, self-hosted); GSAP under its standard no-charge licence. No paid face, no spend.
 
 **Lead answers to the builder questions (2026-10-26; contracts updated in ARCHITECTURE, SMART-CONTRACT and OPEN-DECISIONS D17).**
 - **Q1. Sealing.** The page seals the fixture bundle itself with `libsodium-wrappers` 0.8.4 `crypto_box_seal` to the `transport_pubkey` from `GET /v1/identity` (npm metadata checked 2026-10-26). Interop with the Rust `crypto_box` 0.9.1 sealed box is proven by vector T-ENC-3 before use. `Sealing the source bundle` is a visible sub-stage.
@@ -691,76 +504,14 @@ No `transition: all`. Never animate from `scale(0)`. Interruptible CSS transitio
 - **Q4. Receipts.** Two sources, labeled distinctly: `Observed` receipts assembled live in the browser from gate views, verifier run status and Base Sepolia reads; `Recorded` receipts from committed `receipts/*.json` (rehearsal and submission runs) bundled at build time.
 - **Q5. Governance on the page.** One preset action, "Try to change the rules now": schedules a harmless preset `SetParams` change with the demo key and immediately calls `apply_change`, showing the real `E53_TIMELOCK_NOT_ELAPSED` refusal. The queue is otherwise read-only.
 - **Q6. Writes allowed.** The demo key may call `propose`, `schedule_change` and `apply_change` only. The page may also broadcast an already signed raw transaction to Base Sepolia (permissionless) and re-post a run to the verifier. `retry_sign` and `bump_fee` are shown as copyable CLI commands, not buttons.
-- **Q7. Footer links.** Repo `https://github.com/Dylansius11/constitution` (D9; exists only after 2026-11-01). The X post link comes from `PUBLIC_X_POST_URL` and stays hidden until the founder publishes.
+- **Q7. Footer links.** Repo link from `PUBLIC_REPO_URL`, hidden until the founder publishes the repository (B6). The X post link comes from `PUBLIC_X_POST_URL` and stays hidden until the founder publishes.
 
 **Status of this document for D8 (hosting, undecided).** Nothing here depends on server features. Headers such as CSP and caching depend on the host; if the host cannot set headers, use a `meta` CSP [U].
 
 ## 13. Sources
 
-Opened this session, 2026-10-26 (managed headless Chromium, isolated profile; no logins, no form submissions; screenshots saved only under `scratch/design-refs/`):
-
-Inspiration hubs
-- https://www.awwwards.com/
-- https://www.awwwards.com/websites/sites_of_the_day/
-- https://www.awwwards.com/websites/typography/
-- https://www.awwwards.com/websites/finance/
-- https://www.awwwards.com/websites/editorial/
-- https://www.awwwards.com/websites/legal/
-- https://www.awwwards.com/websites/law/
-- https://www.awwwards.com/websites/blockchain/
-- https://www.awwwards.com/websites/security/
-- https://www.awwwards.com/websites/magazine/
-- https://www.awwwards.com/websites/fintech/
-- https://www.awwwards.com/websites/banking/
-- https://save.design/
-- https://save.design/explore (Industry filter, cybersecurity)
-- https://save.design/website/railgun-org
-
-Awwwards entry pages (used for dates, scores, credits and the external URL)
-- https://www.awwwards.com/sites/forge-automotive
-- https://www.awwwards.com/sites/esr-bespoke
-- https://www.awwwards.com/sites/heron-ai
-- https://www.awwwards.com/sites/milledollars
-- https://www.awwwards.com/sites/signal-a-studio
-- https://www.awwwards.com/sites/dicta-legal-poetry-by-h-ahuja
-- https://www.awwwards.com/sites/swiss-precision-in-law
-- https://www.awwwards.com/sites/orchid-security-2
-- https://www.awwwards.com/sites/the-explora-journal
-- https://www.awwwards.com/sites/history-of-blockchain
-- https://www.awwwards.com/sites/cartier-le-choeur-des-pierres
-- https://www.awwwards.com/sites/format
-- https://www.awwwards.com/sites/belgrade-arbor
-- https://www.awwwards.com/sites/offfforum
-
-Reference sites
-- https://forgeautomotive.co.uk/
-- https://www.esrbespoke.au/
-- https://heronaiapp.com/
-- https://milledollars.fr/
-- https://signal-a.studio/
-- https://railgun.org/
-- https://cyera.com/
-- https://cotool.ai/
-- https://hackfirst.io/
-- https://dicta.icaad.ngo/
-- https://drpb.ch/ and https://drpb.ch/en
-- https://www.orchid.security/
-- https://format.obys.agency/
-- https://www.offforum.com/
-- https://explorajourneys.com/int/en/explora-journal
-- https://www.constituteproject.org/constitution/United_States_of_America_1992
-
-Fonts and libraries
-- https://github.com/productiontype/Newsreader (OFL 1.1, variable)
-- https://github.com/vercel/geist-font (OFL 1.1, Geist Sans, Mono, Pixel)
-- https://github.com/JetBrains/JetBrainsMono (OFL 1.1)
-- https://github.com/adobe-fonts/source-serif (OFL 1.1, considered and not selected; listed as a fallback serif)
-- https://motion.dev/docs/animate
-
-Explorers
-- https://testnet.nearblocks.io/ (loaded)
-- https://sepolia.basescan.org/ (bot verification page; not bypassed)
-
-Project documents read: `docs/PRD.md`, `docs/technical/ARCHITECTURE.md` (receipt JSON, verifier stages, page responsibilities), `docs/technical/SMART-CONTRACT.md` (proposal and change states). Installed skills read for guidance only: impeccable, design-taste-frontend, emil-design-eng, motion. No skill scripts were run.
-
-Screenshots: `scratch/design-refs/` holds 28 PNG files; 27 are cited in section 2 and `28-dicta-scroll-1280.png` is an unused blank frame.
+- Founder brand files `asset/full-logo-white.png`, `asset/icon-logo-black.png`, `asset/logo-only-black.png` and reference video `asset/reference.mp4` (gitignored), read 2026-11-07.
+- npm registry metadata read 2026-11-07: `gsap` 3.15.1 (standard no-charge licence, https://gsap.com/standard-license), `@fontsource-variable/geist` 5.3.0 and `@fontsource-variable/geist-mono` 5.3.0 (`OFL-1.1`).
+- Project documents: `docs/PRD.md` (guarantees G1 to G4, limits, never-cut demo), `docs/technical/ARCHITECTURE.md` (verifier stages, receipt JSON, CLI), `docs/technical/SMART-CONTRACT.md` (states, panic codes), `rules/manifest.json`, `spikes/gate-min/base-sepolia-evidence.json`.
+- Skills read for guidance only: impeccable (craft floor), emil-design-eng, design-taste-frontend, gsap-core, ponytail.
+- The 2026-10-26 reference research (Awwwards, save.design and 20 reference sites, screenshots in `scratch/design-refs/`) informed the retired directions and stays in git history.
