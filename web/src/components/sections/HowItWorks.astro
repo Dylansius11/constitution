@@ -1,0 +1,195 @@
+---
+import HowCard from "../motion/HowCard.astro";
+import VerdictFork from "../motion/VerdictFork.astro";
+import Tag from "../ui/Tag.astro";
+
+/**
+ * How it works (DESIGN 2, reference frames 20 s and 31 s): six numbered steps on a vertical rail.
+ * The numbers carry the real order of the pipeline. Static baseline: rail and fork fully drawn.
+ */
+const steps = [
+  {
+    title: "Propose",
+    text: "Anyone registers a new implementation: its address, its code hash, the implementation it expects to replace, init calldata and a commitment to the sealed source. A refundable deposit is reserved, and each account can have one active proposal.",
+  },
+  {
+    title: "Verify",
+    text: "The attested verifier, running in a Phala TDX enclave, unseals the source, compiles it with pinned solc 0.8.38, checks the code hash and runs rules R1 to R5.",
+  },
+  {
+    title: "Red-team",
+    text: "A private AI on NEAR AI Cloud, inside a TEE, searches for a counterexample. It can only veto, and only with one the verifier reproduces.",
+  },
+  {
+    title: "Gate",
+    text: "The NEAR gate records the signed verdict. A refusal ends there: no signature is requested.",
+  },
+  {
+    title: "Chain Signature",
+    text: "For a certified proposal, the gate builds the exact EIP-1559 execute(…) call and asks the NEAR MPC network to sign it.",
+  },
+  {
+    title: "Execute",
+    text: "Anyone relays the signed call. ConstitutionExecutor checks the caller, an unused certificate, the deadline, the code hash and the current implementation, then upgrades through ProxyAdmin.",
+  },
+] as const;
+---
+
+<section id="how" class="how" aria-labelledby="how-title">
+  <div class="container how__head">
+    <h2 id="how-title">A proposal enters one line. The rules decide where it goes.</h2>
+    <p class="lede">
+      Every upgrade takes the same six steps. A refusal ends at the gate, and nothing is signed.
+    </p>
+  </div>
+
+  <VerdictFork />
+
+  <div class="container">
+    <ol class="how__steps">
+      {
+        steps.map((step, i) => (
+          <li class="how__step">
+            <div class="how__rail" aria-hidden="true">
+              <span class="how__node" />
+              {i < steps.length - 1 && <span class="how__seg" />}
+            </div>
+            <div class="how__text">
+              <Tag tone="lav">{String(i + 1).padStart(2, "0")}</Tag>
+              <h3>{step.title}</h3>
+              <p>{step.text}</p>
+            </div>
+            <div class="how__card">
+              <HowCard step={i as 0 | 1 | 2 | 3 | 4 | 5} />
+            </div>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</section>
+
+<script>
+  import { initHow } from "../motion/how.ts";
+
+  initHow();
+</script>
+
+<style>
+  .how {
+    padding-block: var(--section-y);
+    background: var(--paper-2);
+    overflow-x: clip;
+  }
+
+  .how__head {
+    display: grid;
+    gap: var(--space-5);
+    margin-bottom: var(--space-8);
+  }
+
+  .how__head h2 {
+    font-size: var(--text-3xl);
+    max-width: 20ch;
+  }
+
+  .how__steps {
+    margin-top: var(--space-9);
+    list-style: none;
+  }
+
+  /* Mobile first: rail on the left edge, text then card in one column. */
+  .how__step {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    column-gap: var(--space-4);
+  }
+
+  .how__rail {
+    position: relative;
+    grid-row: 1 / span 2;
+  }
+
+  .how__text {
+    grid-column: 2;
+    display: grid;
+    justify-items: start;
+    align-content: start;
+    gap: var(--space-3);
+    padding-bottom: var(--space-5);
+  }
+
+  .how__text h3 {
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-display);
+  }
+
+  .how__text p {
+    max-width: 38ch;
+    color: var(--ink);
+  }
+
+  .how__card {
+    grid-column: 2;
+    padding-bottom: var(--space-8);
+  }
+
+  .how__step:last-child .how__card {
+    padding-bottom: 0;
+  }
+
+  .how__node {
+    position: absolute;
+    top: 0.3rem;
+    left: 50%;
+    width: 0.9rem;
+    height: 0.9rem;
+    margin-left: -0.45rem;
+    border: 1.75px solid var(--lav);
+    border-radius: 50%;
+    background: var(--lav);
+    transition: background-color var(--dur-swap) var(--ease-out);
+  }
+
+  .how__node:global(.is-waiting) {
+    background: var(--paper-2);
+  }
+
+  .how__seg {
+    position: absolute;
+    top: 1.2rem;
+    bottom: -0.3rem;
+    left: 50%;
+    width: 1.75px;
+    margin-left: -0.875px;
+    background: var(--lav);
+    transform-origin: top;
+  }
+
+  @media (min-width: 48rem) {
+    .how__step {
+      grid-template-columns: minmax(0, 1fr) 2.75rem minmax(0, 1.15fr);
+      column-gap: var(--space-5);
+    }
+
+    .how__rail {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+
+    .how__text {
+      grid-column: 1;
+      grid-row: 1 / span 2;
+      padding-bottom: var(--space-8);
+    }
+
+    .how__card {
+      grid-column: 3;
+      grid-row: 1 / span 2;
+    }
+
+    .how__step:last-child .how__text {
+      padding-bottom: 0;
+    }
+  }
+</style>
