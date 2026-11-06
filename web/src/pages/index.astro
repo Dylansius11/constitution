@@ -1,11 +1,28 @@
 ---
-// Placeholder so `astro build` has a route. Layout, copy and styling wait for founder decision D7
-// (docs/DESIGN.md); the data layer in src/lib is design-neutral.
+import Footer from "../components/layout/Footer.astro";
+import Header from "../components/layout/Header.astro";
+import Evidence from "../components/sections/Evidence.astro";
+import Hero from "../components/sections/Hero.astro";
+import HowItWorks from "../components/sections/HowItWorks.astro";
+import Limits from "../components/sections/Limits.astro";
+import Rules from "../components/sections/Rules.astro";
+import Story from "../components/sections/Story.astro";
+import Timelock from "../components/sections/Timelock.astro";
+import TryIt from "../components/sections/TryIt.astro";
+import Intro from "../components/motion/Intro.astro";
+import Base from "../layouts/Base.astro";
 ---
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>CONSTITUTION</title>
-  </head>
-  <body></body>
-</html>
+
+<Base>
+  <Intro slot="header" />
+  <Header slot="header" />
+  <Hero />
+  <Story />
+  <HowItWorks />
+  <Rules />
+  <Timelock />
+  <Evidence />
+  <TryIt />
+  <Limits />
+  <Footer slot="footer" />
+</Base>
