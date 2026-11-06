@@ -61,8 +61,9 @@
   --section-y: clamp(5rem, 3rem + 7vw, 9rem);
 
   /* layout */
-  --container: 72rem;
-  --gutter: clamp(1.25rem, 0.6rem + 2.6vw, 2.5rem);
+  /* wide canvas: content runs nearly edge to edge; running text keeps --measure */
+  --container: 112rem;
+  --gutter: clamp(1.25rem, 0.4rem + 3.6vw, 4.5rem);
   --measure: 62ch;
   --header-h: 4.25rem;
 

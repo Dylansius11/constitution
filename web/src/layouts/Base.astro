@@ -25,6 +25,18 @@ const { title = site.title, description = site.description } = Astro.props;
     <link rel="alternate" type="text/plain" href="/llms.txt" title="Agent guide" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
+    <script is:inline>
+      // Blocks marked data-reveal start lowered only when motion is welcome and the observer loads;
+      // if it has not started within 2.5 s the page drops the start state and stays static.
+      (() => {
+        const root = document.documentElement;
+        if (!matchMedia("(prefers-reduced-motion: no-preference)").matches) return;
+        root.classList.add("reveal-armed");
+        window.setTimeout(() => {
+          if (!root.classList.contains("reveal-ready")) root.classList.remove("reveal-armed");
+        }, 2500);
+      })();
+    </script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -34,6 +46,9 @@ const { title = site.title, description = site.description } = Astro.props;
     </main>
     <slot name="footer" />
     <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+    <script>
+      import "../components/motion/reveal.ts";
+    </script>
   </body>
 </html>
 

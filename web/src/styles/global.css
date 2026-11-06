@@ -149,6 +149,20 @@ html {
   color: var(--ink-muted);
 }
 
+/* Scroll reveal (motion/reveal.ts). Only armed with JavaScript and motion allowed. */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-armed [data-reveal] {
+    transition:
+      opacity 700ms var(--ease-out) calc(var(--i, 0) * 80ms),
+      transform 900ms var(--ease-out) calc(var(--i, 0) * 80ms);
+  }
+
+  .reveal-armed [data-reveal]:not(.is-in) {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
