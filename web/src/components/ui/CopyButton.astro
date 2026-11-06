@@ -1,0 +1,140 @@
+---
+/**
+ * Copies `value` (or the text of the element with id `target`) and confirms in the page's polite
+ * announcer: "Copied {label}". Works with keyboard; without JavaScript it is hidden (noscript users
+ * select the visible text).
+ */
+interface Props {
+  /** What is copied, spoken in the confirmation: "transaction hash", "command". */
+  label: string;
+  value?: string;
+  target?: string;
+  tone?: "light" | "dark";
+  class?: string;
+}
+
+const { label, value, target, tone = "light", class: className } = Astro.props;
+---
+
+<button
+  type="button"
+  class:list={["copy", `copy--${tone}`, className]}
+  data-copy-value={value}
+  data-copy-target={target}
+  data-copy-label={label}
+  aria-label={`Copy ${label}`}
+  hidden
+>
+  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"></rect>
+    <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5"></path>
+  </svg>
+  <span class="copy__text" aria-hidden="true">Copy</span>
+</button>
+
+<script>
+  const announce = (text: string): void => {
+    const region = document.getElementById("announcer");
+    if (!region) return;
+    region.textContent = "";
+    // A fresh text node after clearing makes screen readers repeat identical messages.
+    requestAnimationFrame(() => {
+      region.textContent = text;
+    });
+  };
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-copy-label]")) {
+    button.hidden = false;
+  }
+
+  document.addEventListener("click", async (event) => {
+    const button = (event.target as Element | null)?.closest<HTMLButtonElement>(
+      "button[data-copy-label]",
+    );
+    if (!button) return;
+    const targetId = button.dataset["copyTarget"];
+    const text =
+      button.dataset["copyValue"] ??
+      (targetId ? document.getElementById(targetId)?.textContent?.trim() : undefined);
+    if (!text) return;
+    const label = button.dataset["copyLabel"] ?? "value";
+    const face = button.querySelector(".copy__text");
+    try {
+      await navigator.clipboard.writeText(text);
+      announce(`Copied ${label}.`);
+      if (face) face.textContent = "Copied";
+    } catch {
+      announce(`Could not copy the ${label}. Select the text and copy it manually.`);
+      if (face) face.textContent = "Select text";
+    }
+    window.setTimeout(() => {
+      if (face) face.textContent = "Copy";
+    }, 1600);
+  });
+</script>
+
+<style is:global>
+  .copy {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2rem;
+    padding: 0 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    cursor: pointer;
+    transition:
+      transform var(--dur-press) var(--ease-out),
+      border-color var(--dur-base) ease;
+  }
+
+  /* 32 px visual, 44 px target (DESIGN 8, targets). */
+  .copy::before {
+    content: "";
+    position: absolute;
+    inset: -6px -2px;
+  }
+
+  .copy[hidden] {
+    display: none;
+  }
+
+  .copy svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.3;
+  }
+
+  .copy:hover {
+    border-color: var(--line-strong);
+  }
+
+  .copy:active {
+    transform: scale(0.96);
+  }
+
+  .copy--dark {
+    border-color: rgb(237 235 245 / 0.22);
+    color: var(--night-text);
+  }
+
+  .copy--dark:hover {
+    border-color: rgb(237 235 245 / 0.5);
+  }
+
+  .copy--dark:focus-visible {
+    outline-color: var(--lav);
+  }
+
+  /* Text width never jumps between Copy and Copied. */
+  .copy__text {
+    display: inline-block;
+    min-width: 5.5ch;
+    text-align: left;
+  }
+</style>
