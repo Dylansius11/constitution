@@ -14,10 +14,12 @@ interface Props {
   /** Accessible name of the tab list, for example "Audience". */
   label: string;
   tabs: CodeTab[];
+  /** Window title shown in the bar, for example the working directory. */
+  title?: string;
   class?: string;
 }
 
-const { id, label, tabs, class: className } = Astro.props;
+const { id, label, tabs, title, class: className } = Astro.props;
 const copyText = (tab: CodeTab): string =>
   tab.lines
     .flatMap((line) => (line.cmd ? [line.cmd] : []))
@@ -26,6 +28,7 @@ const copyText = (tab: CodeTab): string =>
 
 <div class:list={["code", className]} data-code-tabs>
   <div class="code__bar">
+    {title && <p class="code__title" aria-hidden="true">{title}</p>}
     {
       tabs.length > 1 && (
         <div class="code__tabs" role="tablist" aria-label={label} hidden>
@@ -58,11 +61,11 @@ const copyText = (tab: CodeTab): string =>
         <div class="code__head">
           <CopyButton label={`${tab.label.toLowerCase()} commands`} value={copyText(tab)} tone="dark" />
         </div>
-        <pre tabindex="0" aria-label={`${tab.label} commands`}><code>{tab.lines.map((line) =>
+        <pre tabindex="0" aria-label={`${tab.label} commands`}><code>{tab.lines.map((line, i) =>
           line.cmd ? (
-            <span class="code__line"><span class="code__prompt" aria-hidden="true">$ </span>{line.cmd}{"\n"}</span>
+            <span class="code__line" style={`--i:${i}`}><span class="code__prompt" aria-hidden="true">$ </span>{line.cmd}</span>
           ) : (
-            <span class="code__note">{`# ${line.note ?? ""}`}{"\n"}</span>
+            <span class="code__note" style={`--i:${i}`}>{`# ${line.note ?? ""}`}</span>
           ),
         )}</code></pre>
       </div>
@@ -71,7 +74,25 @@ const copyText = (tab: CodeTab): string =>
 </div>
 
 <script>
+  // Lines print in once when the block scrolls into view; never for reduced motion.
+  const reveal = matchMedia("(prefers-reduced-motion: no-preference)").matches
+    ? new IntersectionObserver(
+        (entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add("is-on");
+            observer.unobserve(entry.target);
+          }
+        },
+        { rootMargin: "0px 0px -20% 0px" },
+      )
+    : null;
+
   for (const root of document.querySelectorAll<HTMLElement>("[data-code-tabs]")) {
+    if (reveal && root.getBoundingClientRect().top > innerHeight) {
+      root.classList.add("is-armed");
+      reveal.observe(root);
+    }
     const list = root.querySelector<HTMLElement>("[role=tablist]");
     if (!list) continue;
     const tabs = [...list.querySelectorAll<HTMLButtonElement>("[role=tab]")];
@@ -123,15 +144,42 @@ const copyText = (tab: CodeTab): string =>
   .code__bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-3) 0;
+    gap: var(--space-4);
+    min-height: 3.25rem;
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
+    border-bottom: 1px solid color-mix(in oklab, var(--night-text) 10%, transparent);
+  }
+
+  .code__title {
+    margin-right: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--night-muted);
+  }
+
+  @media (max-width: 36rem) {
+    .code__title {
+      display: none;
+    }
+  }
+
+  .code__title::before {
+    content: "";
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-right: var(--space-2);
+    border-radius: 50%;
+    background: var(--lav);
+    vertical-align: 0.05em;
   }
 
   .code__tabs {
     display: inline-flex;
+    margin-right: 6.5rem;
     padding: 3px;
-    border: 1px solid rgb(237 235 245 / 0.14);
+    border: 1px solid color-mix(in oklab, var(--night-text) 14%, transparent);
     border-radius: calc(var(--radius-sm) + 3px);
   }
 
@@ -174,7 +222,7 @@ const copyText = (tab: CodeTab): string =>
   }
 
   .code__panel + .code__panel {
-    border-top: 1px solid rgb(237 235 245 / 0.1);
+    border-top: 1px solid color-mix(in oklab, var(--night-text) 10%, transparent);
   }
 
   .is-tabbed .code__panel + .code__panel {
@@ -200,17 +248,47 @@ const copyText = (tab: CodeTab): string =>
   }
 
   .is-tabbed .code__head {
-    top: calc(-2.25rem - var(--space-2));
+    top: calc(-3.25rem + var(--space-2) + 1px);
   }
 
+  /* Long commands wrap with a hanging indent under the prompt instead of scrolling sideways. */
   pre {
     margin: 0;
-    padding: var(--space-4) var(--space-5) var(--space-2);
-    overflow-x: auto;
+    padding: var(--space-5) var(--space-5) var(--space-3);
     font-size: var(--text-sm);
-    line-height: 1.75;
-    white-space: pre;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     tab-size: 2;
+  }
+
+  .code__line,
+  .code__note {
+    display: block;
+    padding-left: 2ch;
+    text-indent: -2ch;
+  }
+
+  .code__note {
+    margin-top: var(--space-3);
+  }
+
+  .code__note:first-child {
+    margin-top: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .code.is-armed:not(.is-on) :is(.code__line, .code__note) {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+
+    .code__line,
+    .code__note {
+      transition:
+        opacity 400ms var(--ease-out) calc(var(--i, 0) * 70ms),
+        transform 400ms var(--ease-out) calc(var(--i, 0) * 70ms);
+    }
   }
 
   pre:focus-visible {
