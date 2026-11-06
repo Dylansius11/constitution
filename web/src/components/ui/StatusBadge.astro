@@ -1,0 +1,90 @@
+---
+/**
+ * Evidence label (DESIGN 7.2): says where a fact comes from. Each tone has its own border style and
+ * glyph so the label never depends on colour. The text is always visible.
+ */
+export type EvidenceTone =
+  | "observed"
+  | "recorded"
+  | "spike"
+  | "local"
+  | "awaiting"
+  | "illustration";
+
+interface Props {
+  tone: EvidenceTone;
+  class?: string;
+}
+
+const { tone, class: className } = Astro.props;
+---
+
+<span class:list={["badge", `badge--${tone}`, className]} data-tone={tone}>
+  <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" focusable="false">
+    {tone === "observed" && <circle cx="5" cy="5" r="4" class="fill" />}
+    {tone === "recorded" && <rect x="1" y="1" width="8" height="8" rx="1" />}
+    {tone === "spike" && <path d="M5 1 9 9H1Z" />}
+    {tone === "local" && <rect x="1" y="1" width="8" height="8" rx="1" stroke-dasharray="2 1.5" />}
+    {tone === "awaiting" && <circle cx="5" cy="5" r="4" stroke-dasharray="2 1.6" />}
+    {tone === "illustration" && <path d="M1 5h8M5 1v8" />}
+  </svg>
+  <span><slot /></span>
+</span>
+
+<style>
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 1.625rem;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    line-height: 1.2;
+    color: var(--ink);
+    background: var(--surface);
+    white-space: nowrap;
+  }
+
+  .badge svg {
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+  }
+
+  .badge .fill {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  .badge--observed svg {
+    color: var(--pass);
+  }
+
+  .badge--spike svg,
+  .badge--recorded svg {
+    color: var(--violet);
+  }
+
+  .badge--local {
+    border-style: dashed;
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent 0 4px,
+      rgb(23 21 31 / 0.05) 4px 5px
+    );
+  }
+
+  .badge--awaiting {
+    border-style: dashed;
+    color: var(--pending);
+  }
+
+  .badge--illustration {
+    background: transparent;
+  }
+</style>
