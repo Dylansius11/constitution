@@ -86,15 +86,18 @@ One page, one `h1`, static HTML as the baseline, live reads as enhancement. Land
 
 | # | Section (id) | Contents | Live data |
 | --- | --- | --- | --- |
-| 0 | Header | Mark and wordmark, nav (How it works, Rules, Timelock, Evidence, Limits), scope chip `Testnet · Not audited`, filled `Try it` | none |
-| 1 | Hero (`top`) | h1 one-liner, authority line art, pitch of at most 20 words, `See the attack`, `Read the rules` | none |
+| 0 | Header | Mark and wordmark, nav (Start here, How it works, Rules, Timelock, Evidence, Limits), scope chip `Testnet · Not audited`, filled `Try it` | none |
+| 1 | Hero (`top`) | h1 one-liner, authority line art, plain pitch of at most 30 words (what the key problem is and the fix), `See the attack`, `Read the rules`, `New here? Start in plain words` | none |
+| 1b | Plain words (`plain`) | For a reader who has never met an upgradeable contract: the weak spot, the fix and the proof as three cards; one analogy labeled `An analogy, not the mechanism`; three starting points by reader (understand, build, judge). The keyless statement is conditional on activation | none |
 | 2 | Story (`story`) | Pinned lavender scroll story, two acts of three steps, labeled illustration | none |
+| 2b | Spot the trap (`trap`) | The real `withdraw` of `VaultV2Drain.sol`, read at build; each line is a radio that opens a plain-language gloss (pure CSS, works without script); finding the trap line or asking opens how the four-call sequence hides, the honest balance check, how R2 sees it and the recorded local verifier run. The build fails if a gloss no longer matches a line. Not a live result | none |
 | 3 | How it works (`how`) | Six numbered steps on a rail: propose, verify, red-team, gate, Chain Signature, execute; the verdict fork | none |
 | 4 | Rules (`rules`) | R1 to R5 rows: large rule id, what it checks, where it stops, and a labeled schematic figure per rule; the AI veto note; committed manifest facts read at build from `rules/manifest.json` | gate `get_constitution` once configured |
 | 5 | Timelock (`timelock`) | 7-day clock, roles (governor schedules, guardian cancels, nobody applies early), `E53_TIMELOCK_NOT_ELAPSED`, the queue | gate `list_changes` once configured |
 | 6 | Evidence (`evidence`) | Four recorded figures, each with its source label (spike signature, its gas, local gate tests, committed rules); status ledger per component; recorded spike receipt with a live re-check of the Base Sepolia transaction and proxy slot; proposal watcher | Base Sepolia RPC now; gate and verifier once configured |
 | 7 | Try it (`try`) | In the browser: `Run the attack` and `Run the honest upgrade` cards (PRD F10) with the stages a run reports; from a checkout: a terminal window with the Human/Agent commands that wrap instead of scrolling sideways, and `/llms.txt` | gate, verifier and Base Sepolia once configured |
 | 8 | Limits (`limits`) | G1 to G4, trust assumptions, not claimed | none |
+| 8b | Words (`words`) | One plain sentence per term, in the order a first-time reader meets them; reached from the footer | none |
 | 9 | Footer | links, scope, build time, then the full-width mark and wordmark; repo and X links only when configured | none |
 
 **Activation-gated surfaces.** The in-browser Attack and Honest upgrade runs, the QR "take it" key (5.1) and the audit panel (6.18) need the activated gate, the CVM verifier and the disposable demo key. Until the run configuration is complete, both run cards render locked: `Awaiting activation` badge, a disabled `Opens at activation` button that says why, and a collapsed list of the stages a run will report; nothing on a locked card claims to have happened. With configuration, the same cards run `web/src/lib/run-flow.ts` (seal, `propose` with the demo key, verifier run, gate and Base observation, relay of a Signed transaction, slot readback) and render the state matrix below; a reload resumes observing and never resubmits. The QR card and the audit panel are not rendered before activation. Their specs below stay binding.
