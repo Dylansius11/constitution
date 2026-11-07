@@ -5,10 +5,13 @@ import Evidence from "../components/sections/Evidence.astro";
 import Hero from "../components/sections/Hero.astro";
 import HowItWorks from "../components/sections/HowItWorks.astro";
 import Limits from "../components/sections/Limits.astro";
+import Plain from "../components/sections/Plain.astro";
 import Rules from "../components/sections/Rules.astro";
 import Story from "../components/sections/Story.astro";
 import Timelock from "../components/sections/Timelock.astro";
+import Trap from "../components/sections/Trap.astro";
 import TryIt from "../components/sections/TryIt.astro";
+import Words from "../components/sections/Words.astro";
 import Intro from "../components/motion/Intro.astro";
 import Base from "../layouts/Base.astro";
 ---
@@ -17,12 +20,15 @@ import Base from "../layouts/Base.astro";
   <Intro slot="header" />
   <Header slot="header" />
   <Hero />
+  <Plain />
   <Story />
+  <Trap />
   <HowItWorks />
   <Rules />
   <Timelock />
   <Evidence />
   <TryIt />
   <Limits />
+  <Words />
   <Footer slot="footer" />
 </Base>
