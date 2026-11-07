@@ -89,6 +89,28 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
       </p>
     </div>
 
+    <aside class="verify" aria-labelledby="verify-title" data-reveal>
+      <h3 id="verify-title" class="verify__title">Check it yourself in three steps</h3>
+      <ol class="verify__steps">
+        <li>
+          <span class="verify__n mono" aria-hidden="true">1</span>
+          <p>Find the recorded spike run below. It lists the NEAR and Base Sepolia transaction hashes.</p>
+        </li>
+        <li>
+          <span class="verify__n mono" aria-hidden="true">2</span>
+          <p>Press <strong>Re-check on Base Sepolia</strong>. Your browser asks the chain directly, not our server.</p>
+        </li>
+        <li>
+          <span class="verify__n mono" aria-hidden="true">3</span>
+          <p>Compare. The current implementation should match the recorded one, and the explorer link opens the same transaction.</p>
+        </li>
+      </ol>
+      <p class="verify__foot">
+        <a class="verify__go" href="#receipt-spike">Go to the re-check <span aria-hidden="true">↓</span></a>
+        <span class="muted">This covers the recorded spike only. The production gate appears below once it is activated.</span>
+      </p>
+    </aside>
+
     <ul class="figures" aria-label="Recorded figures">
       {
         figures.map((figure, i) => (
@@ -266,5 +288,65 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
     .evidence__pair {
       grid-template-columns: 1fr;
     }
+  }
+
+  .verify {
+    display: grid;
+    gap: var(--space-4);
+    margin-block: var(--space-7);
+    padding: var(--space-5) var(--space-6);
+    border-radius: var(--radius-md);
+    background: var(--lav-soft);
+    color: var(--ink-on-lav);
+  }
+
+  .verify__title {
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .verify__steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: var(--space-5);
+    list-style: none;
+  }
+
+  .verify__steps li {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: start;
+    font-size: var(--text-base);
+    line-height: 1.5;
+  }
+
+  .verify__n {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: var(--ink-on-lav);
+    color: var(--lav-soft);
+    font-size: var(--text-sm);
+  }
+
+  .verify__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2) var(--space-5);
+    font-size: var(--text-sm);
+  }
+
+  .verify__foot .muted {
+    color: var(--ink-on-lav);
+    opacity: 0.8;
+  }
+
+  .verify__go {
+    font-weight: 600;
+    color: var(--ink-on-lav);
   }
 </style>
