@@ -44,13 +44,16 @@ const sentences = [
     </h1>
     <div class="hero__aside">
       <p class="hero__pitch">
-        One vault on Base Sepolia upgrades only through a keyless NEAR gate that signs what the
-        committed rules certify.
+        Upgradeable apps can be rewritten by whoever holds an admin key. Constitution removes the
+        key: an upgrade happens only if it passes rules written down in advance.
       </p>
       <div class="hero__actions">
         <Button href="#story" size="lg">See the attack</Button>
         <Button href="#rules" variant="secondary" size="lg">Read the rules</Button>
       </div>
+      <a class="hero__plain" href="#plain">
+        New here? Start in plain words <span aria-hidden="true">↓</span>
+      </a>
       <p class="hero__scope mono">Testnet only. Not audited.</p>
     </div>
   </div>
@@ -157,6 +160,13 @@ const sentences = [
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
+  }
+
+  .hero__plain {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--ink);
+    text-underline-offset: 0.25em;
   }
 
   .hero__scope {
