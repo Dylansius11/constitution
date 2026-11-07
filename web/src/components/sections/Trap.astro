@@ -1,0 +1,493 @@
+---
+import { trap } from "../../data/trap.ts";
+
+/**
+ * "Spot the trap" (DESIGN section 5, row 4b). The real withdraw of the demo drain contract, one
+ * line per button. Each line explains itself in plain words; finding the trap, or asking for it,
+ * opens how it hides and how rule R2 sees it. Pure CSS handles the per-line explanations, so
+ * the section works without JavaScript; JavaScript only holds the reveal back until you try.
+ */
+const steps = [
+  { call: "deposit(1)", effect: "The hidden counter moves to 1." },
+  { call: "withdraw(1)", effect: "A normal withdrawal. The counter moves to 2." },
+  { call: "deposit(1)", effect: "The counter moves to 3. The door is open." },
+  { call: "withdraw(any amount)", effect: "Paid out with no balance check." },
+] as const;
+
+// Indentation becomes a depth the stylesheet scales, so a phone keeps the shape without the width.
+const depth = (text: string) => (text.length - text.trimStart().length) / 4;
+---
+
+<section id="trap" class="trap" aria-labelledby="trap-title">
+  <script is:inline>
+    // Hold the reveal back until the visitor has tried; without JavaScript it is always open.
+    document.currentScript.parentElement.classList.add("has-js");
+  </script>
+  <div class="container">
+    <div class="trap__head" data-reveal>
+      <h2 id="trap-title">Could you have caught it?</h2>
+      <p class="lede">
+        This is the real code of the drain from the story, sold as a loyalty fee rebate. Read it
+        like a reviewer. One line lets a caller take out more than they own.
+      </p>
+    </div>
+
+    <div class="trap__grid">
+      <div class="trap__code" data-reveal>
+        <p class="trap__source mono">
+          {trap.file}, lines {trap.fromLine} to {trap.toLine}
+        </p>
+        <fieldset class="trap__field">
+          <legend class="trap__prompt">Which line is the trap? Pick one to read what it does.</legend>
+          <ol class="code" id="trap-code">
+            {
+              trap.lines.map((line) => {
+                const g = line.gloss;
+                return g ? (
+                  <li class="line" data-kind={g.kind}>
+                    <input
+                      class="line__input"
+                      type="radio"
+                      name="trap-line"
+                      id={`trap-line-${line.n}`}
+                      value={g.kind}
+                    />
+                    <label class="line__row" for={`trap-line-${line.n}`}>
+                      <span class="line__n mono" aria-hidden="true">
+                        {line.n}
+                      </span>
+                      <code class="line__text" style={`--d:${depth(line.text)}`}>{line.text.trimStart()}</code>
+                    </label>
+                    <div class="line__gloss" role="note">
+                      <p class="line__verdict">
+                        {g.kind === "trap" && "That is the trap."}
+                        {g.kind === "door" && "Close: this is the door, not the harm."}
+                        {g.kind === "cover" && "This is the cover story, not the harm."}
+                        {g.kind === "plain" && "An ordinary line. Try another."}
+                      </p>
+                      <p>{g.text}</p>
+                    </div>
+                  </li>
+                ) : (
+                  <li class="line line--close" aria-hidden="true">
+                    <span class="line__n mono">{line.n}</span>
+                    <code class="line__text" style={`--d:${depth(line.text)}`}>{line.text.trimStart()}</code>
+                  </li>
+                );
+              })
+            }
+          </ol>
+        </fieldset>
+        <p class="trap__help">
+          <button type="button" class="trap__show" id="trap-show">Show me the answer</button>
+        </p>
+        <p class="trap__found" id="trap-found">
+          <a href="#trap-answer">Read how it hides <span aria-hidden="true">↓</span></a>
+        </p>
+      </div>
+
+      <div class="trap__answer" id="trap-answer">
+        <div class="trap__answer-in">
+          <h3>How it hides</h3>
+          <p class="trap__lead">
+            The harm needs four calls in a fixed order. Each one looks harmless alone.
+          </p>
+          <p class="trap__legend">
+            In the code: <span class="swatch swatch--trap"></span> the trap,
+            <span class="swatch swatch--part"></span> the door and the cover story around it.
+          </p>
+          <ol class="seq">
+            {
+              steps.map((s, i) => (
+                <li class="seq__step">
+                  <span class="seq__n mono" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                  <code class="seq__call mono">{s.call}</code>
+                  <span class="seq__effect">{s.effect}</span>
+                </li>
+              ))
+            }
+          </ol>
+
+          <h3>What the honest version does</h3>
+          <p>
+            The honest withdraw runs this check first, every time, for everyone:
+          </p>
+          <pre class="check"><code>{trap.honestCheck}</code></pre>
+          <p class="trap__source mono">{trap.honestFile}</p>
+
+          <h3>How the rules see it</h3>
+          <p>
+            Rule R2 does not read the code like a person. It tries sequences of deposits and
+            withdrawals and asks one question: can the vault ever owe more than it holds? For this
+            code the answer is yes, so the gate refuses and never asks for a signature.
+          </p>
+          <p class="trap__recorded">
+            <span class="mono">Local verifier run</span>
+            deposit 1, withdraw 1, deposit 1, withdraw 2<sup>66</sup> drains the vault. Not a testnet
+            result.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { initTrap } from "../motion/trap.ts";
+
+  initTrap();
+</script>
+
+<style>
+  .trap {
+    padding: var(--section-y) 0;
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+  }
+
+  .trap__head {
+    display: grid;
+    gap: var(--space-5);
+    max-width: 52rem;
+    margin-bottom: var(--space-8);
+  }
+
+  h2 {
+    font-size: var(--text-3xl);
+  }
+
+  .trap__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: var(--space-7);
+    align-items: start;
+  }
+
+  .trap__source {
+    margin-bottom: var(--space-3);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .trap__field {
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+
+  .trap__found {
+    display: none;
+    margin-top: var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .trap__legend {
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+
+  .swatch {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    margin-inline: 0.15rem 0.1rem;
+    border-radius: 2px;
+    vertical-align: -0.1rem;
+  }
+
+  .swatch--trap {
+    background: var(--refuse);
+  }
+
+  .swatch--part {
+    background: var(--lav);
+  }
+
+  @media (max-width: 64rem) {
+    .trap[data-open="true"] .trap__found {
+      display: block;
+    }
+  }
+
+  .trap__prompt {
+    margin-bottom: var(--space-3);
+    font-size: var(--text-base);
+    font-weight: 500;
+  }
+
+  /* The code card: night ground so it reads as code against the paper page. */
+  .code {
+    margin: 0;
+    padding: var(--space-3) 0;
+    border-radius: var(--radius-md);
+    background: var(--night);
+    color: var(--night-text);
+    list-style: none;
+    overflow: hidden;
+  }
+
+  .line {
+    position: relative;
+  }
+
+  .line__input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .line__row,
+  .line--close {
+    display: grid;
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: 0.28rem var(--space-4) 0.28rem var(--space-2);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .line__row {
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out);
+  }
+
+  .line__n {
+    text-align: right;
+    font-size: var(--text-xs);
+    color: var(--night-muted);
+  }
+
+  .line__text {
+    padding-left: calc(var(--d, 0) * 2.5ch);
+    text-indent: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 36rem) {
+    .line__text {
+      padding-left: calc(var(--d, 0) * 1.25ch);
+      font-size: var(--text-xs);
+    }
+  }
+
+  @media (hover: hover) {
+    .line__row:hover {
+      background: color-mix(in srgb, var(--lav) 16%, transparent);
+    }
+  }
+
+  .line__input:focus-visible + .line__row {
+    outline: 2px solid var(--lav);
+    outline-offset: -2px;
+  }
+
+  .line__input:checked + .line__row {
+    border-left-color: var(--lav);
+    background: color-mix(in srgb, var(--lav) 22%, transparent);
+  }
+
+  /* Explanation under the picked line; plain CSS, no script. */
+  .line__gloss {
+    display: none;
+    gap: var(--space-2);
+    margin: 0.2rem var(--space-3) var(--space-2) calc(2.25rem + var(--space-3));
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .line__input:checked ~ .line__gloss {
+    display: grid;
+  }
+
+  .line__verdict {
+    font-weight: 600;
+  }
+
+  .line[data-kind="trap"] .line__verdict {
+    color: var(--refuse);
+  }
+
+  .line[data-kind="door"] .line__verdict,
+  .line[data-kind="cover"] .line__verdict {
+    color: var(--pending);
+  }
+
+  /* Parts of the trick, marked once the answer is open. */
+  .trap[data-open="true"] .line[data-kind="trap"] .line__row {
+    border-left-color: var(--refuse);
+    background: color-mix(in srgb, var(--refuse) 38%, transparent);
+  }
+
+  .trap[data-open="true"] .line[data-kind="door"] .line__row,
+  .trap[data-open="true"] .line[data-kind="cover"] .line__row {
+    border-left-color: var(--lav);
+    background: color-mix(in srgb, var(--lav) 14%, transparent);
+  }
+
+  .trap__help {
+    margin-top: var(--space-4);
+  }
+
+  .trap__show {
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--ink);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: transform var(--dur-press) var(--ease-out);
+  }
+
+  .trap__show:active {
+    transform: scale(0.97);
+  }
+
+  @media (hover: hover) {
+    .trap__show:hover {
+      background: var(--ink);
+      color: var(--night-text);
+    }
+  }
+
+  /* Static first: the answer is open. With script it waits for the first try. */
+  .trap__answer-in {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-6) var(--space-5);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .trap__answer-in h3 {
+    margin-top: var(--space-3);
+    font-size: var(--text-lg);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .trap__answer-in h3:first-child {
+    margin-top: 0;
+  }
+
+  .trap__answer-in p {
+    line-height: 1.55;
+  }
+
+  .trap__lead {
+    color: var(--ink-muted);
+  }
+
+  .seq {
+    display: grid;
+    gap: var(--space-2);
+    list-style: none;
+  }
+
+  .seq__step {
+    display: grid;
+    grid-template-columns: 1.5rem auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--line);
+    font-size: var(--text-sm);
+  }
+
+  .seq__n {
+    color: var(--ink-muted);
+  }
+
+  .seq__call {
+    font-weight: 500;
+  }
+
+  .seq__effect {
+    color: var(--ink-muted);
+  }
+
+  .check {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--night);
+    color: var(--night-text);
+    font-size: var(--text-sm);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .trap__recorded {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    background: var(--lav-soft);
+    font-size: var(--text-sm);
+  }
+
+  .trap__recorded .mono {
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    text-transform: uppercase;
+  }
+
+  .trap.has-js:not([data-open="true"]) .trap__answer {
+    display: none;
+  }
+
+  .trap.has-js[data-open="true"] .trap__help {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .trap[data-open="true"] .trap__answer {
+      animation: trap-in 520ms var(--ease-out) both;
+    }
+  }
+
+  @keyframes trap-in {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+  }
+
+  @media (max-width: 64rem) {
+    .trap__grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-6);
+    }
+  }
+
+  @media (max-width: 36rem) {
+    .line__gloss {
+      margin-left: var(--space-3);
+    }
+
+    .seq__step {
+      grid-template-columns: 1.5rem minmax(0, 1fr);
+    }
+
+    .seq__effect {
+      grid-column: 2;
+    }
+  }
+</style>
