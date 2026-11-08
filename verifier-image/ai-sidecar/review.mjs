@@ -70,7 +70,7 @@ export async function review(input, { env = process.env, clientFactory = sdkFact
   try {
     const work = async () => {
       const client = await clientFactory(config);
-      const completion = await client.chat.completions.create({ model: MODEL, messages, stream: false, max_completion_tokens: 8192, response_format: { type: 'json_object' } }, { headers: { 'x-no-aliasing': 'true' }, signal: controller.signal, maxRetries: 0 });
+      const completion = await client.chat.completions.create({ model: MODEL, messages, stream: false, max_tokens: 45000, thinking_token_budget: null, response_format: { type: 'json_object' } }, { headers: { 'x-no-aliasing': 'true' }, signal: controller.signal, maxRetries: 0 });
       if (!boundedText(completion.id, 256) || !/^[a-zA-Z0-9_-]+$/.test(completion.id) || completion.id.includes(config.apiKey)) throw new Error('invalid_completion');
       result.completionId = completion.id;
       const content = completion.choices?.[0]?.message?.content;

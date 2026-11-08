@@ -411,8 +411,8 @@ candidate list. A reproduced R2 violation produces
 [I] The committed two-successor-block lag is a minimal demo evidence policy,
 not a Base finality claim. The corpus actor is a public anvil account; testnet
 activation requires a deliberately seeded testnet actor and a new corpus commitment.
-Rule-set hash (CLI observed locally, 2026-11-03, after the security-review fixes):
-`0x8060ddbf63635e14a955b4fef81c8e696c01e349c9f959cae135d48056e89455`.
+Rule-set hash (CLI observed locally, 2026-11-06, after the AI deadline update to 300 s):
+`0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`.
 
 Library witness policy and limits:
 [`rules/r5/README.md`](../../../rules/r5/README.md).
@@ -437,7 +437,12 @@ The SDK Node entry point enforces E2EE, gateway/model TCB `UpToDate`, and
 `x-no-aliasing: true`. It calls `verifyResponse(completion.id)` before releasing
 validated candidates; only `provider_tee` is complete. A missing key, error,
 truncated/malformed JSON, timeout or non-provider signature returns structured
-Incomplete with no candidates. The timeout covers completion and verification.
+Incomplete with no candidates. The committed timeout is 300 s and covers SDK setup,
+completion and verification; the Rust HTTP caller adds 2 s transport grace.
+The request uses `max_tokens: 45000` and `thinking_token_budget: null`: reasoning
+has no separate cap but remains inside the total completion budget. The 64 KiB
+candidate JSON and 96 KiB sidecar-envelope limits remain independent safeguards.
+No inference retry is automatic, and timeout does not prove upstream billing stopped.
 
 Source comments and model text remain untrusted data. Requests are capped at
 4 MiB, source at 2 MiB, output candidates at 64 KiB, candidates at the committed

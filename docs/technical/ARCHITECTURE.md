@@ -230,8 +230,8 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 
 [I] The R3 list is **exactly eight ordered 32-byte values**, with Foundry `0x7109709ecfa91a80626ff3989d68f67f5b1dd12d` and Halmos `0xf3993a62377bcd56ae39d773740a5390411e8bc9` zero-padded to 32 bytes. Numeric PUSH immediates are compared (including Solidity's PUSH20 addresses); both ERC-1967 ASCII labels are rejected anywhere in runtime. Shared `validate_rule_set` enforces the list, so CLI and verifier accept identical inputs. Borsh field order, `Vec<Hex32>` encoding and manifest version 1 are unchanged; this revised supported list and harness produce a new rule-set commitment, not a serialization-format fork. G1 assumes implementations cannot write arbitrary storage: a runtime computing its SSTORE slot from calldata can evade R3, as documented by the filter-limit test. Computed cheatcode addresses, environment fingerprinting beyond chain id, and entry points not explored by R2 remain limits. Filters are filters, not proofs.
 
-[V, local CLI, 2026-11-03] Current rule-set hash:
-`0x8060ddbf63635e14a955b4fef81c8e696c01e349c9f959cae135d48056e89455`
+[V, local CLI, 2026-11-06; AI review deadline updated to 300 s] Current rule-set hash:
+`0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`
 (`cargo run -p constitution-cli -- rules hash rules/manifest.json`).
 
 ### Evidence manifest

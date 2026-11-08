@@ -1,0 +1,323 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-11-06T10:48:49.759Z",
+  "kind": "synthetic_review_patch_spike",
+  "policy": {
+    "model": "z-ai/glm-5.3-flash",
+    "runtime": "v24.22.1",
+    "sdkVersion": "0.1.0",
+    "thinkingTokenBudget": null,
+    "reviewMaxTokens": 32768,
+    "patchMaxTokens": 65536,
+    "reviewDeadlineSeconds": 300,
+    "wholeRepairDeadlineSeconds": 1800,
+    "maxInferenceRequests": 2,
+    "inferenceRetries": 0,
+    "e2ee": true,
+    "acceptedTcbStatuses": [
+      "UpToDate"
+    ],
+    "noAliasing": true,
+    "productionCodeChanged": false
+  },
+  "phases": [
+    {
+      "name": "public_pricing",
+      "wallMs": 1322.705
+    },
+    {
+      "name": "eligibility",
+      "wallMs": 301.689
+    },
+    {
+      "name": "sdk_import",
+      "wallMs": 45882.376
+    },
+    {
+      "name": "gateway_and_model_attestation",
+      "wallMs": 6449.373
+    },
+    {
+      "name": "review_completion",
+      "wallMs": 56460.194
+    },
+    {
+      "name": "review_response_verification",
+      "wallMs": 1230.127
+    },
+    {
+      "name": "patch_completion",
+      "wallMs": 17849.54
+    },
+    {
+      "name": "patch_response_verification",
+      "wallMs": 1083.892
+    }
+  ],
+  "requests": [
+    {
+      "role": "review",
+      "startedAt": "2026-11-06T10:49:43.559Z",
+      "maxTokens": 32768,
+      "thinkingTokenBudget": null,
+      "deadlineMs": 300000,
+      "promptBytes": 1579,
+      "requestMessagesSha256": "08fbfcb11589f5aac82d1c0bd4cd9f564a2a1de58b799313c289caca39894417",
+      "estimatedUncachedCostCeilingNanoUsd": 16510320,
+      "status": "verified",
+      "httpStatus": 200,
+      "completionId": "d0485596ed6c4987a88898f61195df17",
+      "billingRequestId": "772aa9a8-131c-5994-a3d0-5ca1b6a52bbd",
+      "finishReason": "stop",
+      "usage": {
+        "prompt_tokens": 326,
+        "total_tokens": 2477,
+        "completion_tokens": 2151,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 1572,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1572
+        }
+      },
+      "receipt": {
+        "signatureKind": "provider_tee",
+        "signingAlgo": "ed25519",
+        "signingAddress": "5a0210f2442c79355784f9de021985429561da5bacc3a4424b01ac52b7e0caff",
+        "signedText": "z-ai/glm-5.3-flash:74eade94fd35500cf810b002773b2e55bf54707f8e37f95720ee7d22b18203e3:49fec2a3232169f4c3cb39db13e431cd6582bf7b593cf4650bb057b6d10753a7",
+        "signature": "4c657e48a0a83c94adb5252997b8e9c6ee0a8dc6a8ebf25aaeb773797a5639b0f6a4195c5f43db6175456d5ff4c48a7f2b266007182cb0a0e20bc802e5ffae06",
+        "independentlyVerified": true
+      },
+      "finalContentSha256": "205182e498911f0042128715ef391348a103f8a1200203943005a720f35f83bb",
+      "output": {
+        "findings": [
+          {
+            "id": "PV-01",
+            "severity": "critical",
+            "explanation": "withdraw(uint256) performs balanceOf[msg.sender] -= amount inside an unchecked block without any prior check that amount <= balanceOf[msg.sender]. In Solidity 0.8.x the checked subtraction would revert on underflow, but unchecked makes it silently wrap: any caller, including one with a zero balance, can pass an arbitrary amount (e.g., equal to the contract's entire ETH balance), wrap their recorded balance to a near-max uint256, and receive ETH that belongs to other depositors. This directly violates the requirement that a caller may withdraw no more than their own recorded deposits and that other depositors' funds and claims are protected. The wrapped balance also permanently corrupts the accounting for that address. Additionally, because msg.sender.call forwards all remaining gas, a malicious recipient can re-enter withdraw during the ETH transfer; the effects-before-interaction ordering prevents plain double-spending, but in combination with the unchecked wrap (balance already decremented to 0) it lets a depositor with even a 1 wei balance underflow and drain funds in the same transaction. Note the zero-amount revert and the require(sent) rollback (which keeps balances unchanged on failed withdrawals) are correctly implemented; the sole defect is the missing balance sufficiency check combined with unchecked arithmetic.",
+            "reproduction": "1) Victim deposits 10 ETH into ProbeVault. 2) Attacker (no deposit, balanceOf = 0) calls withdraw(10 ether). 3) unchecked 0 - 10 ether wraps balanceOf[attacker] to ~2^256-10e18. 4) The call sends 10 ETH of the victim's funds to the attacker. 5) Attacker repeats withdraw with any amount until the contract's ETH is exhausted, since their wrapped balance now passes no limit. Variant: depositor with 1 wei calls withdraw(1), then re-enters withdraw(contractBalance) from the receiving contract during the ETH transfer to underflow from a zero balance."
+          }
+        ],
+        "summary": "The vault satisfies the ABI, zero-withdrawal-revert, and failed-withdrawal-rollback requirements, and updates accounting before the external call. However, the unchecked subtraction in withdraw(uint256) lacks a balance-sufficiency check, so underflow wraps instead of reverting. Any user can withdraw more than their recorded deposit — up to the contract's full ETH balance — stealing other depositors' funds and corrupting their own balance mapping; a malicious contract recipient can trigger the same underflow re-entrantly. Treat as critical fund-theft; the unchecked block (or the absent amount <= balanceOf[msg.sender] guard) is the root cause."
+      },
+      "billing": {
+        "status": "reported",
+        "costNanoUsd": 1101580,
+        "costUsd": 0.00110158
+      },
+      "uncachedTokenCostNanoUsd": 1101580,
+      "billingMatchesUncachedTokenRates": true
+    },
+    {
+      "role": "patch",
+      "startedAt": "2026-11-06T10:50:40.881Z",
+      "maxTokens": 65536,
+      "thinkingTokenBudget": null,
+      "deadlineMs": 1799999,
+      "promptBytes": 4298,
+      "requestMessagesSha256": "208c4fca40c2f40d61ce072843fbeb4deb6a83c113fe737be74ebc9e591f9915",
+      "estimatedUncachedCostCeilingNanoUsd": 33111840,
+      "status": "verified",
+      "httpStatus": 200,
+      "completionId": "dcde6ae892ed4b4ab2ee7a97ff900e9c",
+      "billingRequestId": "7f310092-da11-5f28-a01f-014fd33285eb",
+      "finishReason": "stop",
+      "usage": {
+        "prompt_tokens": 888,
+        "total_tokens": 1881,
+        "completion_tokens": 993,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 691,
+        "completion_tokens_details": {
+          "reasoning_tokens": 691
+        }
+      },
+      "receipt": {
+        "signatureKind": "provider_tee",
+        "signingAlgo": "ed25519",
+        "signingAddress": "5a0210f2442c79355784f9de021985429561da5bacc3a4424b01ac52b7e0caff",
+        "signedText": "z-ai/glm-5.3-flash:ecf80e56d2feb5b0df90a77dc47383130bbf7848e264c9dd6737cb1a449cac92:f27a615c7e9800e104b3a7d74242e21c02d6e7a8cc38ce6f91bb844d54346d5e",
+        "signature": "89434c3b1bb8f816c8816044b77a81c04984a7c2a3666b2f9a0c912012ce5859def745b0cee86604cab96424d83d9b44a144697abec9fef908621685c4dac802",
+        "independentlyVerified": true
+      },
+      "finalContentSha256": "fa8ff3ebdfc3f5e3911f27f5c0ab4585a7d0473c2d8e792f164f18d9e96304ac",
+      "output": {
+        "source": "// SPDX-License-Identifier: MIT\npragma solidity 0.8.38;\n\ncontract ProbeVault {\n    mapping(address => uint256) public balanceOf;\n\n    function deposit() external payable {\n        balanceOf[msg.sender] += msg.value;\n    }\n\n    function withdraw(uint256 amount) external {\n        require(amount > 0, \"zero amount\");\n        require(amount <= balanceOf[msg.sender], \"insufficient balance\");\n        balanceOf[msg.sender] -= amount;\n        (bool sent,) = msg.sender.call{value: amount}(\"\");\n        require(sent, \"transfer failed\");\n    }\n}\n",
+        "summary": "PV-01 fixed by adding a balance-sufficiency guard and removing the unchecked block in withdraw(uint256): require(amount <= balanceOf[msg.sender], \"insufficient balance\") now runs before the subtraction, and the plain checked subtraction in Solidity 0.8.38 reverts on any underflow, so callers can withdraw no more than their own recorded deposits and other depositors' funds are protected (including against the re-entrant underflow variant). Failed or over-sized withdrawals revert with balances unchanged, the zero-amount revert is retained, checks-effects-interactions is preserved (accounting still updates before msg.sender.call), and the ABI (deposit, withdraw, balanceOf), contract name, pragma, and storage layout are unchanged."
+      },
+      "billing": {
+        "status": "reported",
+        "costNanoUsd": 567540,
+        "costUsd": 0.00056754
+      },
+      "uncachedTokenCostNanoUsd": 567540,
+      "billingMatchesUncachedTokenRates": true
+    }
+  ],
+  "limitations": [
+    "Synthetic 500-byte Solidity vault with an intentionally planted bug; not a production audit or complexity benchmark.",
+    "One review and one patch generation only; no AI re-review of the patch and no certificate or chain write.",
+    "Reviewer and patch writer reuse one SDK client; warm/cold startup and different prompts prevent a controlled latency comparison.",
+    "Null removes the separate reasoning cap, not the total completion cap or provider/context limits.",
+    "Application timeout or cancellation is not proof that upstream compute or billing stopped.",
+    "Token-cost ceilings are estimates at catalog rates, not a newly configured provider USD spending cap.",
+    "The 32768/65536 caps are proposed starting ceilings, not measured requirements or quality-optimal settings.",
+    "The 30-minute repair deadline was not exercised as a production job deadline; patch generation took about 19 seconds including signature verification.",
+    "Neither reentrancy nor failing-recipient behavior was independently exercised in this five-case probe; claims in generated prose remain untrusted beyond the checks recorded here."
+  ],
+  "source": {
+    "path": "src/ProbeVault.sol",
+    "sha256": "e9da6d42adfcee29e9b59fa7c7f48a003482ea592ade98deee75385c688bb84a",
+    "content": "// SPDX-License-Identifier: MIT\npragma solidity 0.8.38;\n\ncontract ProbeVault {\n    mapping(address => uint256) public balanceOf;\n\n    function deposit() external payable {\n        balanceOf[msg.sender] += msg.value;\n    }\n\n    function withdraw(uint256 amount) external {\n        require(amount > 0, \"zero amount\");\n        unchecked {\n            balanceOf[msg.sender] -= amount;\n        }\n        (bool sent,) = msg.sender.call{value: amount}(\"\");\n        require(sent, \"transfer failed\");\n    }\n}\n"
+  },
+  "pricing": {
+    "checkedAt": "2026-11-06T10:48:51.113Z",
+    "inputNanoUsdPerToken": 80,
+    "outputNanoUsdPerToken": 500,
+    "cacheReadNanoUsdPerToken": 12,
+    "source": "https://cloud-api.near.ai/v1/model/z-ai%2Fglm-5.3-flash"
+  },
+  "eligibility": {
+    "httpStatus": 200,
+    "valid": true
+  },
+  "patchSourceSha256": "ed49411f218d77ac37afa216ecec66ac1f038efbf7a49a13d302ad352d3b84ce",
+  "wholeRepairElapsedBeforeLocalChecksMs": 18968.608,
+  "localVerification": {
+    "compiler": "solc 0.8.38",
+    "evmVersion": "prague",
+    "foundry": "1.8.6",
+    "network": "local Anvil, no testnet or public-chain transactions",
+    "commands": [
+      "forge test --root . --offline -vv",
+      "node smoke.mjs before",
+      "node smoke.mjs after"
+    ],
+    "before": {
+      "passed": 3,
+      "failed": 2,
+      "failures": [
+        "testCrossAccountWithdrawalBlocked: attacker withdrew more than deposited",
+        "testUnfundedAccountCannotWithdraw: unfunded account stole funds"
+      ]
+    },
+    "after": {
+      "passed": 5,
+      "failed": 0,
+      "checks": [
+        "testCrossAccountWithdrawalBlocked",
+        "testUnfundedAccountCannotWithdraw",
+        "testOwnFullWithdrawal",
+        "testPartialWithdrawal",
+        "testZeroWithdrawalRejected"
+      ]
+    },
+    "testHarness": "// SPDX-License-Identifier: MIT\npragma solidity 0.8.38;\nimport {ProbeVault} from \"../src/ProbeVault.sol\";\ninterface Vm {\n    function deal(address account, uint256 amount) external;\n    function prank(address caller) external;\n}\ncontract ProbeTest {\n    Vm constant vm = Vm(address(uint160(uint256(keccak256(\"hevm cheat code\")))));\n    ProbeVault vault;\n    address payable constant victim = payable(address(0x1001));\n    address payable constant attacker = payable(address(0x1002));\n    function setUp() public {\n        vault = new ProbeVault();\n        vm.deal(victim, 10 ether);\n        vm.prank(victim);\n        vault.deposit{value: 10 ether}();\n        vm.deal(attacker, 1 ether);\n        vm.prank(attacker);\n        vault.deposit{value: 1 ether}();\n    }\n    function testCrossAccountWithdrawalBlocked() public {\n        vm.prank(attacker);\n        (bool ok,) = address(vault).call(abi.encodeCall(vault.withdraw, (5 ether)));\n        require(!ok, \"attacker withdrew more than deposited\");\n        require(address(vault).balance == 11 ether, \"pool drained\");\n        require(vault.balanceOf(victim) == 10 ether, \"victim accounting changed\");\n        require(vault.balanceOf(attacker) == 1 ether, \"rejected call changed balance\");\n    }\n    function testUnfundedAccountCannotWithdraw() public {\n        vm.prank(address(0x1003));\n        (bool ok,) = address(vault).call(abi.encodeCall(vault.withdraw, (1 ether)));\n        require(!ok, \"unfunded account stole funds\");\n        require(address(vault).balance == 11 ether, \"pool changed\");\n    }\n    function testOwnFullWithdrawal() public {\n        vm.prank(attacker);\n        vault.withdraw(1 ether);\n        require(attacker.balance == 1 ether, \"wrong payout\");\n        require(vault.balanceOf(attacker) == 0, \"claim not consumed\");\n        require(vault.balanceOf(victim) == 10 ether, \"victim claim changed\");\n        require(address(vault).balance == 10 ether, \"wrong pool balance\");\n    }\n    function testPartialWithdrawal() public {\n        vm.prank(victim);\n        vault.withdraw(4 ether);\n        require(victim.balance == 4 ether, \"wrong payout\");\n        require(vault.balanceOf(victim) == 6 ether, \"wrong remaining claim\");\n        require(vault.balanceOf(attacker) == 1 ether, \"other claim changed\");\n        require(address(vault).balance == 7 ether, \"wrong pool balance\");\n    }\n    function testZeroWithdrawalRejected() public {\n        vm.prank(attacker);\n        (bool ok,) = address(vault).call(abi.encodeCall(vault.withdraw, (0)));\n        require(!ok, \"zero accepted\");\n        require(vault.balanceOf(attacker) == 1 ether, \"balance changed\");\n    }\n}\n",
+    "smokeBefore": {
+      "network": "local-anvil-only",
+      "stage": "before",
+      "contract": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+      "chainId": "0x7a69",
+      "receipts": [
+        {
+          "transactionHash": "0x7d59739b05bcca88409a6a7050d1a5298740eaf444567a15898f488a81ba0bb8",
+          "status": "0x1",
+          "blockNumber": "0x2"
+        },
+        {
+          "transactionHash": "0xa9760a7bbbf5b19155241dd24db63630f170d113a18e4cddcc570a0521a0b4d8",
+          "status": "0x1",
+          "blockNumber": "0x3"
+        },
+        {
+          "transactionHash": "0xf2eae7a2f199eabb9173dcf9877f8113dc652567ef8609bbf19b98a3c577e17c",
+          "status": "0x1",
+          "blockNumber": "0x4"
+        },
+        {
+          "transactionHash": "0x515623fb27b3ad1484a61827d5d7f8ad9b157d1127bb7ee65874a3aa0d5afbd2",
+          "status": "0x1",
+          "blockNumber": "0x5"
+        }
+      ],
+      "exploitReceiptStatus": "0x1",
+      "poolAfterExploitWei": "6000000000000000000",
+      "victimClaimWei": "10000000000000000000",
+      "attackerClaimWei": "115792089237316195423570985008687907853269984665640564039453584007913129639936",
+      "observedAt": "2026-11-06T10:50:59.436Z",
+      "wallMs": 574.881
+    },
+    "smokeAfter": {
+      "network": "local-anvil-only",
+      "stage": "after",
+      "contract": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+      "chainId": "0x7a69",
+      "receipts": [
+        {
+          "transactionHash": "0x4d4589880b3193e9aab8803767eb4a8e68bc2bbd13e43d0c8d6a3d22022bb92a",
+          "status": "0x1",
+          "blockNumber": "0x6"
+        },
+        {
+          "transactionHash": "0x5862d7d36bf16f15f49b1e80154be2ff496feeb8c58a17a19662be9a52d71a7d",
+          "status": "0x1",
+          "blockNumber": "0x7"
+        },
+        {
+          "transactionHash": "0xb904efafe087701e5eb2f379ce793c46db5606a826f31757a4db1c7159db6b8e",
+          "status": "0x1",
+          "blockNumber": "0x8"
+        },
+        {
+          "transactionHash": "0x91d8d211f0ec10819a3e013aee512d04857861722a8e931ba28711929d9ee805",
+          "status": "0x0",
+          "blockNumber": "0x9"
+        },
+        {
+          "transactionHash": "0xd8df26978096d8ef7117f9b87ee6bcc183fef9d8f71ed4850fde8b9898b737fc",
+          "status": "0x1",
+          "blockNumber": "0xa"
+        }
+      ],
+      "exploitReceiptStatus": "0x0",
+      "poolAfterExploitWei": "11000000000000000000",
+      "victimClaimWei": "10000000000000000000",
+      "attackerClaimWei": "1000000000000000000",
+      "observedAt": "2026-11-06T10:51:39.013Z",
+      "wallMs": 802.485
+    },
+    "candidateMatchesVerifiedPatchHash": true,
+    "scope": "Local behavioral checks of the generated patch, not full verifier certification or a general security proof",
+    "harnessFix": "The first local RPC smoke assumed immediate receipt availability; changed only the disposable harness to await a receipt, without changing model requests or patch."
+  },
+  "billing": {
+    "httpStatus": 200,
+    "warning": null,
+    "requests": [
+      {
+        "requestId": "772aa9a8-131c-5994-a3d0-5ca1b6a52bbd",
+        "costNanoUsd": 1101580
+      },
+      {
+        "requestId": "7f310092-da11-5f28-a01f-014fd33285eb",
+        "costNanoUsd": 567540
+      }
+    ]
+  },
+  "finishedAt": "2026-11-06T10:51:05.774Z",
+  "totalWallMs": 136780.483,
+  "maxRssKiB": 152780,
+  "totals": {
+    "promptTokens": 1214,
+    "completionTokens": 3144,
+    "reasoningTokens": 2263,
+    "totalTokens": 4358,
+    "costNanoUsd": 1669120,
+    "costUsd": 0.00166912
+  },
+  "runtimeArtifact": {
+    "version": "v24.22.1",
+    "sha256": "6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6",
+    "checksumVerified": true,
+    "source": "https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-x64.tar.xz"
+  }
+}

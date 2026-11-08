@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-06T11:23:12.111Z",
+  "policy": {
+    "model": "z-ai/glm-5.3-flash",
+    "maxTokens": 45000,
+    "thinkingTokenBudget": null,
+    "committedTimeoutSeconds": 300,
+    "loopbackHttpGraceSeconds": 2,
+    "candidateJsonMaxBytes": 65536,
+    "sidecarEnvelopeMaxBytes": 98304,
+    "inferenceRetries": 0
+  },
+  "manifestHash": "0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93",
+  "verification": {
+    "before": "Real loopback sidecar with disposable protocol SDK double returned Incomplete because old max_completion_tokens policy was rejected.",
+    "after": "Same loopback smoke completed on max_tokens=45000 and explicit thinking_token_budget=null; no network inference.",
+    "sidecarBehaviorChecks": {
+      "command": "node --test verifier-image/ai-sidecar/review.test.mjs",
+      "passed": 9,
+      "failed": 0,
+      "runtime": "Windows Node v24.21.0"
+    },
+    "supervisorLifecycle": {
+      "command": "WSL Node v24.16.0 --test verifier-image/run-service.test.mjs",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "candidateReplay": "crates/verifier/evidence/ai/candidate-replay-2026-11-06.json"
+  },
+  "packaging": {
+    "observedOn": "2026-11-06",
+    "environment": "WSL2 Ubuntu / Docker Desktop 28.5.1, local only",
+    "buildCommand": "sh verifier-image/build-service.sh",
+    "buildWallSeconds": 1240.33,
+    "optimizedRustBuildSeconds": 1182,
+    "images": {
+      "tools": {
+        "id": "sha256:b4d4afc801f93a55dbb0f3acc45caa5ea4cb7fac54e5ff507e32c5994bc4d9ca",
+        "sizeBytes": 319070300
+      },
+      "service": {
+        "id": "sha256:0e528a8567df25613e219d57f941e74559cb42ad672d987442271225f8d2c171",
+        "sizeBytes": 130922644
+      }
+    },
+    "offlineApiSmoke": {
+      "sealedBundleAccepted": true,
+      "advertisedCurrentManifestHash": true,
+      "sourceCommitmentVerified": true,
+      "honestCompilationCanaryPassed": true,
+      "verdict": { "Reject": { "rule_id": 0, "reason_code": 2 } },
+      "clientObservedElapsedMs": 5070,
+      "serviceReportedElapsedMs": 4882,
+      "signatureIndependentlyVerified": true,
+      "ai": "NotRun",
+      "submitted": false,
+      "attested": false
+    },
+    "packagedRequestPolicySmoke": {
+      "sdk": "disposable protocol double, not provider attestation",
+      "network": "none",
+      "status": "complete",
+      "maxTokens": 45000,
+      "thinkingTokenBudget": null,
+      "timeoutSeconds": 300
+    },
+    "realSidecarWithoutKey": { "status": "incomplete", "reason": "missing_api_key" },
+    "chainWithoutDstack": { "exitCode": 1, "error": "attestation_required" },
+    "inspectedServiceLimits": {
+      "readOnlyRoot": true,
+      "restartPolicy": "no",
+      "memoryLimitBytes": 536870912,
+      "nanoCpus": 1000000000,
+      "publishedPort": "127.0.0.1:19789 -> 8787/tcp"
+    },
+    "disposableComposeRemoved": true,
+    "newPaidInferenceRequests": 0,
+    "solverRerun": false,
+    "fullWorkspaceSuiteRerun": false
+  },
+  "plannedRepair": {
+    "maxTokens": 100000,
+    "thinkingTokenBudget": null,
+    "wholeJobDeadlineSeconds": 1800,
+    "implemented": false,
+    "dependsOn": "Core gate, then S1.1-S1.4"
+  },
+  "newPaidInferenceRequests": 0,
+  "limits": [
+    "Protocol-double smoke proves request construction and withholding behavior, not provider attestation or live acceptance of the new 45000-token cap.",
+    "No production repair, CVM deployment, chain write, attested certificate or P3.1 completion follows; the packaging smoke issued only an offline compilation-rejection certificate.",
+    "Windows supervisor invocation skipped all ten Linux-only cases; the separate WSL run exercised and passed all ten.",
+    "Reasoning remains inside total completion usage; candidate JSON stays independently byte bounded."
+  ]
+}

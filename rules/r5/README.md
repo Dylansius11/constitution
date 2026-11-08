@@ -47,9 +47,9 @@ The integration test starts disposable anvil with chain id 84532, deploys via `c
 
 ## Committed manifest values [I]
 
-[V, local CLI, 2026-11-03] Overall rule-set hash after the verifier-supplied R2
-sources and strengthened R3 filters:
-`0x8060ddbf63635e14a955b4fef81c8e696c01e349c9f959cae135d48056e89455`.
+[V, local CLI, 2026-11-06] Overall rule-set hash after the AI review deadline was
+updated to 300 s (the verifier-supplied R2 sources and R3 filters are unchanged):
+`0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`.
 Command: `cargo run -p constitution-cli -- rules hash rules/manifest.json`.
 The R5 corpus bytes and bounds below are unchanged.
 

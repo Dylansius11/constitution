@@ -136,6 +136,8 @@ Human steps: credits already requested (2026-10-26). When granted, create an API
 
 Agent steps (P2.6): sidecar with `@nearai/inference-sdk` 0.1.0 on Node 24.22.1 (`import { InferenceClient } from '@nearai/inference-sdk/node'`), `e2ee: true`, strict TCB policy, `x-no-aliasing: true`, model `z-ai/glm-5.3-flash`; after each completion `verifyResponse(completion.id)` and require `signatureKind === 'provider_tee'`.
 
+[I, founder-approved policy 2026-11-06] Review sends documented `max_tokens: 45000` and explicit `thinking_token_budget: null`, with the manifest committing a 300 s review deadline (SDK setup, inference and response verification included). The Rust loopback caller allows 2 s additional HTTP transport grace; this does not extend inference work. Preserve the 64 KiB candidate JSON and 96 KiB sidecar-envelope bounds: the token budget includes reasoning and does not authorize larger executable candidate output. Truncation, timeout, schema failure or non-provider verification remains Incomplete. These controls do not change certificate validity windows or guarantee upstream cancellation/billing. Future S1 repair has a 100,000-token generation ceiling and a 1,800 s whole-job deadline including checks and review again; it is not implemented by changing the review policy.
+
 Verification: authenticated `GET /v1/attestation/report?model=z-ai/glm-5.3-flash&provider=near&nonce=<fresh>` succeeds (documented non-billable); one test completion verifies as `provider_tee`. Cost per review measured and recorded. Errors: gateway-only signature means review incomplete, never pass.
 
 ### 7. Rust, cargo-near and near-sandbox (P0, P1.1)
