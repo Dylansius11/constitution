@@ -72,6 +72,7 @@ struct Machine {
     entries: [bool; 3],
     deposits: u128,
     withdrawals: u128,
+    storage_fees: u128,
     proposals: Vec<ModelProposal>,
     changes: Vec<Option<PendingChange>>,
     verifiers: [bool; 2],
@@ -90,6 +91,7 @@ impl Machine {
             entries: [false; 3],
             deposits: 0,
             withdrawals: 0,
+            storage_fees: 0,
             proposals: vec![],
             changes: vec![],
             verifiers: [true, false],
@@ -216,7 +218,15 @@ impl Machine {
                 }
             }
             Op::Propose(owner, token, bad) => {
-                context(account(owner), self.now, g.get_proposal_fee().0, None);
+                let fee = g.get_proposal_fee().0;
+                // A proposer may prepay storage before attempting the zero-deposit call.
+                if self.entries[usize::from(owner)] {
+                    context(account(owner), self.now, fee, None);
+                    g.deposit_credit(None);
+                    self.credit[usize::from(owner)] += fee;
+                    self.deposits += fee;
+                }
+                context(account(owner), self.now, 0, None);
                 let mut a = args(token);
                 if bad == 1 {
                     a.init_calldata.0.resize(1025, 0);
@@ -230,7 +240,7 @@ impl Machine {
                     .any(|p| p.owner == owner && p.reserved > 0)
                 {
                     Some("E21_ACTIVE_PROPOSAL_EXISTS")
-                } else if self.credit[usize::from(owner)] < self.parameters.proposal_deposit {
+                } else if self.credit[usize::from(owner)] < self.parameters.proposal_deposit + fee {
                     Some("E11_INSUFFICIENT_CREDIT")
                 } else if bad == 1 {
                     Some("E22_INIT_CALLDATA_TOO_LONG")
@@ -243,7 +253,8 @@ impl Machine {
                     expect_code(code, || g.propose(a));
                 } else {
                     assert_eq!(g.propose(a), self.proposals.len() as u64);
-                    self.credit[usize::from(owner)] -= self.parameters.proposal_deposit;
+                    self.credit[usize::from(owner)] -= self.parameters.proposal_deposit + fee;
+                    self.storage_fees += fee;
                     self.proposals.push(ModelProposal {
                         owner,
                         token,
@@ -722,7 +733,7 @@ impl Machine {
         }
         assert_eq!(
             self.deposits,
-            self.credit.iter().sum::<u128>() + escrow + self.withdrawals
+            self.credit.iter().sum::<u128>() + escrow + self.withdrawals + self.storage_fees
         );
         let liabilities = self.credit.iter().sum::<u128>() + escrow;
         assert_eq!(g.get_total_liabilities().0, liabilities);
@@ -1110,11 +1121,11 @@ proptest! {
         deposit(&mut g, account(0), now, 100);
         let mut input = args(0);
         input.init_calldata.0.resize(calldata_len, 0);
-        proposal_context(&g, account(0), now);
+        proposal_context(&mut g, account(0), now);
         let id = g.propose(input.clone());
         g = roundtrip(g);
         deposit(&mut g, account(1), now, 100);
-        proposal_context(&g, account(1), now);
+        proposal_context(&mut g, account(1), now);
         let other = g.propose(input.clone());
         prop_assert_eq!(other, id + 1);
         prop_assert_eq!(g.get_active(account(0)), Some(id));
@@ -1140,7 +1151,7 @@ proptest! {
         g = roundtrip(g);
         expect_code("E31_WRONG_STATE", || g.expire(id));
         g = roundtrip(g);
-        proposal_context(&g, account(0), expiry + 1);
+        proposal_context(&mut g, account(0), expiry + 1);
         let reopened = g.propose(input);
         prop_assert_eq!(reopened, id + 2);
         prop_assert_eq!(g.get_active(account(1)), Some(other));
@@ -1202,7 +1213,7 @@ proptest! {
         prop_assert!(sign_requests().is_empty());
         g = roundtrip(g);
         deposit(&mut g, account(0), now, 100);
-        proposal_context(&g, account(0), now);
+        proposal_context(&mut g, account(0), now);
         let id = g.propose(args(0));
         g = roundtrip(g);
         context(account(0), now, 0, None);
@@ -1269,7 +1280,7 @@ proptest! {
             g = roundtrip(g);
         }
         deposit(&mut g, account(0), now, 100);
-        proposal_context(&g, account(0), now);
+        proposal_context(&mut g, account(0), now);
         let id = g.propose(args(0));
         g = roundtrip(g);
         context(account(0), now, 0, None);
@@ -1362,13 +1373,13 @@ proptest! {
         g = roundtrip(g);
         prop_assert_eq!(g.get_total_liabilities().0, amount);
         if operation == 4 {
-            proposal_context(&g, account(0), START);
+            proposal_context(&mut g, account(0), START);
             g.propose(args(0));
             g = roundtrip(g);
         }
         let storage_cost = u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear();
         let who = if operation == 2 { "governor.testnet".parse().unwrap() } else { account(0) };
-        let attached = if operation == 0 { 1 } else if operation == 1 { g.get_proposal_fee().0 } else { 0 };
+        let attached = if operation == 0 { 1 } else { 0 };
         context_with_balance(who, START, attached, storage_cost);
         match operation {
             0 => expect_code("E12_STORAGE_INSOLVENT", || g.deposit_credit(None)),
@@ -1502,13 +1513,13 @@ proptest! {
 proptest! {
     #![proptest_config(property_config())]
     #[test]
-    fn proposal_fee_must_be_exact(delta in 1u128..1_000_000) {
+    fn prepaid_proposal_rejects_unfunded_credit_and_nonzero_attachment(delta in 1u128..1_000_000) {
         let mut g = fresh_gate(42);
         context(account(0), START, 0, None);
         expect_code("E11_INSUFFICIENT_CREDIT", || g.propose(args(0)));
-        deposit(&mut g, account(0), START, 100);
-        g = roundtrip(g);
         let fee = g.get_proposal_fee().0;
+        deposit(&mut g, account(0), START, 100 + fee);
+        g = roundtrip(g);
         context(account(0), START, 0, None);
         let mut too_long = args(0);
         too_long.init_calldata.0.resize(1025, 0);
@@ -1516,13 +1527,13 @@ proptest! {
         let mut zero = args(0);
         zero.new_impl.0 = [0; 20];
         expect_code("E23_ZERO_ADDRESS", || g.propose(zero));
-        for attached in [fee - delta, fee + delta] {
+        for attached in [delta, fee + delta] {
             context(account(0), START, attached, None);
             expect_code("E61_STORAGE_FEE", || g.propose(args(0)));
-            prop_assert_eq!(g.get_total_liabilities().0, 100);
+            prop_assert_eq!(g.get_total_liabilities().0, 100 + fee);
             prop_assert_eq!(g.get_active(account(0)), None);
         }
-        proposal_context(&g, account(0), START);
+        context(account(0), START, 0, None);
         prop_assert_eq!(g.propose(args(0)), 0);
         context(account(0), START, 0, None);
         expect_code("E21_ACTIVE_PROPOSAL_EXISTS", || g.propose(args(0)));

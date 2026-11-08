@@ -126,14 +126,14 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
     proposer
         .call(contract.id(), "deposit_credit")
         .args_json(json!({"account":null}))
-        .deposit(NearToken::from_yoctonear(150 + entry_fee))
+        .deposit(NearToken::from_yoctonear(150 + entry_fee + proposal_fee))
         .transact()
         .await?
         .into_result()?;
     let result = proposer.call(contract.id(),"propose").args_json(json!({"args":{
         "new_impl":format!("0x{}","08".repeat(20)),"new_impl_codehash":format!("0x{}","09".repeat(32)),
         "expected_current_impl":format!("0x{}","0a".repeat(20)),"init_calldata":"0x","source_commitment":format!("0x{}","0b".repeat(32))
-    }})).deposit(NearToken::from_yoctonear(proposal_fee)).transact().await?.into_result()?;
+    }})).transact().await?.into_result()?;
     assert_eq!(result.json::<u64>()?, 0);
     let proposal: Value = contract
         .view("get_proposal")
@@ -236,7 +236,7 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
         .await?
         .json()?;
     assert_eq!(credit, "100");
-    // The same exactly backed gate still accepts a proposal: its attached fee pays the record.
+    // An exactly backed gate still accepts a proposal funded by prepaid storage.
     let more = worker.dev_create_account().await?;
     let more_fee: String = contract
         .view("get_credit_entry_fee")
@@ -246,12 +246,12 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
     let more_fee: u128 = more_fee.parse()?;
     more.call(contract.id(), "deposit_credit")
         .args_json(json!({"account":null}))
-        .deposit(NearToken::from_yoctonear(100 + more_fee))
+        .deposit(NearToken::from_yoctonear(100 + more_fee + proposal_fee))
         .transact()
         .await?
         .into_result()?;
     let details = contract.view_account().await?;
-    let backed = u128::from(details.storage_usage) * 10u128.pow(19) + 350;
+    let backed = u128::from(details.storage_usage) * 10u128.pow(19) + 350 + proposal_fee;
     worker
         .patch(contract.id())
         .account(AccountDetailsPatch::from(details).balance(NearToken::from_yoctonear(backed)))
@@ -260,7 +260,7 @@ async fn sandbox_credit_proposal_and_early_governance_refusal()
     let accepted = more.call(contract.id(), "propose").args_json(json!({"args":{
         "new_impl":format!("0x{}","18".repeat(20)),"new_impl_codehash":format!("0x{}","19".repeat(32)),
         "expected_current_impl":format!("0x{}","0a".repeat(20)),"init_calldata":"0x","source_commitment":format!("0x{}","0c".repeat(32))
-    }})).deposit(NearToken::from_yoctonear(proposal_fee)).max_gas().transact().await?;
+    }})).max_gas().transact().await?;
     assert!(accepted.is_success(), "{accepted:?}");
     Ok(())
 }

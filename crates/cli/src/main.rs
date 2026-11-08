@@ -356,7 +356,8 @@ fn run(cli: Cli) -> Result<(), Failure> {
                 .account
                 .as_deref()
                 .expect("writer requires an account");
-            propose::propose(
+            let verifier = rpc::Verifier::new(&verifier)?;
+            let registered = propose::propose(
                 propose::Input {
                     bytes: &bytes,
                     implementation: &implementation,
@@ -367,8 +368,11 @@ fn run(cli: Cli) -> Result<(), Failure> {
                 &writer,
                 &rpc::Near::new(&signer.near_rpc),
                 &rpc::Evm::new(&evm_rpc),
-                &rpc::Verifier::new(&verifier)?,
-            )
+                &verifier,
+            )?;
+            let run_id = verifier.start(&gate, registered.id, &registered.sealed)?;
+            println!("verifier run: {run_id}");
+            Ok(())
         }
         Command::Status {
             id,

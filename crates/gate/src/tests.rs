@@ -98,11 +98,15 @@ fn fund(g: &mut Gate, who: &str, amount: u128) {
     g.deposit_credit(None);
     context(who, 1_000_000_000, 0);
 }
-/// `propose` with the exact non-refundable storage fee attached; context is restored afterwards.
+/// Prepay one proposal's storage from an existing entry, then call without a deposit.
 fn propose_fee(g: &mut Gate, args: ProposeArgs) -> u64 {
     let who = env::predecessor_account_id();
     let now = env::block_timestamp();
-    context(who.as_str(), now, Gate::proposal_storage_fee());
+    if g.credit.contains_key(&who) {
+        context(who.as_str(), now, Gate::proposal_storage_fee());
+        g.deposit_credit(None);
+    }
+    context(who.as_str(), now, 0);
     let id = g.propose(args);
     context(who.as_str(), now, 0);
     id
@@ -145,6 +149,30 @@ fn matured(g: &mut Gate, kind: ChangeKind) -> u64 {
     context("anyone.testnet", 1_000_000_000 + TIMELOCK_NS, 0);
     drop(g.apply_change(id));
     id
+}
+
+#[test]
+fn prepaid_proposal_fee_requires_full_credit_and_zero_attachment() {
+    let mut g = gate();
+    let fee = Gate::proposal_storage_fee();
+    fund(&mut g, "alice.testnet", fee + 99);
+    fails("E11_INSUFFICIENT_CREDIT", || g.propose(args()));
+    assert_eq!(g.total_liabilities, fee + 99);
+    assert!(g.get_proposal(0).is_none());
+    context("alice.testnet", 1_000_000_000, 1);
+    g.deposit_credit(None);
+    context("alice.testnet", 1_000_000_000, fee);
+    fails("E61_STORAGE_FEE", || g.propose(args()));
+    assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, fee + 100);
+    context("alice.testnet", 1_000_000_000, 0);
+    let id = g.propose(args());
+    assert_eq!(g.total_liabilities, 100);
+    assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, 0);
+    assert_eq!(g.get_proposal(id).unwrap().reserved, 100);
+    context("anyone.testnet", 7_201_000_000_001, 0);
+    g.expire(id);
+    assert_eq!(g.get_credit("alice.testnet".parse().unwrap()).0, 100);
+    assert_eq!(g.total_liabilities, 100, "storage fee is never refunded");
 }
 
 #[test]
@@ -199,30 +227,6 @@ fn credit_funding_recipient_and_withdrawal_effects() {
     context("bob.testnet", 1_000_000_000, 7);
     g.deposit_credit(Some(alice.clone()));
     assert_eq!(g.get_credit(alice).0, 7);
-}
-#[test]
-fn propose_requires_the_exact_non_refundable_storage_fee() {
-    let mut g = gate();
-    fund(&mut g, "alice.testnet", 100);
-    let fee = Gate::proposal_storage_fee();
-    for wrong in [0, fee - 1, fee + 1] {
-        context("alice.testnet", 1_000_000_000, wrong);
-        let msg = fails("E61_STORAGE_FEE", || {
-            g.propose(args());
-        });
-        assert!(msg.contains(&fee.to_string()));
-    }
-    assert_eq!(g.get_active("alice.testnet".parse().unwrap()), None);
-    g.flush_storage();
-    let surplus_before = g.operating_surplus();
-    context("alice.testnet", 1_000_000_000, fee);
-    g.propose(args());
-    g.flush_storage();
-    // The reservation is refundable and still a liability; the attached fee is not a liability.
-    // The mocked balance does not add the attached deposit, so the surplus falls by the record's
-    // storage cost, which the fee must cover.
-    assert_eq!(g.total_liabilities, 100);
-    assert!(surplus_before.saturating_sub(g.operating_surplus()) <= fee);
 }
 #[test]
 fn exactly_backed_gate_can_pay_out_a_full_withdrawal() {
@@ -529,8 +533,7 @@ fn initialization_rejects_every_invalid_binding() {
 #[test]
 fn views_paginate_and_events_have_canonical_hashes() {
     let mut g = gate();
-    fund(&mut g, "alice.testnet", 100);
-    context("alice.testnet", 1_000_000_000, Gate::proposal_storage_fee());
+    fund(&mut g, "alice.testnet", 100 + Gate::proposal_storage_fee());
     g.propose(args());
     let logs = get_logs();
     let event: serde_json::Value =
@@ -764,12 +767,12 @@ fn pending_queue_is_bounded_unique_and_guardian_can_cancel_batch() {
 #[test]
 fn proposal_storage_growth_is_the_solvency_limiter_and_measurement() {
     let mut g = gate();
-    fund(&mut g, "alice.testnet", 100);
+    fund(&mut g, "alice.testnet", 100 + Gate::proposal_storage_fee());
     g.flush_storage();
     let before = env::storage_usage();
     let mut a = args();
     a.init_calldata.0 = vec![0x55; 1024];
-    context("alice.testnet", 1_000_000_000, Gate::proposal_storage_fee());
+    context("alice.testnet", 1_000_000_000, 0);
     g.propose(a);
     g.flush_storage();
     let delta = env::storage_usage() - before;
@@ -780,10 +783,10 @@ fn proposal_storage_growth_is_the_solvency_limiter_and_measurement() {
         "the committed storage fee must cover the pending record"
     );
     assert_eq!(g.total_liabilities, 100);
-    // Free the active slot. A gate with no prior surplus must still accept the next proposal,
-    // because the attached fee alone pays for its record.
+    // With no operating surplus, prepaid storage must still fund the next record.
     context("alice.testnet", 7_201_000_000_001, 0);
     g.expire(0);
+    fund(&mut g, "alice.testnet", Gate::proposal_storage_fee());
     g.flush_storage();
     let storage = env::storage_usage();
     let fee = Gate::proposal_storage_fee();
@@ -794,14 +797,14 @@ fn proposal_storage_growth_is_the_solvency_limiter_and_measurement() {
             .predecessor_account_id("alice.testnet".parse().unwrap())
             .block_timestamp(7_201_000_000_002)
             .account_balance(NearToken::from_yoctonear(balance))
-            .attached_deposit(NearToken::from_yoctonear(fee))
+            .attached_deposit(NearToken::from_yoctonear(0))
             .storage_usage(storage)
             .build()
     );
     let mut again = args();
     again.init_calldata.0 = vec![0x66; 1024];
     g.propose(again);
-    // Accepted (no E12) with zero prior surplus: the attached fee alone covered the record.
+    // Accepted (no E12) with zero prior surplus: the prepaid fee covered the record.
     g.flush_storage();
 }
 
