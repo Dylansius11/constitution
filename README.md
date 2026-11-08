@@ -96,6 +96,20 @@ cargo test -p constitution-cli --locked -j 1 --test audit_anvil -- --test-thread
 That integration launches disposable near-sandbox and Anvil networks and runs the actual CLI against the real gate/executor. Only the MPC derivation view is an explicitly labeled offline double. It does not use founder keys or prove fresh MPC signing, AI review or TEE attestation. The local wasm build is not deployable reproducible-build evidence.
 
 `make test` runs the **full Rust workspace suite**, not a lightweight smoke. Some verifier tests require Docker and the pinned tool image; the real R2 checks are resource-intensive. The six independent encoding vectors are run with `make vectors`, which also needs the pinned Node/pnpm environment. See [integration setup](docs/technical/INTEGRATIONS.md) and [verifier local operations](crates/verifier/src/LOCAL.md) before selecting those paths.
+### Build storage
+
+`target/` is ignored by Git: compiled dependencies, test executables and incremental caches
+never belong in a commit or push. The dev profile keeps line tables for project backtraces
+and omits dependency debug information. Reuse one checkout path in WSL so Cargo can reuse
+its artifacts. Run affected checks after code changes; do not rebuild the workspace for
+documentation-only changes.
+
+When space is needed, `target/debug/incremental/` is regenerable. Removing it preserves
+the remaining compiled outputs but loses incremental compilation state. `cargo clean`
+removes build outputs more broadly and makes subsequent checks rebuild; preserve any local
+wasm needed for sandbox tests or rebuild it before testing. Neither cleanup changes source,
+but do not clean while builds or tests are running.
+
 
 ## Read public state without a signing key
 
