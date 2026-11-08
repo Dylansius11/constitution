@@ -187,8 +187,12 @@ constitution/
     r4/initializers.json
     r5/corpus.json
   verifier-image/
-    Dockerfile                  # digest-pinned base and tool binaries
-    docker-compose.yml          # dstack compose; its hash is part of release identity
+    Dockerfile                  # digest-pinned tools and embedded trusted library sources
+    Service.Dockerfile          # Rust verifier + Node sidecar, allowlisted build context
+    run-service.mjs             # fail-closed child lifecycle, no automatic restart
+    compose.service.yaml        # shared staging bind, host-loopback API publication
+    compose.offline.yaml        # explicit local registry; no attestation/submission
+    compose.tee.yaml            # candidate CVM mounts; P1.6 appraisal still required
     ai-sidecar/                 # Node 24, @nearai/inference-sdk, localhost only
   fixtures/proposals/{drain,honest}/
   vectors/                      # shared JSON test vectors (T-ENC)

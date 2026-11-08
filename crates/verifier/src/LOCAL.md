@@ -8,11 +8,168 @@ without one it stops with `attestation_required`. Only explicit
 zero release hash, no quote claims, local registry and no submitter).
 Never register that identity on testnet. Protocol fakes are not attestation.
 
+## Packaged Linux service
+
+[I] `verifier-image/Service.Dockerfile` packages the Rust verifier and the existing
+Node 24.22.1 AI sidecar. `run-service.mjs` starts both, stops the sibling if either
+exits, and forwards SIGTERM/SIGINT with a ten-second kill deadline. There is no
+automatic restart: restarting loses the ephemeral certificate key. The sidecar
+receives only PATH, HOME and NEARAI settings; Rust does not receive NEARAI settings.
+Only the verifier API is published; the AI sidecar stays on container loopback.
+
+Build from the repository root on Linux/WSL with Docker:
+
+```sh
+sh verifier-image/build-service.sh
+```
+
+The Rust builder uses the existing digest-pinned Rust 1.99.1 image and one Cargo
+job. Dependency downloads are build-time only. Both Docker build contexts use
+allowlists: `.env`, credentials, host node_modules and generated artifacts are
+not image inputs. The tool image now embeds the trusted OpenZeppelin and
+forge-std source trees; rebuild it before using the updated runner. Old images
+without those trees are incompatible with the new absolute remappings.
+
+**Docker sibling-container boundary.** The service talks to the host daemon, not
+a nested privileged daemon. Its staging directory must be bind-mounted at the
+**same absolute path** on both sides; TMPDIR points there. Only each staged bundle
+is mounted into its tool container. Rules, reference sources and canary sources
+are embedded in the service image; trusted libraries are embedded in the tool
+image, not read from a host checkout. The Docker socket is root-equivalent:
+it belongs only in the trusted service, never in an untrusted tool container.
+
+Prepare a private service environment file containing PAGE_ORIGIN and, for chain
+mode, the RPC/gate/relay settings in "Start" and NEARAI settings below. Do not print
+resolved `docker compose config`: it includes the environment file's secrets.
+Separately export the Compose interpolation settings:
+
+```sh
+export VERIFIER_SERVICE_IMAGE="$(docker image inspect constitution-verifier-service:local --format '{{.Id}}')"
+export VERIFIER_TOOL_IMAGE="$(docker image inspect constitution-verifier-spike:local --format '{{.Id}}')"
+export DOCKER_GID="$(stat -c %g /var/run/docker.sock)"
+export VERIFIER_ENV_FILE=/absolute/private/verifier.env
+export VERIFIER_WORK_DIR=/var/lib/constitution/work
+```
+
+Pre-create the staging directory owned by UID/GID 10001 with mode 0700; the
+service fails rather than creating a missing host bind source. VERIFIER_UID and
+VERIFIER_GID can override the service identity for a local host, but must remain
+nonroot and match the staging owner. Permit that identity to read the private
+environment/registry or relay credential and, in a CVM, connect to dstack.
+Preload both images on the target host. Use registry digest references for a
+published release, not mutable tags; local image IDs are for local checks.
+
+Explicit **offline** startup uses an operator-controlled local registry and no
+relay credential or dstack mount:
+
+```sh
+export LOCAL_PROPOSAL_REGISTRY=/absolute/private/local-proposals.json
+docker compose -p constitution-local -f verifier-image/compose.service.yaml \
+  -f verifier-image/compose.offline.yaml up -d
+```
+
+For a separately approved CVM deployment, use `compose.tee.yaml` **instead** of
+the offline override, and set VERIFIER_RELAY_KEY_FILE to the host credential
+file. Missing dstack stops startup; never substitute a simulator. Do not combine
+TEE and offline overrides. The Compose files are deployment inputs, not evidence
+that TDX appraisal or Phala ingress works. A public ingress and its peer-header
+policy must be independently verified before public use; default socket policy
+conservatively shares a proxy's rate budget.
+
+The API publishes only `127.0.0.1:8787` on the host (VERIFIER_PORT overrides the
+host port); sidecar port 8788 is not published. The service has a 512 MiB cap and
+one CPU; sibling tool containers retain separate one-CPU/1-GiB caps. These are
+limits, not measured peak requirements or proof that a 500-MB-free VPS fits.
+Shutdown the local check with the same Compose files and `down`; do not stop or
+restart an activated verifier without accounting for its lost signing identity.
+This packaging does not implement an unattested VPS chain-signing fallback.
+
+### Observed packaging smoke (2026-11-05)
+
+[V, locally exercised on WSL2/Docker Desktop 28.5.1; not a CVM] Both images built
+with Rust 1.99.1 and Node 24.22.1. Local image IDs and Docker inspect `.Size`:
+
+| Image | Local image ID | Size bytes |
+| --- | --- | --- |
+| Tool sandbox | `sha256:1ae70d99b3451cbc2e09067b001efff1e30afe9bb545cd6471f8ecb5843bc4d8` | 319069062 |
+| Verifier service | `sha256:f561cf088f9ed4889e21f46531f9c5361b225b542fe84170bd42e1a3e96593bb` | 130922929 |
+
+These IDs record the earlier packaging smoke, not the latest source release.
+They predate the initial chain RPC body-bound correction and the AI review
+policy update. The replacement local build is recorded below; neither build
+has been appraised inside a CVM.
+
+- The actual offline Compose service accepted a sealed synthetic source bundle
+  over its host-published API, ran the real compiler and honest compile canary in
+  sibling Docker sandboxes, and issued `Reject { rule_id: 0, reason_code: 2 }`
+  in 5,115 ms. An independent Node client verified the Ed25519 signature over
+  SHA-256 of the canonical certificate bytes. AI was NotRun and no verdict was
+  submitted. The offline identity had no quote, release measurement or compose hash.
+- The real sidecar refused a browser Origin and returned Incomplete for a valid
+  request without an API key. The packaged SDK imported with networking disabled;
+  no inference or attestation call was made.
+- The packaged chain-mode invocation without dstack exited 1 with
+  `attestation_required`, not an offline downgrade. Stopping the actual sidecar
+  caused the supervisor and verifier container to exit 1; the disposable Compose
+  deployment was removed afterwards.
+- Docker reported only API port 8787 published on host loopback (test port 19787),
+  read-only root and restart policy `no`. Idle service usage was 27.96 MiB under
+  its 512 MiB cap; this is not a workload peak or a whole-host requirement.
+- Launcher lifecycle regression tests: 10 passed, including sibling failure,
+  spawn failure, signal handling and forced kill. Both Compose variants parsed;
+  the TEE variant was not deployed. Two independent scoped read-only reviews
+  returned no findings; they are not a security audit.
+- Focused Rust checks: startup 7 passed, socket/secret sandbox isolation 1 passed,
+  sandbox integration 4 passed (including the committed R2 honest/failing pair
+  and strict incomplete classification), and tool-boundary unit checks 5 passed.
+  The final invalid-address/redaction regression was rerun after removing
+  incidental error-format assertions: 1 passed. Verifier rustfmt check and
+  binary-target clippy with `-D warnings` passed. No full-workspace suite is claimed.
+
+No testnet transaction, paid inference, TDX/DCAP proof, final activation or
+unattested VPS signing support follows from this smoke.
+
+### Updated packaging smoke (2026-11-06)
+
+[V, locally exercised on WSL2/Docker Desktop 28.5.1; not a CVM]
+`sh verifier-image/build-service.sh` completed in 1,240.33 s, including
+19 min 42 s for the single-job optimized Rust build. Local image references:
+
+| Image | Local image ID | Size bytes |
+| --- | --- | --- |
+| Tool sandbox | `sha256:b4d4afc801f93a55dbb0f3acc45caa5ea4cb7fac54e5ff507e32c5994bc4d9ca` | 319070300 |
+| Verifier service | `sha256:0e528a8567df25613e219d57f941e74559cb42ad672d987442271225f8d2c171` | 130922644 |
+
+- The rebuilt service advertised the current rule-set commitment
+  `0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`.
+  A sealed invalid-Solidity bundle passed source-commitment validation, ran
+  the honest compilation canary, and returned `Reject { rule_id: 0, reason_code: 2 }`.
+  The client observed completion in 5,070 ms and independently verified the
+  Ed25519 certificate signature. AI was NotRun; submission was local-only.
+- With networking disabled, the packaged sidecar's real loopback HTTP handler
+  completed a disposable SDK-protocol-double check for `max_tokens: 45000`,
+  `thinking_token_budget: null` and the 300 s request deadline. This checks
+  request construction, not a real provider response or attestation.
+- The running sidecar without an API key returned `incomplete/missing_api_key`.
+  A separate chain-mode startup without dstack exited 1 with `attestation_required`.
+  No paid inference, chain write, offline-to-chain downgrade or CVM proof occurred.
+- Docker inspect confirmed read-only root, restart policy `no`, a 512 MiB
+  service cap, one CPU and only API port 8787 published on host loopback
+  (test port 19789). These are limits, not measured workload peaks or proof
+  that a 500 MiB host can run the service and sibling tools.
+- The disposable Compose container and network were removed after the smoke.
+  R2/solver and the full workspace suite were not rerun.
+
+Machine-readable observations:
+[`review-policy-2026-11-06.json`](../evidence/ai/review-policy-2026-11-06.json).
+
+
 ## Start
 
 Run from the repository root inside WSL as an unprivileged user, with Docker and the
-existing `constitution-verifier-spike:local` image available. The listener remains
-loopback-only at `127.0.0.1:8787`. Set `PAGE_ORIGIN` to the allowed page origin.
+existing `constitution-verifier-spike:local` image available. The native listener
+defaults to `127.0.0.1:8787`; VERIFIER_LISTEN_ADDR accepts an explicit IP:port
+(not a hostname). Set PAGE_ORIGIN to the allowed page origin.
 
 Default mode reads real gate and Base JSON-RPC endpoints and submits issued verdicts:
 
