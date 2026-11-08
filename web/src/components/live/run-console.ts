@@ -1,13 +1,12 @@
 import { createRunFlow, type FlowKind, type RunFlow, readFlowConfig } from "../../lib/run-flow.ts";
 import { renderLadder } from "./ladder.ts";
 
-/** States after which the flow stops observing; the card then offers a fresh run. */
+/** Only observed terminal outcomes permit forgetting recovery and starting another proposal. */
 const TERMINAL: Record<string, true> = {
   executed: true,
   rejected: true,
   expired: true,
   reverted: true,
-  error: true,
 };
 
 const config = readFlowConfig(stringEnv(import.meta.env));
@@ -34,6 +33,7 @@ for (const card of document.querySelectorAll<HTMLElement>("[data-flow]")) {
 
   const storageKey = `constitution:run:${config.gateAccount}:${kind}`;
   let flow: RunFlow | null = null;
+  let canStartNew = false;
 
   const begin = (): void => {
     flow?.dispose();
@@ -48,24 +48,26 @@ for (const card of document.querySelectorAll<HTMLElement>("[data-flow]")) {
         near.href = `${nearExplorer}/txns/${update.nearTxHash}`;
         near.hidden = false;
       }
-      if (TERMINAL[update.state.kind]) {
+      canStartNew = TERMINAL[update.state.kind] === true;
+      if (canStartNew || update.state.kind === "error") {
         button.removeAttribute("aria-disabled");
-        button.textContent = "Start a new run";
+        button.textContent = canStartNew ? "Start a new run" : "Check again";
       }
     });
     flow.start().catch((error: unknown) => {
+      canStartNew = false;
       title.textContent = "This run stopped";
-      body.textContent = `${error instanceof Error ? error.message : String(error)} Nothing was retried.`;
+      body.textContent = `${error instanceof Error ? error.message : String(error)} Nothing was retried. Inspect the demo account with the CLI before submitting again.`;
       card.dataset["tone"] = "neutral";
       button.removeAttribute("aria-disabled");
-      button.textContent = "Start a new run";
+      button.textContent = "Check again";
     });
   };
 
   button.addEventListener("click", () => {
     if (button.getAttribute("aria-disabled") === "true") return;
-    // A new run is an explicit choice: it forgets the earlier run on this tab, never resubmits it.
-    if (button.textContent === "Start a new run") sessionStorage.removeItem(storageKey);
+    // Errors retain accepted/uncertain submission metadata; another observation never reproposes.
+    if (canStartNew) sessionStorage.removeItem(storageKey);
     begin();
   });
 

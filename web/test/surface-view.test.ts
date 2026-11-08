@@ -163,6 +163,24 @@ describe("surface state copy and honest ladders", () => {
       detail: "A candidate reproduced.",
     });
   });
+  it.each(["Pass", "Incomplete"] as const)(
+    "renders the backend's terminal submit result (%s) on the verdict stage",
+    (status) => {
+      for (const state of [rejected, states[5]]) {
+        const view = surfaceView(state, {
+          runStages: [
+            { name: "submit", status, detail: "Observed submission result.", elapsed_ms: 1 },
+            { name: "done", status, detail: "Run complete.", elapsed_ms: 0 },
+          ],
+        });
+        const stage = view.stages.find(
+          (s) => s.label === VERIFIER_LABELS.submitting.label,
+        );
+        expect(stage?.state).toBe(status === "Pass" ? "done" : "skipped");
+        expect(stage?.status).toBe(status === "Pass" ? "Done" : "Incomplete");
+      }
+    },
+  );
   it("distinguishes a registration refusal from a signed broadcast failure", () => {
     const registration = surfaceView(
       { kind: "error", cause: "gate_refused", detail: "Wrong target." },

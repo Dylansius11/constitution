@@ -131,7 +131,8 @@ function ladder(
   ].includes(state.kind);
   for (const key of keys) {
     const spec = VERIFIER_LABELS[key];
-    const observed = ctx.runStages?.find((s) => s.name === key);
+    // The active pipeline stage is "submitting"; the recorded chain result is "submit".
+    const observed = ctx.runStages?.find((s) => s.name === (key === "submitting" ? "submit" : key));
     let stage: Stage = { ...spec, state: "pending" };
     if (unobserved && !idle && !submitting)
       stage = { ...spec, state: "skipped", status: "Not observed by this page" };
@@ -347,7 +348,7 @@ export function surfaceView(state: SurfaceState, ctx: SurfaceContext = {}): Surf
           break;
         case "verifier_unreachable":
           title = "Cannot reach the verifier";
-          body = `The verifier did not respond.${ctx.proposalId !== undefined ? ` Your proposal ${ctx.proposalId} is recorded on NEAR.` : ""} The verdict appears when the verifier returns. Check again.`;
+          body = `${state.detail}${ctx.proposalId !== undefined ? ` Inspect proposal ${ctx.proposalId} with the CLI before requesting verification again; do not repropose.` : " Inspect the demo account with the CLI before submitting again."}`;
           break;
         case "broadcast_failed":
           title = "Could not broadcast the transaction";
