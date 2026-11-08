@@ -360,6 +360,10 @@ fn fee_cap_and_superseded_rules_fail_before_state_mutation() {
         drop(g.bump_fee(SignTarget::Proposal(0)));
     });
     context("relay.testnet", 1_801_000_000_000, 0);
+    fails("E45_BINDING_MISMATCH", || {
+        drop(g.bump_fee(SignTarget::Proposal(0)));
+    });
+    context("relay.testnet", 1_802_000_000_000, 0);
     drop(g.bump_fee(SignTarget::Proposal(0)));
 }
 #[test]
@@ -435,9 +439,57 @@ fn sign_failed_blocks_rule_change_until_its_deadline_then_only_nonce_filler_is_a
         drop(g.apply_change(id));
     });
     context("relay.testnet", 1_801_000_000_000, 0);
+    fails("E55_SIGNATURES_OUTSTANDING", || drop(g.apply_change(id)));
+    context("relay.testnet", 1_802_000_000_000, 0);
     drop(g.apply_change(id));
     drop(g.retry_sign(0));
     assert_eq!(g.get_proposal(0).unwrap().evm.as_ref().unwrap().nonce, 42);
+}
+
+#[test]
+fn signed_and_failed_signatures_block_rule_change_through_evm_deadline() {
+    for state in [ProposalState::Signed, ProposalState::SignFailed] {
+        let (mut g, c) = setup();
+        submit(&mut g, &c);
+        callback(
+            &mut g,
+            0,
+            1,
+            if state == ProposalState::Signed {
+                captured()
+            } else {
+                PromiseResult::Failed
+            },
+        );
+        let id = schedule(&mut g, rule_change());
+        g.changes.get_mut(&id).unwrap().eta_ns = 1_000_000_000;
+        context("relay.testnet", 1_801_000_000_000, 0);
+        fails("E55_SIGNATURES_OUTSTANDING", || drop(g.apply_change(id)));
+        assert_eq!(g.constitution.rule_set_hash, [5; 32]);
+        context("relay.testnet", 1_802_000_000_000, 0);
+        drop(g.apply_change(id));
+        assert_eq!(g.constitution.rule_set_hash, [12; 32]);
+    }
+}
+
+#[test]
+fn stale_rule_retry_waits_past_inclusive_deadline_and_preserves_transaction() {
+    let (mut g, c) = setup();
+    submit(&mut g, &c);
+    callback(&mut g, 0, 1, PromiseResult::Failed);
+    let original = g.get_proposal(0).unwrap().evm.clone().unwrap();
+    let preimage = g.signing_preimage(0);
+    g.constitution.rule_set_hash = [99; 32];
+    context("relay.testnet", 1_801_000_000_000, 0);
+    fails("E45_BINDING_MISMATCH", || drop(g.retry_sign(0)));
+    assert_eq!(g.get_proposal(0).unwrap().state, ProposalState::SignFailed);
+    context("relay.testnet", 1_802_000_000_000, 0);
+    drop(g.retry_sign(0));
+    let retried = g.get_proposal(0).unwrap().evm.as_ref().unwrap();
+    assert_eq!(retried.nonce, original.nonce);
+    assert_eq!(retried.deadline_s, 1801);
+    assert_eq!(retried.signing_hash, original.signing_hash);
+    assert_eq!(g.signing_preimage(0), preimage);
 }
 
 fn fixed_spike_proposal(g: &mut Gate) {

@@ -125,7 +125,7 @@ impl Machine {
             Some("E31_WRONG_STATE")
         } else if self.paused {
             Some("E20_SIGNING_PAUSED")
-        } else if p.rules != self.rules && p.deadline > ns_to_s(self.now) {
+        } else if p.rules != self.rules && p.deadline >= ns_to_s(self.now) {
             Some("E45_BINDING_MISMATCH")
         } else {
             None
@@ -569,7 +569,7 @@ impl Machine {
                                 ProposalState::SignRequested
                                     | ProposalState::Signed
                                     | ProposalState::SignFailed
-                            ) && (p.deadline > ns_to_s(self.now)
+                            ) && (p.deadline >= ns_to_s(self.now)
                                 || (p.state == ProposalState::SignRequested
                                     && self.now.saturating_sub(p.requested_at) < 1_200_000_000_000))
                         })

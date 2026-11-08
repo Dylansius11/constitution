@@ -285,7 +285,7 @@ impl Gate {
             .unwrap_or_else(|| env::panic_str(GateError::WrongState.code()));
         check(
             proposal.rule_set_hash == self.constitution.rule_set_hash
-                || evm.deadline_s <= ns_to_s(env::block_timestamp()),
+                || evm.deadline_s < ns_to_s(env::block_timestamp()),
             GateError::BindingMismatch,
             "rule_set_hash",
         );

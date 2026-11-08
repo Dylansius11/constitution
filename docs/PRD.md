@@ -97,7 +97,7 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 ### F4. EVM side: protected vault, proxy and executor on Base Sepolia (P0)
 
 - Outcome: one `TransparentUpgradeableProxy` in front of `VaultV1`; its ProxyAdmin is owned by `ConstitutionExecutor`; the executor accepts calls only from the MPC-derived EOA.
-- Executor checks, in order: caller is the authorized EOA; `certificate_id` not used; `block.timestamp <= deadline`; `new_impl.code.length > 0` and `new_impl.codehash == expected`; tracked current implementation equals `expected_current_impl`; then `ProxyAdmin.upgradeAndCall(proxy, new_impl, init_calldata)`; then marks the certificate used and records the new current implementation.
+- Executor checks, in order: caller is the authorized EOA; `certificate_id` not used; `block.timestamp <= deadline`; `new_impl.code.length > 0` and `new_impl.codehash == expected`; tracked current implementation equals `expected_current_impl`. It marks the certificate used and records the new implementation **before** calling `ProxyAdmin.upgradeAndCall`, following checks-effects-interactions; an initializer revert atomically rolls those effects back.
 - Demo implementations: `VaultV1`, `VaultV2Honest` (adds a feature with append-only storage), `VaultV2Drain` (hidden drain path, see DEMO notes in BUILD-PLAN phase 3).
 - Acceptance: Foundry tests for each executor revert; a fork or local test proves only the executor can upgrade; testnet receipts for deploy and one real upgrade recorded in SMART-CONTRACT.
 

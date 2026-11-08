@@ -110,7 +110,7 @@ Founder response, 2026-10-26: hackathon credits already requested. Grant amount 
 
 ### D13. Already-signed transactions when rules change (lead)
 
-Resolution [I]: the executor does not know NEAR rule epochs. A signature issued under rule set N stays executable until its `deadline`, which is at most `params.sign_validity_s` after signing. The gate never signs anything under a superseded rule set, and `apply_change(SetRuleSet)` is refused while any proposal is `SignRequested` or `Signed` with an unexpired deadline. A `SignRequested` proposal whose callback never arrives stops blocking after its deadline plus 20 minutes (gate fix 2026-11-03, security review L2). Disclosed in PRD risks.
+Resolution [I]: the executor does not know NEAR rule epochs. A signature issued under rule set N remains executable **through** its `deadline` second, at most `params.sign_validity_s` after signing. The gate refuses `apply_change(SetRuleSet)` while any SignRequested, SignFailed or Signed proposal has `now_s <= deadline_s`. A SignRequested proposal also blocks until at least 20 minutes after its latest request. Superseded-rule retry/bump is allowed only at `now_s > deadline_s`, preserves the original deadline and calldata, and therefore can only fill an expired nonce. Equality is not expiry. Disclosed in PRD risks.
 
 ### D14. Gas, fee caps and funding
 

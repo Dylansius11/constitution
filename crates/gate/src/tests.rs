@@ -339,7 +339,7 @@ fn t_gate_7_roles_and_cancellation_fail_closed() {
     fails("E52_NOT_FOUND", || g.apply_change(id));
 }
 #[test]
-fn t_gate_8_rules_block_requested_and_unexpired_signed_but_allow_deadline_equality() {
+fn t_gate_8_rules_block_through_inclusive_executor_deadline() {
     let mut g = gate();
     fund(&mut g, "alice.testnet", 100);
     let pid = propose_fee(&mut g, args());
@@ -368,6 +368,10 @@ fn t_gate_8_rules_block_requested_and_unexpired_signed_but_allow_deadline_equali
         .as_mut()
         .unwrap()
         .deadline_s = 604801;
+    fails("E55_SIGNATURES_OUTSTANDING", || g.apply_change(id));
+    g.proposals.get_mut(&pid).unwrap().state = ProposalState::SignFailed;
+    fails("E55_SIGNATURES_OUTSTANDING", || g.apply_change(id));
+    context("anyone.testnet", 604_802_000_000_000, 0);
     drop(g.apply_change(id));
     assert_eq!(g.get_constitution().rule_set_hash, [12; 32]);
     assert!(g.outstanding_signatures.is_empty());

@@ -114,7 +114,7 @@ impl Gate {
                             now.saturating_sub(*started) >= SIGN_REQUEST_TIMEOUT
                         });
                         check(
-                            evm.deadline_s <= now_s
+                            evm.deadline_s < now_s
                                 && (proposal.state != ProposalState::SignRequested || timed_out),
                             GateError::SignaturesOutstanding,
                             "signature deadline or request timeout not elapsed",

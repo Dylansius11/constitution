@@ -4,6 +4,18 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-05: Prepaid proposal credit must include storage for restricted NEAR keys
+
+- [V, local] A fresh review found that `propose` still required an attached storage fee although D17 exposes only a function-call key. The old prepaid-credit regression failed at the attached-fee check. After cutover, the actual CLI successfully registered a proposal in near-sandbox using a genuine method-restricted key; forbidden credit withdrawal and NEAR transfer remained refused.
+- Root cause: reservation funding and permanent storage metering were implemented separately, but the integration tests only signed proposals with full-access accounts. Paying the refundable reservation from credit did not make a separate attached storage fee compatible with the public demo key.
+- Rule: prepay both amounts in credit, permanently debit only the storage fee, reserve/refund only the proposal deposit, and attach zero to `propose`. Exercise the real restricted key through the CLI, not only a mocked predecessor. Labels and API comments must distinguish the refundable reservation view from the total funding requirement.
+
+### 2026-11-05: Gate expiry must match the executor's inclusive deadline
+
+- [V, local] New regressions failed because the gate permitted rule changes and superseded-rule retries at `now_s == deadline_s`, while `ConstitutionExecutor` still accepts execution at that second. The corrected gate blocks through equality and permits expired nonce filling only afterwards without extending the stored deadline.
+- Root cause: the gate used `deadline <= now` as expiry while the executor rejects only `timestamp > deadline`; the old model and boundary test repeated the gate comparator instead of using the execution contract as the oracle.
+- Rule: derive boundary expectations from the consumer's acceptance interval. Test D and D+1 for Signed, SignFailed, governance, retry and bump; byte-preserving nonce recovery must not create a still-executable old-rule upgrade.
+
 ### 2026-11-05: Complementary Base RPC endpoints can preserve pinned-state authentication
 
 - [V, exercised on Base Sepolia] What happened: the public Base Sepolia RPC supplied account/storage proofs for recent numbered blocks while the configured Validation Cloud endpoint supplied archive state and traces. The production witness fetch, using both providers, passed at block 54,676,922 for 8 accounts and 7 storage slots in 12,189 ms. No transactions, upgrade verdict, AI call or R2/solver was involved.
