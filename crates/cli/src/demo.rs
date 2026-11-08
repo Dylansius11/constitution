@@ -296,3 +296,115 @@ fn verify_outcome(scenario: Scenario, observed: &Value) -> Result<(), Failure> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn observed(state: &str, evm_status: &str, after: &str) -> serde_json::Value {
+        json!({
+            "schema":"constitution.receipt/1",
+            "proposal":{"state":state,"new_impl":"0x0202020202020202020202020202020202020202","expected_current_impl":"0x0101010101010101010101010101010101010101","evm":null},
+            "verdict":{"kind":if state == "Rejected" {"Reject"} else {"Pass"}},
+            "evm":{"status":evm_status},
+            "proxy":{"implementation_after":after,"observed_at_block":10},
+            "labels":{"network":"local"}
+        })
+    }
+
+    #[test]
+    fn attack_requires_rejection_without_any_signing_and_unchanged_proxy() {
+        let old = "0x0101010101010101010101010101010101010101";
+        assert!(verify_outcome(Scenario::Attack, &observed("Rejected", "not_signed", old)).is_ok());
+        for state in [
+            "Pending",
+            "SignRequested",
+            "SignFailed",
+            "Signed",
+            "Expired",
+        ] {
+            assert!(verify_outcome(Scenario::Attack, &observed(state, "not_signed", old)).is_err());
+        }
+        let mut signed = observed("Rejected", "not_signed", old);
+        signed["proposal"]["evm"] = json!({"nonce":0});
+        assert!(verify_outcome(Scenario::Attack, &signed).is_err());
+        assert!(
+            verify_outcome(
+                Scenario::Attack,
+                &observed(
+                    "Rejected",
+                    "not_signed",
+                    "0x0202020202020202020202020202020202020202"
+                )
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn upgrade_requires_inclusion_and_candidate_readback_not_merely_signed() {
+        let candidate = "0x0202020202020202020202020202020202020202";
+        assert!(
+            verify_outcome(
+                Scenario::Upgrade,
+                &observed("Signed", "included", candidate)
+            )
+            .is_ok()
+        );
+        for status in ["not_signed", "signed", "pending", "reverted"] {
+            assert!(
+                verify_outcome(Scenario::Upgrade, &observed("Signed", status, candidate)).is_err()
+            );
+        }
+        assert!(
+            verify_outcome(
+                Scenario::Upgrade,
+                &observed(
+                    "Signed",
+                    "included",
+                    "0x0101010101010101010101010101010101010101"
+                )
+            )
+            .is_err()
+        );
+        assert!(
+            verify_outcome(
+                Scenario::Upgrade,
+                &observed("Pending", "included", candidate)
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn settled_gate_never_bypasses_failed_withheld_or_uncertain_verifier_run() {
+        let incomplete = json!({"stage":"done","started_at":1,"certificate_b64":"retained",
+            "stages":[{"name":"submit","status":"Incomplete","detail":"response lost","elapsed_ms":1}]});
+        let failed =
+            json!({"stage":"failed","started_at":1,"stages":[],"error_code":"rpc_unavailable"});
+        let withheld = json!({"stage":"done","started_at":1,"stages":[]});
+        for run in [incomplete, failed, withheld] {
+            assert!(next(Scenario::Upgrade, &ProposalState::Signed, &run).is_err());
+            assert!(next(Scenario::Attack, &ProposalState::Rejected, &run).is_err());
+        }
+        let submitting =
+            json!({"stage":"submitting","started_at":1,"stages":[],"certificate_b64":"retained"});
+        assert_eq!(
+            next(Scenario::Upgrade, &ProposalState::Signed, &submitting).unwrap(),
+            Next::Wait
+        );
+        let done = json!({"stage":"done","started_at":1,"stages":[],"certificate_b64":"retained"});
+        assert_eq!(
+            next(Scenario::Upgrade, &ProposalState::Pending, &done).unwrap(),
+            Next::Wait
+        );
+        assert_eq!(
+            next(Scenario::Upgrade, &ProposalState::Signed, &done).unwrap(),
+            Next::Relay
+        );
+        assert_eq!(
+            next(Scenario::Attack, &ProposalState::Rejected, &done).unwrap(),
+            Next::Rejected
+        );
+    }
+}
