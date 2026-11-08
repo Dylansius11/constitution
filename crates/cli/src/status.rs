@@ -7,6 +7,44 @@ use crate::{
 use constitution_types::ProposalState;
 use std::time::{Duration, Instant};
 
+/// Shared run policy: a settled gate never turns an incomplete verifier run into success.
+pub fn run_complete(run: &serde_json::Value) -> Result<bool, Failure> {
+    let stages = run["stages"].as_array().ok_or_else(|| {
+        Failure::new(
+            "verifier returned no stages",
+            "inspect the verifier; incomplete is not a pass",
+        )
+    })?;
+    if run["stage"] == "failed" {
+        return Err(Failure::verifier_failed(
+            run["error_code"].as_str().unwrap_or(""),
+        ));
+    }
+    if run["stage"] != "done" {
+        return Ok(false);
+    }
+    if stages
+        .iter()
+        .any(|stage| stage["name"] == "submit" && stage["status"] == "Incomplete")
+    {
+        return Err(Failure::new(
+            "verifier submission incomplete; certificate retained; the submission may have landed",
+            "inspect relay transactions before retrying; check the gate with `constitution status <id>`; do not automatically resubmit or start another run",
+        ));
+    }
+    if run
+        .get("certificate_b64")
+        .and_then(serde_json::Value::as_str)
+        .is_none()
+    {
+        return Err(Failure::retry_verifier(
+            "verifier withheld: AI review incomplete; no certificate; the proposal is still Pending",
+            10,
+        ));
+    }
+    Ok(true)
+}
+
 pub fn status(
     near: &Near,
     gate: &str,
@@ -58,34 +96,8 @@ pub fn status(
                 };
                 println!("  {name}: {status} - {detail}");
             }
-            run_terminal = matches!(run["stage"].as_str(), Some("done" | "failed"));
-            if run["stage"] == "failed" {
-                return Err(Failure::verifier_failed(
-                    run["error_code"].as_str().unwrap_or(""),
-                ));
-            }
-            if run["stage"] == "done" {
-                if run["stages"]
-                    .as_array()
-                    .expect("validated stages")
-                    .iter()
-                    .any(|stage| stage["name"] == "submit" && stage["status"] == "Incomplete")
-                {
-                    return Err(Failure::new(
-                        "verifier submission incomplete; certificate retained; the submission may have landed",
-                        "inspect relay transactions before retrying; check the gate with `constitution status <id>`; do not automatically resubmit or start another run",
-                    ));
-                }
-                if run
-                    .get("certificate_b64")
-                    .and_then(serde_json::Value::as_str)
-                    .is_none()
-                {
-                    return Err(Failure::retry_verifier(
-                        "verifier withheld: AI review incomplete; no certificate; the proposal is still Pending",
-                        10,
-                    ));
-                }
+            run_terminal = run_complete(&run)?;
+            if run_terminal {
                 println!(
                     "verifier run done; certificate issued; gate state and relay inclusion are reported separately"
                 );

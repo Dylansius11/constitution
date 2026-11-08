@@ -1,0 +1,353 @@
+---
+import Card from "../ui/Card.astro";
+import Marker from "../ui/Marker.astro";
+import StageLadder from "../ui/StageLadder.astro";
+import type { Stage } from "../ui/StageLadder.astro";
+import StatusBadge from "../ui/StatusBadge.astro";
+
+/**
+ * The six product-like cards of the story (PROPOSED .. EXECUTED). Content is schematic and true:
+ * contract and fixture names, no invented hashes, addresses or timings. The story section shows the
+ * `illustration` badge; the local and spike facts carry their own evidence labels.
+ */
+interface Props {
+  step: 0 | 1 | 2 | 3 | 4 | 5;
+}
+
+const { step } = Astro.props;
+
+const drainStages: Stage[] = [
+  { label: "Opening the sealed bundle", state: "done" },
+  { label: "Compiling (pinned solc 0.8.38)", state: "done" },
+  { label: "R1 Storage layout", state: "done" },
+  {
+    label: "R2 Solvency",
+    state: "refused",
+    detail: "A bounded sequence withdraws more than the vault holds.",
+  },
+  { label: "R3, R4, R5", state: "skipped", status: "Not reached" },
+  {
+    label: "Private red-team review",
+    state: "skipped",
+    status: "Not run",
+    detail: "A deterministic rule refused first.",
+  },
+];
+
+const honestStages: Stage[] = [
+  { label: "R1 Storage layout", state: "done" },
+  { label: "R2 Solvency", state: "done" },
+  { label: "R3 Opcode filter", state: "done" },
+  { label: "R4 Initializer allowlist", state: "done" },
+  { label: "R5 Differential replay", state: "done" },
+  {
+    label: "Private red-team review",
+    state: "done",
+    detail: "No candidate counterexample reproduced.",
+  },
+];
+
+// Highlight only the characters that differ between the two implementation names.
+const before = "VaultV1";
+const after = "VaultV2Honest";
+let common = 0;
+while (common < before.length && before[common] === after[common]) common += 1;
+const split = (name: string) => [name.slice(0, common), name.slice(common)] as const;
+const [beforeSame, beforeDiff] = split(before);
+const [afterSame, afterDiff] = split(after);
+---
+
+{
+  step === 0 && (
+    <Card title="Proposal" meta="NEAR testnet">
+      <dl class="kv">
+        <div>
+          <dt>Implementation</dt>
+          <dd class="mono">VaultV2Drain</dd>
+        </div>
+        <div>
+          <dt>Declared change</dt>
+          <dd>Fee update</dd>
+        </div>
+        <div>
+          <dt>Source</dt>
+          <dd>Sealed to the verifier</dd>
+        </div>
+        <div>
+          <dt>Init calldata</dt>
+          <dd>Empty</dd>
+        </div>
+      </dl>
+    </Card>
+  )
+}
+
+{
+  step === 1 && (
+    <Card title="Attested verifier">
+      <StageLadder stages={drainStages} label="Verifier stages for the drain proposal" compact />
+      <p class="foot">
+        <StatusBadge tone="local">Local test</StatusBadge>
+        <span>
+          Local verifier run: deposit 1 · withdraw 1 · deposit 1 · withdraw 2^66 drains the vault.
+        </span>
+      </p>
+    </Card>
+  )
+}
+
+{
+  step === 2 && (
+    <Card title="Gate verdict">
+      <p class="verdict verdict--refused">
+        <Marker state="refused" />
+        <span class="verdict__word">Refused</span>
+        <span class="verdict__rule mono">R2 Solvency</span>
+      </p>
+      <p class="line">No signature was requested.</p>
+      <div class="same">
+        <p class="same__label">Implementation unchanged</p>
+        <div class="same__row mono">
+          <span>VaultV1</span>
+          <span aria-label="equals">=</span>
+          <span>VaultV1</span>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+{
+  step === 3 && (
+    <Card title="Attested verifier">
+      <StageLadder stages={honestStages} label="Verifier stages for the honest proposal" compact />
+      <p class="verdict verdict--certified">
+        <Marker state="done" />
+        <span class="verdict__word">Certified</span>
+      </p>
+      <p class="foot foot--plain">The AI can only refuse. It cannot approve.</p>
+    </Card>
+  )
+}
+
+{
+  step === 4 && (
+    <Card title="Chain Signature">
+      <dl class="kv">
+        <div>
+          <dt>Chain</dt>
+          <dd>Base Sepolia (84532)</dd>
+        </div>
+        <div>
+          <dt>To</dt>
+          <dd class="mono">ConstitutionExecutor</dd>
+        </div>
+        <div>
+          <dt>Call</dt>
+          <dd class="mono">execute(…)</dd>
+        </div>
+        <div>
+          <dt>Nonce</dt>
+          <dd>Assigned by the gate</dd>
+        </div>
+        <div>
+          <dt>Fees</dt>
+          <dd>Capped by timelocked parameters</dd>
+        </div>
+      </dl>
+      <p class="foot foot--plain">
+        The gate builds this transaction itself. Nobody can hand it a hash to sign.
+      </p>
+    </Card>
+  )
+}
+
+{
+  step === 5 && (
+    <Card title="Base Sepolia">
+      <div class="swap">
+        <p class="swap__label">Proxy implementation</p>
+        <div class="swap__row mono">
+          <span class="swap__side">before</span>
+          <span>
+            {beforeSame}
+            <mark>{beforeDiff}</mark>
+          </span>
+        </div>
+        <div class="swap__row mono">
+          <span class="swap__side">after</span>
+          <span>
+            {afterSame}
+            <mark>{afterDiff}</mark>
+          </span>
+        </div>
+      </div>
+      <p class="line">Executed through ConstitutionExecutor and ProxyAdmin.</p>
+      <p class="foot">
+        <a href="#evidence">See the recorded spike run</a>
+        <StatusBadge tone="spike">Spike, 2026-11-03</StatusBadge>
+      </p>
+    </Card>
+  )
+}
+
+<style>
+  .kv {
+    display: grid;
+    margin: 0;
+  }
+
+  .kv > div {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 9rem) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .kv > div:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .kv dt {
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+    padding-top: 0.12rem;
+  }
+
+  .kv dd {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+
+  .foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--line);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    color: var(--ink-muted);
+  }
+
+  .foot--plain {
+    display: block;
+  }
+
+  .foot a {
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .line {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  .verdict {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--line);
+  }
+
+  .verdict:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .verdict > :global(svg) {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .verdict__word {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+  }
+
+  .verdict__rule {
+    margin-left: auto;
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink-muted);
+  }
+
+  .verdict--refused {
+    color: var(--refuse);
+  }
+
+  .verdict--refused .verdict__rule {
+    color: var(--ink-muted);
+  }
+
+  .verdict--certified {
+    color: var(--pass);
+  }
+
+  .same {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--line);
+  }
+
+  .same__label,
+  .swap__label {
+    margin-bottom: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+  }
+
+  .same__row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: var(--space-3);
+    align-items: center;
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .same__row span:nth-child(2) {
+    color: var(--ink-muted);
+  }
+
+  .same__row span:last-child {
+    text-align: right;
+  }
+
+  .swap__row {
+    display: grid;
+    grid-template-columns: 3.75rem minmax(0, 1fr);
+    align-items: baseline;
+    padding: var(--space-2) 0;
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .swap__side {
+    font-size: var(--text-xs);
+    font-weight: 400;
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink-muted);
+  }
+
+  mark {
+    padding: 0.05em 0;
+    border-radius: 2px;
+    background: var(--lav-soft);
+    color: var(--ink);
+    box-shadow: inset 0 -2px 0 var(--lav);
+  }
+</style>

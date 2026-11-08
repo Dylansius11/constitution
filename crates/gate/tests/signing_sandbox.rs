@@ -92,11 +92,11 @@ impl Harness {
             .parse()?;
         who.call(self.gate.id(), "deposit_credit")
             .args_json(json!({"account":null}))
-            .deposit(NearToken::from_yoctonear(100 + entry_fee))
+            .deposit(NearToken::from_yoctonear(100 + entry_fee + proposal_fee))
             .transact()
             .await?
             .into_result()?;
-        let id:u64=who.call(self.gate.id(),"propose").args_json(json!({"args":ProposeArgs{new_impl:Hex20([8;20]),new_impl_codehash:Hex32([tag;32]),expected_current_impl:Hex20([10;20]),init_calldata:HexBytes(vec![]),source_commitment:Hex32([11;32])}})).deposit(NearToken::from_yoctonear(proposal_fee)).transact().await?.into_result()?.json()?;
+        let id:u64=who.call(self.gate.id(),"propose").args_json(json!({"args":ProposeArgs{new_impl:Hex20([8;20]),new_impl_codehash:Hex32([tag;32]),expected_current_impl:Hex20([10;20]),init_calldata:HexBytes(vec![]),source_commitment:Hex32([11;32])}})).transact().await?.into_result()?.json()?;
         let now = ns_to_s(self.worker.view_block().await?.timestamp());
         let mut empty_hash = [0; 32];
         hex::decode_to_slice(

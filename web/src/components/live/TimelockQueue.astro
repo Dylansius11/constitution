@@ -1,0 +1,72 @@
+---
+import { site } from "../../data/site.ts";
+import StatusBadge from "../ui/StatusBadge.astro";
+import "./live.css";
+
+interface Props {
+  id?: string;
+}
+
+const { id = "timelock-queue" } = Astro.props;
+---
+
+<div
+  id={id}
+  class="live-surface timelock-queue"
+  data-timelock
+  data-gate={site.gateAccount}
+  data-near-rpc={site.nearRpc}
+>
+  <p class="live-intro">Delay: 7 days. No role can shorten it.</p>
+  {
+    site.gateAccount === null ? (
+      <StatusBadge tone="awaiting">Awaiting activation</StatusBadge>
+    ) : (
+      <>
+        <output aria-live="polite" data-queue-status>
+          Reading the timelock queue from NEAR testnet.
+        </output>
+        <p class="live-meta" data-queue-observed></p>
+        <ol class="change-list" aria-label="Observed governance changes" data-changes></ol>
+        <button type="button" class="live-action" data-queue-retry>
+          Retry now
+        </button>
+        <p class="live-meta">
+          Shows the first 50 changes returned by the gate. Remaining time uses this device’s clock;
+          only the gate decides when a change can be applied.
+        </p>
+        <noscript>
+          <p>
+            JavaScript is needed to read the queue. No queued changes have been observed by this page.
+          </p>
+        </noscript>
+      </>
+    )
+  }
+</div>
+
+<script>
+  import "./timelock-queue.ts";
+</script>
+
+<style>
+  .change-list {
+    list-style: none;
+    padding: 0;
+    margin-top: var(--space-5);
+  }
+
+  .change-list :global(li) {
+    border-top: 1px solid var(--line-strong);
+    padding-block: var(--space-5);
+  }
+
+  .change-list :global(h4) {
+    font-size: var(--text-lg);
+    font-weight: 500;
+  }
+
+  .change-list :global(.change-status) {
+    font-size: var(--text-sm);
+  }
+</style>

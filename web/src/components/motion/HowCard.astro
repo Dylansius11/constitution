@@ -1,0 +1,286 @@
+---
+import Card from "../ui/Card.astro";
+import Marker from "../ui/Marker.astro";
+import Tag from "../ui/Tag.astro";
+
+/**
+ * Compact real-content cards for the six pipeline steps of HowItWorks. Field names, rule ids and
+ * limits come from the committed contract interfaces; nothing here is a live value.
+ */
+interface Props {
+  step: 0 | 1 | 2 | 3 | 4 | 5;
+}
+
+const { step } = Astro.props;
+
+const rules = [
+  ["R1", "Storage layout"],
+  ["R2", "Solvency"],
+  ["R3", "Opcode filter"],
+  ["R4", "Initializer allowlist"],
+  ["R5", "Differential replay"],
+] as const;
+
+const executorChecks = [
+  "Caller",
+  "Certificate not used before",
+  "Deadline",
+  "Code hash",
+  "Current implementation",
+] as const;
+---
+
+{
+  step === 0 && (
+    <Card title="Proposal">
+      <dl class="kv">
+        <div>
+          <dt>Implementation</dt>
+          <dd>The new implementation address</dd>
+        </div>
+        <div>
+          <dt>Code hash</dt>
+          <dd>Hash of its runtime code</dd>
+        </div>
+        <div>
+          <dt>Expected current</dt>
+          <dd>The implementation it replaces</dd>
+        </div>
+        <div>
+          <dt>Init calldata</dt>
+          <dd>Up to 1,024 bytes</dd>
+        </div>
+        <div>
+          <dt>Source</dt>
+          <dd>Commitment to the sealed bundle</dd>
+        </div>
+      </dl>
+      <p class="chips">
+        <Tag tone="outline">Refundable deposit</Tag>
+        <Tag tone="outline">One active proposal per account</Tag>
+      </p>
+    </Card>
+  )
+}
+
+{
+  step === 1 && (
+    <Card title="Attested verifier" meta="Phala TDX enclave">
+      <ul class="list">
+        <li>Unseals the source inside the enclave</li>
+        <li>Compiles with solc 0.8.38</li>
+        <li>Checks the runtime code hash</li>
+        {
+          rules.map(([id, name]) => (
+            <li>
+              <span class="mono id">{id}</span> {name}
+            </li>
+          ))
+        }
+      </ul>
+    </Card>
+  )
+}
+
+{
+  step === 2 && (
+    <Card title="Private red-team review" meta="NEAR AI Cloud, in a TEE">
+      <dl class="kv">
+        <div>
+          <dt>Searches for</dt>
+          <dd>A counterexample to the rules</dd>
+        </div>
+        <div>
+          <dt>Can do</dt>
+          <dd>Refuse, nothing else</dd>
+        </div>
+        <div>
+          <dt>Only if</dt>
+          <dd>The verifier reproduces the counterexample</dd>
+        </div>
+      </dl>
+      <p class="foot">The AI can only refuse. It cannot approve.</p>
+    </Card>
+  )
+}
+
+{
+  step === 3 && (
+    <Card title="Gate" meta="NEAR">
+      <p class="note">Records the verifier's signed verdict.</p>
+      <ul class="outcomes">
+        <li>
+          <Marker state="done" />
+          <span class="word">Certified</span>
+          <span>The gate requests a Chain Signature.</span>
+        </li>
+        <li>
+          <Marker state="refused" />
+          <span class="word">Refused</span>
+          <span>It ends here. No signature is requested.</span>
+        </li>
+      </ul>
+    </Card>
+  )
+}
+
+{
+  step === 4 && (
+    <Card title="Chain Signature" meta="NEAR MPC network">
+      <dl class="kv">
+        <div>
+          <dt>Transaction</dt>
+          <dd>EIP-1559 call to <span class="mono">execute(…)</span></dd>
+        </div>
+        <div>
+          <dt>Target</dt>
+          <dd class="mono">ConstitutionExecutor</dd>
+        </div>
+        <div>
+          <dt>Built by</dt>
+          <dd>The gate</dd>
+        </div>
+        <div>
+          <dt>Signed by</dt>
+          <dd>The NEAR MPC network</dd>
+        </div>
+      </dl>
+      <p class="foot">No method accepts a hash to sign.</p>
+    </Card>
+  )
+}
+
+{
+  step === 5 && (
+    <Card title="ConstitutionExecutor" meta="Base Sepolia">
+      <p class="note">Anyone can relay. It checks:</p>
+      <ul class="list">
+        {executorChecks.map((check) => <li>{check}</li>)}
+      </ul>
+      <p class="foot">Then it upgrades the proxy through ProxyAdmin.</p>
+    </Card>
+  )
+}
+
+<style>
+  .kv {
+    display: grid;
+    margin: 0;
+  }
+
+  .kv > div {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 8.5rem) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .kv > div:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .kv dt {
+    padding-top: 0.12rem;
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+  }
+
+  .kv dd {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+
+  .list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-sm);
+  }
+
+  .list li {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+
+  .list li::before {
+    content: "";
+    flex: none;
+    width: 0.35rem;
+    height: 0.35rem;
+    background: var(--lav);
+    transform: translateY(-0.1rem);
+  }
+
+  .id {
+    min-width: 1.5rem;
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink-muted);
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--line);
+  }
+
+  .note {
+    margin-bottom: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+
+  .foot {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--line);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    color: var(--ink-muted);
+  }
+
+  .outcomes {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .outcomes li {
+    display: grid;
+    grid-template-columns: 1rem auto minmax(0, 1fr);
+    align-items: baseline;
+    column-gap: var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  .outcomes li > :global(svg) {
+    align-self: center;
+  }
+
+  .outcomes .word {
+    font-weight: 600;
+  }
+
+  @media (max-width: 30rem) {
+    .kv > div {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 0.15rem;
+    }
+
+    .kv dt {
+      padding-top: 0;
+    }
+  }
+</style>

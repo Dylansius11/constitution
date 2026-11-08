@@ -1,0 +1,469 @@
+---
+import StoryCard from "../motion/StoryCard.astro";
+import StatusBadge from "../ui/StatusBadge.astro";
+
+/**
+ * The signature moment (DESIGN 2, reference frames 9 s and 14 s). Static baseline: an ordered list of
+ * six steps, each with its word, one sentence and its card. With JavaScript, a wide screen and motion
+ * allowed, the same list is pinned with CSS `position: sticky` and `story.ts` only sets `data-step`
+ * on the stage while the visitor scrolls the tall track. Native scrolling is never touched.
+ */
+const acts = [
+  { left: "A drain dressed", right: "as a fee update." },
+  { left: "An honest upgrade", right: "goes straight through." },
+] as const;
+
+const steps = [
+  {
+    word: "Proposed",
+    text: "Anyone can propose an upgrade. This one looks like a routine fee change.",
+  },
+  {
+    word: "Checked",
+    text: "The attested verifier opens the sealed source, compiles it and runs the committed rules. R2 finds a sequence that drains the vault.",
+  },
+  {
+    word: "Refused",
+    text: "The gate records the refusal. It never asks for a signature, so the vault keeps its implementation.",
+  },
+  {
+    word: "Certified",
+    text: "A second proposal adds a feature with append-only storage. It passes every rule and the red-team review reproduces nothing.",
+  },
+  {
+    word: "Signed",
+    text: "The gate builds the exact upgrade transaction itself and asks the NEAR MPC network to sign it.",
+  },
+  {
+    word: "Executed",
+    text: "Anyone can relay it. The executor checks it and upgrades the proxy through ProxyAdmin.",
+  },
+] as const;
+---
+
+<section id="story" class="story" aria-labelledby="story-title">
+  <div class="story__track">
+    <div class="story__stage" data-step="0">
+      <div class="story__rail" aria-hidden="true"><span></span></div>
+      <div class="story__inner container">
+        <h2 id="story-title" class="story__title">One drain refused. One honest upgrade executed.</h2>
+        <p class="story__badge">
+          <StatusBadge tone="illustration">Illustration of the flow, not chain data</StatusBadge>
+        </p>
+
+        <ol class="story__steps">
+          {
+            steps.map((step, i) => {
+              const act = i % 3 === 0 ? acts[i / 3] : undefined;
+              return (
+                <li class="step" data-i={i}>
+                  {act && (
+                    <h3 class="step__act">
+                      <span class="act act--l">{act.left}</span> <span class="act act--r">{act.right}</span>
+                    </h3>
+                  )}
+                  <div class="step__text">
+                    <h4 class="step__word mono">{step.word}</h4>
+                    <p>{step.text}</p>
+                  </div>
+                  <div class="step__card">
+                    <StoryCard step={i as 0 | 1 | 2 | 3 | 4 | 5} />
+                  </div>
+                </li>
+              );
+            })
+          }
+        </ol>
+
+        <p class="story__numeral mono" aria-hidden="true">
+          {steps.map((_, i) => <span data-i={i}>{String(i + 1).padStart(2, "0")}</span>)}
+        </p>
+
+        <p class="story__indicator mono" aria-hidden="true">
+          <span class="ind" data-act="0">
+            <span data-i="0">Proposed</span><span data-i="1">Checked</span><span data-i="2">Refused</span>
+          </span>
+          <span class="ind" data-act="1">
+            <span data-i="3">Certified</span><span data-i="4">Signed</span><span data-i="5">Executed</span>
+          </span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    // Marks the section so the pinned layout (CSS media query below) only applies when the script
+    // that drives it exists. Without JavaScript the static ordered list stays.
+    document.currentScript.parentElement.classList.add("has-js");
+  </script>
+</section>
+
+<script>
+  import { initStory } from "../motion/story.ts";
+
+  initStory();
+</script>
+
+<style>
+  /* ---- Static baseline: six steps in reading order, all visible ---- */
+  .story {
+    background: var(--lav);
+    color: var(--ink);
+  }
+
+  .story__inner {
+    display: grid;
+    gap: var(--space-7);
+    padding-block: var(--section-y);
+  }
+
+  .story__title {
+    font-size: var(--text-3xl);
+    max-width: 18ch;
+  }
+
+  .story__badge {
+    margin-top: calc(-1 * var(--space-5));
+  }
+
+  .story__steps {
+    display: grid;
+    gap: var(--space-9);
+    list-style: none;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: var(--space-5) var(--space-7);
+    align-items: start;
+  }
+
+  .step__act {
+    grid-column: 1 / -1;
+    font-size: var(--text-2xl);
+    max-width: 20ch;
+    margin-bottom: var(--space-2);
+  }
+
+  .step__word {
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: var(--tracking-mono);
+    text-transform: uppercase;
+    line-height: 1.2;
+    color: var(--ink-on-lav);
+  }
+
+  .step__text p {
+    max-width: 38ch;
+    font-size: var(--text-lg);
+    line-height: 1.45;
+  }
+
+  .step__card {
+    max-width: 32rem;
+  }
+
+  .story__indicator,
+  .story__numeral,
+  .story__rail {
+    display: none;
+  }
+
+  @media (max-width: 47.99rem) {
+    .step {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* ---- Pinned stage: CSS sticky, driven by data-step. Keep the query in sync with story.ts ---- */
+  @media (min-width: 48rem) and (min-height: 38rem) and (prefers-reduced-motion: no-preference) {
+    .story.has-js .story__track {
+      height: calc(100dvh - var(--header-h) + 300dvh);
+    }
+
+    /* Act one plays on the night ground, act two on lavender: the ground itself says which story. */
+    .story.has-js .story__stage {
+      --story-fg: var(--ink);
+      --story-muted: var(--ink-on-lav);
+      --story-dot: var(--ink);
+      position: sticky;
+      top: var(--header-h);
+      height: calc(100dvh - var(--header-h));
+      overflow: clip;
+      color: var(--story-fg);
+      background: var(--lav);
+      transition:
+        background-color 700ms var(--ease-in-out),
+        color 700ms var(--ease-in-out);
+    }
+
+    .story.has-js .story__stage[data-act="0"] {
+      --story-fg: var(--night-text);
+      --story-muted: var(--night-muted);
+      --story-dot: var(--lav);
+      background: var(--night);
+    }
+
+    .story.has-js .story__stage[data-act="0"] .story__badge :global(.badge) {
+      color: var(--night-text);
+      border-color: color-mix(in oklab, var(--night-text) 45%, transparent);
+    }
+
+    .story.has-js .story__rail {
+      position: absolute;
+      inset: 0 0 auto;
+      display: block;
+      height: 3px;
+      background: color-mix(in oklab, var(--story-fg) 14%, transparent);
+    }
+
+    .story.has-js .story__rail span {
+      display: block;
+      height: 100%;
+      background: var(--story-dot);
+      transform: scaleX(var(--p, 0));
+      transform-origin: left center;
+      transition: background-color var(--dur-swap) ease;
+    }
+
+    .story.has-js .story__stage[data-step="2"] .story__rail span {
+      background: var(--refuse);
+    }
+
+    /* A large step numeral sits behind the card; decoration only, the list order carries meaning. */
+    .story.has-js .story__numeral {
+      grid-row: 1 / -1;
+      grid-column: 1 / -1;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      font-size: clamp(12rem, 4rem + 22vw, 30rem);
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: -0.06em;
+      color: color-mix(in oklab, var(--story-fg) 7%, transparent);
+    }
+
+    .story.has-js .story__numeral span {
+      grid-area: 1 / 1;
+      opacity: 0;
+      transform: translateY(0.12em);
+      transition:
+        opacity 500ms var(--ease-out),
+        transform 700ms var(--ease-out);
+    }
+
+    .story.has-js .story__stage[data-step="0"] .story__numeral [data-i="0"],
+    .story.has-js .story__stage[data-step="1"] .story__numeral [data-i="1"],
+    .story.has-js .story__stage[data-step="2"] .story__numeral [data-i="2"],
+    .story.has-js .story__stage[data-step="3"] .story__numeral [data-i="3"],
+    .story.has-js .story__stage[data-step="4"] .story__numeral [data-i="4"],
+    .story.has-js .story__stage[data-step="5"] .story__numeral [data-i="5"] {
+      opacity: 1;
+      transform: none;
+    }
+
+    .story.has-js .story__badge,
+    .story.has-js .step__card,
+    .story.has-js .act,
+    .story.has-js .story__indicator {
+      position: relative;
+      z-index: 1;
+    }
+
+    .story.has-js .story__inner {
+      height: 100%;
+      padding-block: var(--space-5) var(--space-6);
+      gap: 0 var(--space-6);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 29rem) minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      align-content: stretch;
+    }
+
+    /* The h2 stays in the accessibility tree; the split headline carries the visual role. */
+    .story.has-js .story__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .story.has-js .story__badge {
+      grid-row: 1;
+      grid-column: 1 / -1;
+      justify-self: center;
+      margin-top: 0;
+    }
+
+    .story.has-js .story__steps,
+    .story.has-js .step,
+    .story.has-js .step__act {
+      display: contents;
+    }
+
+    .story.has-js .act,
+    .story.has-js .step__card,
+    .story.has-js .step__text,
+    .story.has-js .ind {
+      opacity: 0;
+      transform: translateY(12px);
+      pointer-events: none;
+      transition:
+        opacity var(--dur-swap) var(--ease-out),
+        transform 600ms var(--ease-out);
+    }
+
+    /* Act headlines travel further and the two halves arrive one after the other. */
+    .story.has-js .act {
+      transform: translateY(0.5em);
+      filter: blur(6px);
+      transition:
+        opacity 500ms var(--ease-out),
+        transform 800ms var(--ease-out),
+        filter 600ms var(--ease-out);
+    }
+
+    .story.has-js .act--r {
+      transition-delay: 80ms;
+    }
+
+    .story.has-js .step__card {
+      transform: translateY(28px) scale(0.97);
+    }
+
+    .story.has-js .act {
+      grid-row: 2;
+      align-self: center;
+      font-size: var(--text-2xl);
+      font-weight: 600;
+      letter-spacing: var(--tracking-display);
+      line-height: 0.98;
+      text-wrap: balance;
+    }
+
+    .story.has-js .act--l {
+      grid-column: 1;
+      justify-self: end;
+      text-align: right;
+    }
+
+    .story.has-js .act--r {
+      grid-column: 3;
+      justify-self: start;
+    }
+
+    .story.has-js .step__card {
+      grid-row: 2;
+      grid-column: 2;
+      align-self: center;
+      max-width: none;
+    }
+
+    .story.has-js .step__text {
+      grid-row: 3;
+      grid-column: 1 / -1;
+      justify-self: center;
+      margin-top: var(--space-5);
+      max-width: 44ch;
+      text-align: center;
+    }
+
+    .story.has-js .step__text p {
+      max-width: none;
+      font-size: var(--text-base);
+    }
+
+    /* The word is shown by the indicator below; the heading stays for assistive technology. */
+    .story.has-js .step__word {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .story.has-js .story__indicator {
+      grid-row: 4;
+      grid-column: 1 / -1;
+      display: grid;
+      justify-items: center;
+      margin-top: var(--space-5);
+      font-size: var(--text-xs);
+      letter-spacing: var(--tracking-mono);
+      text-transform: uppercase;
+    }
+
+    .story.has-js .ind {
+      grid-area: 1 / 1;
+      display: flex;
+      gap: var(--space-6);
+    }
+
+    .story.has-js .ind > span {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--story-muted);
+      transition: color var(--dur-base) ease;
+    }
+
+    .story.has-js .ind > span::before {
+      content: "";
+      width: 0.4rem;
+      height: 0.4rem;
+      background: var(--story-dot);
+      transform: scale(0);
+      transition: transform var(--dur-swap) var(--ease-out);
+    }
+
+    /* Which step is live. Six explicit selectors keep the swap in CSS (opacity + 12 px rise). */
+    .story.has-js .story__stage[data-step="0"] .step[data-i="0"] :is(.step__card, .step__text),
+    .story.has-js .story__stage[data-step="1"] .step[data-i="1"] :is(.step__card, .step__text),
+    .story.has-js .story__stage[data-step="2"] .step[data-i="2"] :is(.step__card, .step__text),
+    .story.has-js .story__stage[data-step="3"] .step[data-i="3"] :is(.step__card, .step__text),
+    .story.has-js .story__stage[data-step="4"] .step[data-i="4"] :is(.step__card, .step__text),
+    .story.has-js .story__stage[data-step="5"] .step[data-i="5"] :is(.step__card, .step__text),
+    .story.has-js
+      .story__stage:is([data-step="0"], [data-step="1"], [data-step="2"])
+      .step[data-i="0"]
+      .act,
+    .story.has-js
+      .story__stage:is([data-step="3"], [data-step="4"], [data-step="5"])
+      .step[data-i="3"]
+      .act,
+    .story.has-js .story__stage:is([data-step="0"], [data-step="1"], [data-step="2"]) .ind[data-act="0"],
+    .story.has-js .story__stage:is([data-step="3"], [data-step="4"], [data-step="5"]) .ind[data-act="1"] {
+      opacity: 1;
+      transform: none;
+      filter: none;
+      pointer-events: auto;
+    }
+
+    .story.has-js .story__stage[data-step="0"] .ind [data-i="0"],
+    .story.has-js .story__stage[data-step="1"] .ind [data-i="1"],
+    .story.has-js .story__stage[data-step="2"] .ind [data-i="2"],
+    .story.has-js .story__stage[data-step="3"] .ind [data-i="3"],
+    .story.has-js .story__stage[data-step="4"] .ind [data-i="4"],
+    .story.has-js .story__stage[data-step="5"] .ind [data-i="5"] {
+      color: var(--story-fg);
+      font-weight: 600;
+    }
+
+    .story.has-js .story__stage[data-step="0"] .ind [data-i="0"]::before,
+    .story.has-js .story__stage[data-step="1"] .ind [data-i="1"]::before,
+    .story.has-js .story__stage[data-step="2"] .ind [data-i="2"]::before,
+    .story.has-js .story__stage[data-step="3"] .ind [data-i="3"]::before,
+    .story.has-js .story__stage[data-step="4"] .ind [data-i="4"]::before,
+    .story.has-js .story__stage[data-step="5"] .ind [data-i="5"]::before {
+      transform: none;
+    }
+  }
+</style>

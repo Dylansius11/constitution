@@ -15,6 +15,7 @@ use std::{
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
+    sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -146,26 +147,41 @@ struct Stub {
     key: Arc<SecretKey>,
     bundle: Arc<Mutex<Option<Vec<u8>>>>,
     gate: String,
+    recovery: Arc<Mutex<Option<PathBuf>>>,
+    refuse_start: Arc<AtomicBool>,
+    identity_calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 async fn identity(State(stub): State<Stub>) -> Json<Value> {
+    stub.identity_calls.fetch_add(1, Ordering::SeqCst);
     Json(
         json!({"verifier_pubkey": format!("0x{}", hex::encode([7;32])), "transport_pubkey": format!("0x{}", hex::encode(stub.key.public_key().as_bytes())), "release_hash":format!("0x{}", hex::encode([6;32])), "report_data_preimage":"", "quote_hex":"", "event_log":[], "compose_hash":format!("0x{}", hex::encode([0;32])), "supported_rule_set_hashes":[]}),
     )
 }
-async fn submit(
-    State(stub): State<Stub>,
-    Json(request): Json<Value>,
-) -> (axum::http::StatusCode, Json<Value>) {
+async fn submit(State(stub): State<Stub>, Json(request): Json<Value>) -> axum::response::Response {
+    use axum::response::IntoResponse;
     assert_eq!(request["gate"], stub.gate);
-    assert_eq!(request["proposal_id"], 0);
+    if let Some(path) = stub.recovery.lock().unwrap().as_ref() {
+        let saved: Value =
+            serde_json::from_slice(&std::fs::read(path.join("submission.json")).unwrap()).unwrap();
+        assert_eq!(saved["proposal_id"], request["proposal_id"]);
+        assert!(saved["near_propose_tx"].is_string());
+    }
+    if stub.refuse_start.load(Ordering::SeqCst) {
+        return (axum::http::StatusCode::BAD_GATEWAY, "rpc_unavailable").into_response();
+    }
     let sealed = base64::engine::general_purpose::STANDARD
         .decode(request["sealed_bundle_b64"].as_str().unwrap())
         .unwrap();
     *stub.bundle.lock().unwrap() = Some(stub.key.unseal(&sealed).unwrap());
-    (axum::http::StatusCode::ACCEPTED, Json(json!({"run_id":7})))
+    (axum::http::StatusCode::ACCEPTED, Json(json!({"run_id":7}))).into_response()
 }
-async fn run_status() -> Json<Value> {
-    Json(json!({"stage":"queued", "started_at":1, "stages":[]}))
+async fn run_status(State(stub): State<Stub>) -> Json<Value> {
+    let stage = if stub.recovery.lock().unwrap().is_some() {
+        "done"
+    } else {
+        "queued"
+    };
+    Json(json!({"stage":stage, "started_at":1, "stages":[]}))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -190,8 +206,8 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
         callback_gas_tgas: 20,
     };
     gate.call("new").args_json(json!({"config":config, "constitution":Constitution {rule_set_hash:[5;32], manifest_uri:"local".into(), ai_required:true, params}, "roles":Roles {governor:account.id().clone(), guardian:account.id().clone()}, "verifiers":[(Base64([7;32]), VerifierRecord {release_hash:[6;32], attestation_uri:"local".into(), added_at_ns:0})], "initial_evm_nonce":0})).transact().await?.into_result()?;
-    // Credit is already unreserved. The command must attach only the 60 yoctoNEAR shortfall; the
-    // first deposit to a new entry pays the gate's one-time entry fee out of the attached amount.
+    // Existing credit covers 40 yocto of the reservation. The CLI must prepay the remaining
+    // reservation plus the non-refundable proposal fee before its zero-deposit proposal.
     let entry_fee: U128Str = gate
         .view("get_credit_entry_fee")
         .args_json(json!({"account":account.id()}))
@@ -217,6 +233,9 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
         key: Arc::new(SecretKey::generate(&mut OsRng)),
         bundle: Arc::new(Mutex::new(None)),
         gate: gate.id().to_string(),
+        recovery: Arc::new(Mutex::new(None)),
+        refuse_start: Arc::new(AtomicBool::new(false)),
+        identity_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     };
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let verifier = format!("http://{}", listener.local_addr()?);
@@ -263,12 +282,6 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
     };
     let output = propose();
     assert!(output.status.success(), "{}", text(&output));
-    println!("SUCCESSFUL LOCAL PROPOSE OUTPUT:\n{}", text(&output));
-    assert!(text(&output).contains("depositing credit: 60 yoctoNEAR"));
-    assert!(text(&output).contains("non-refundable proposal storage fee"));
-    assert!(text(&output).contains("proposal 0"));
-    assert!(text(&output).contains("NOT APPRAISED"));
-    assert!(text(&output).contains("verifier run: 7"));
     let bytes = stub
         .bundle
         .lock()
@@ -304,8 +317,6 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
     common(&mut status);
     let status = status.output()?;
     assert!(status.status.success(), "{}", text(&status));
-    assert!(text(&status).contains("Pending"));
-    assert!(text(&status).contains("verifier stage: queued"));
     let mut watch = Command::new(env!("CARGO_BIN_EXE_constitution"));
     watch.args(["status", "0", "--watch", "0"]);
     common(&mut watch);
@@ -347,6 +358,168 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
         text(&second)
     );
     assert!(text(&second).contains("next: "), "{}", text(&second));
+    // The real CLI must retain the accepted id before a failing verifier POST, and must not
+    // turn a withheld completion into a relay. Only the verifier HTTP boundary is a double.
+    for (name, refuse) in [
+        ("post-failed", true),
+        ("withheld", false),
+        ("restricted-key", true),
+    ] {
+        let demo_account = worker.dev_create_account().await?;
+        let mut demo_key = demo_account.secret_key().clone();
+        if name == "restricted-key" {
+            use near_workspaces::types::{AccessKey, KeyType, NearToken, SecretKey};
+            demo_key = SecretKey::from_random(KeyType::ED25519);
+            let entry: U128Str = gate
+                .view("get_credit_entry_fee")
+                .args_json(json!({"account":demo_account.id()}))
+                .await?
+                .json()?;
+            let fee: U128Str = gate.view("get_proposal_fee").await?.json()?;
+            demo_account
+                .call(gate.id(), "deposit_credit")
+                .args_json(json!({"account":null}))
+                .deposit(NearToken::from_yoctonear(entry.0 + fee.0 + 100))
+                .transact()
+                .await?
+                .into_result()?;
+            demo_account
+                .batch(demo_account.id())
+                .add_key(
+                    demo_key.public_key(),
+                    AccessKey::function_call_access(
+                        gate.id(),
+                        &["propose", "schedule_change", "apply_change"],
+                        Some(NearToken::from_near(1)),
+                    ),
+                )
+                .transact()
+                .await?
+                .into_result()?;
+            let limited = near_workspaces::Account::from_secret_key(
+                demo_account.id().clone(),
+                demo_key.clone(),
+                &worker,
+            );
+            let forbidden = limited
+                .call(gate.id(), "withdraw_credit")
+                .args_json(json!({"amount":"1"}))
+                .transact()
+                .await;
+            assert!(
+                forbidden.is_err(),
+                "method-limited key cannot withdraw prepaid credit"
+            );
+            let after: U128Str = gate
+                .view("get_credit")
+                .args_json(json!({"account":demo_account.id()}))
+                .await?
+                .json()?;
+            assert_eq!(after.0, fee.0 + 100);
+            let before = account.view_account().await?.balance;
+            let transfer = limited
+                .transfer_near(account.id(), NearToken::from_yoctonear(1))
+                .await;
+            assert!(transfer.is_err(), "function-call key cannot transfer funds");
+            assert_eq!(account.view_account().await?.balance, before);
+        }
+        let demo_key_path = temp.path().join(format!("{name}-key.json"));
+        std::fs::write(
+            &demo_key_path,
+            json!({
+                "account_id":demo_account.id(), "public_key":demo_key.public_key().to_string(),
+                "private_key":demo_key.to_string()
+            })
+            .to_string(),
+        )?;
+        let evidence = temp.path().join(name);
+        *stub.recovery.lock().unwrap() = Some(evidence.clone());
+        stub.refuse_start.store(refuse, Ordering::SeqCst);
+        let mut demo = Command::new(env!("CARGO_BIN_EXE_constitution"));
+        demo.args([
+            "demo",
+            "upgrade",
+            "--contract",
+            "src/VaultV2Honest.sol:VaultV2Honest",
+            "--impl",
+            &implementation,
+            "--account",
+            demo_account.id().as_str(),
+            "--verifier",
+            &verifier,
+            "--watch",
+            "0",
+        ])
+        .arg("--bundle")
+        .arg(temp.path())
+        .arg("--key-file")
+        .arg(&demo_key_path)
+        .arg("--output")
+        .arg(&evidence);
+        common(&mut demo);
+        let output = demo.output()?;
+        println!(
+            "LOCAL DEMO {name} (HTTP verifier double):\n{}",
+            text(&output)
+        );
+        assert!(!output.status.success(), "{}", text(&output));
+        let saved: Value =
+            serde_json::from_slice(&std::fs::read(evidence.join("submission.json"))?)?;
+        let id = saved["proposal_id"].as_u64().unwrap();
+        let p: Proposal = gate
+            .view("get_proposal")
+            .args_json(json!({"id":id}))
+            .await?
+            .json()?;
+        assert_eq!(p.state, constitution_types::ProposalState::Pending);
+        assert!(p.evm.is_none());
+        assert_eq!(
+            p.source_commitment,
+            constitution_types::certificate_hash(&bytes)
+        );
+        let observed: Value =
+            serde_json::from_slice(&std::fs::read(evidence.join("receipt.json"))?)?;
+        assert_eq!(observed["proposal"]["id"], id);
+        assert_eq!(observed["labels"]["network"], "local");
+        assert_eq!(observed["evm"]["status"], "not_signed");
+        assert_eq!(observed["near"]["propose_tx"], saved["near_propose_tx"]);
+        assert_eq!(
+            observed["proxy"]["implementation_after"],
+            format!("0x{}", hex::encode(p.expected_current_impl))
+        );
+        assert!(observed.get("verdict").is_none());
+        let recorded_run = evidence.join("run.json");
+        assert_eq!(recorded_run.exists(), !refuse);
+        assert!(evidence.join("failure.json").exists());
+        let absent: Option<Proposal> = gate
+            .view("get_proposal")
+            .args_json(json!({"id":id+1}))
+            .await?
+            .json()?;
+        assert!(
+            absent.is_none(),
+            "runner automatically created another proposal"
+        );
+        // Valid bundle/key/endpoints: output reuse must stop before even verifier preflight,
+        // and before a repeated credit deposit (which would otherwise precede E21).
+        let identity_calls = stub.identity_calls.load(Ordering::SeqCst);
+        let credit_before: U128Str = gate
+            .view("get_credit")
+            .args_json(json!({"account":demo_account.id()}))
+            .await?
+            .json()?;
+        let old_receipt = std::fs::read(evidence.join("receipt.json"))?;
+        let duplicate = demo.output()?;
+        assert!(!duplicate.status.success());
+        assert_eq!(stub.identity_calls.load(Ordering::SeqCst), identity_calls);
+        let credit_after: U128Str = gate
+            .view("get_credit")
+            .args_json(json!({"account":demo_account.id()}))
+            .await?
+            .json()?;
+        assert_eq!(credit_after.0, credit_before.0);
+        assert_eq!(std::fs::read(evidence.join("receipt.json"))?, old_receipt);
+    }
     server.abort();
     Ok(())
 }

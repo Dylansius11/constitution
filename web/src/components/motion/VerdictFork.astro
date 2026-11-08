@@ -1,0 +1,182 @@
+---
+/**
+ * The verdict fork (reference frame 31 s). Every proposal enters one line, which splits into two
+ * parallel tracks, `certify` and `refuse`, and rejoins. A third short track, `AI`, merges only into
+ * `refuse`: the AI can veto, never approve. Wide and narrow drawings keep text and strokes at a
+ * constant size. Static baseline: fully drawn; `how.ts` scrubs the tracks with scroll.
+ */
+interface Variant {
+  name: "wide" | "narrow";
+  w: number;
+  h: number;
+  main: number;
+  up: number;
+  down: number;
+  ai: number;
+  splitStart: number;
+  splitEnd: number;
+  joinStart: number;
+  joinEnd: number;
+  aiStart: number;
+  aiRun: number;
+  aiJoin: number;
+  fs: number;
+  labelX: number;
+}
+
+const FAR = 1400;
+
+const variants: readonly Variant[] = [
+  {
+    name: "wide",
+    w: 1440,
+    h: 252,
+    main: 92,
+    up: 36,
+    down: 148,
+    ai: 208,
+    splitStart: 400,
+    splitEnd: 500,
+    joinStart: 940,
+    joinEnd: 1040,
+    aiStart: 560,
+    aiRun: 640,
+    aiJoin: 780,
+    fs: 13.5,
+    labelX: 530,
+  },
+  {
+    name: "narrow",
+    w: 390,
+    h: 192,
+    main: 66,
+    up: 28,
+    down: 104,
+    ai: 154,
+    splitStart: 56,
+    splitEnd: 104,
+    joinStart: 286,
+    joinEnd: 334,
+    aiStart: 104,
+    aiRun: 140,
+    aiJoin: 212,
+    fs: 10.5,
+    labelX: 116,
+  },
+];
+
+function paths(v: Variant) {
+  const bend = (v.splitEnd - v.splitStart) / 2;
+  const track = (y: number) =>
+    `M${v.splitStart} ${v.main}C${v.splitStart + bend} ${v.main} ${v.splitEnd - bend} ${y} ${v.splitEnd} ${y}H${v.joinStart}C${v.joinStart + bend} ${y} ${v.joinEnd - bend} ${v.main} ${v.joinEnd} ${v.main}`;
+  const aiBend = (v.aiJoin - v.aiRun) / 2;
+  return {
+    inbound: `M-${FAR} ${v.main}H${v.splitStart}`,
+    outbound: `M${v.joinEnd} ${v.main}H${v.w + FAR}`,
+    certify: track(v.up),
+    refuse: track(v.down),
+    ai: `M${v.aiStart} ${v.ai}H${v.aiRun}C${v.aiRun + aiBend} ${v.ai} ${v.aiJoin - aiBend} ${v.down} ${v.aiJoin} ${v.down}`,
+  };
+}
+---
+
+<figure class="fork">
+  {
+    variants.map((v) => {
+      const d = paths(v);
+      return (
+        <svg
+          class={`fork__svg fork__svg--${v.name}`}
+          viewBox={`0 0 ${v.w} ${v.h}`}
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path class="fork__still" d={d.inbound} />
+          <path class="fork__still" d={d.outbound} />
+          <path class="fork__track" data-track="certify" d={d.certify} pathLength="1000" />
+          <path class="fork__track" data-track="refuse" d={d.refuse} pathLength="1000" />
+          <path class="fork__track fork__track--ai" data-track="ai" d={d.ai} pathLength="1000" />
+          <circle class="fork__dot" cx={v.aiStart} cy={v.ai} r={v.name === "wide" ? 4.5 : 3.5} />
+          <g style={`font-size:${v.fs}px`}>
+            <text class="fork__label fork__label--strong" x={v.labelX} y={v.up - v.fs * 0.9}>
+              certify
+            </text>
+            <text class="fork__label fork__label--strong" x={v.labelX} y={v.down - v.fs * 0.9}>
+              refuse
+            </text>
+            <text class="fork__label" x={v.aiStart - 4} y={v.ai + v.fs * 2}>
+              <tspan class="fork__label--strong">AI</tspan> can only refuse
+            </text>
+          </g>
+        </svg>
+      );
+    })
+  }
+  <figcaption class="visually-hidden">
+    Diagram: every proposal enters one line that splits into a certify track and a refuse track, then
+    rejoins. A private AI track merges only into the refuse track, so the AI can refuse but never
+    approve.
+  </figcaption>
+</figure>
+
+<style>
+  .fork {
+    position: relative;
+    overflow: clip;
+  }
+
+  .fork__svg {
+    display: none;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .fork__svg--narrow {
+    display: block;
+  }
+
+  @media (min-width: 48rem) {
+    .fork__svg--wide {
+      display: block;
+    }
+
+    .fork__svg--narrow {
+      display: none;
+    }
+  }
+
+  .fork__still,
+  .fork__track {
+    fill: none;
+    stroke: var(--violet);
+    stroke-width: 2;
+  }
+
+  .fork__svg--narrow .fork__still,
+  .fork__svg--narrow .fork__track {
+    stroke-width: 1.75;
+  }
+
+  .fork__track {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 0;
+  }
+
+  .fork__dot {
+    fill: var(--paper-2);
+    stroke: var(--violet);
+    stroke-width: 2;
+  }
+
+  .fork__label {
+    fill: var(--ink-muted);
+    font-family: var(--font-mono);
+    letter-spacing: var(--tracking-mono);
+  }
+
+  .fork__label--strong {
+    fill: var(--ink);
+    font-weight: 600;
+  }
+</style>

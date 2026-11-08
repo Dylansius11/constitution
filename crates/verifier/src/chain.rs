@@ -11,7 +11,8 @@ use constitution_types::{
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::{io::Read, time::Duration};
+const MAX_RPC_RESPONSE: u64 = 16 * 1024 * 1024;
 
 const IMPLEMENTATION_SLOT: &str =
     "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
@@ -63,9 +64,16 @@ impl Rpc {
             .send()
             .and_then(|r| r.error_for_status())
             .map_err(|e| format!("{method} RPC transport: {}", e.without_url()))?;
-        let value: Value = response
-            .json()
-            .map_err(|e| format!("{method} RPC response: {}", e.without_url()))?;
+        let mut bytes = Vec::new();
+        response
+            .take(MAX_RPC_RESPONSE + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| format!("{method} RPC unreadable response"))?;
+        if bytes.len() as u64 > MAX_RPC_RESPONSE {
+            return Err(format!("{method} RPC response exceeds bound"));
+        }
+        let mut value: Value =
+            serde_json::from_slice(&bytes).map_err(|_| format!("{method} RPC invalid JSON"))?;
         if value["jsonrpc"] != "2.0" || value["id"] != 1 {
             return Err(format!("{method} RPC invalid envelope"));
         }
@@ -73,9 +81,10 @@ impl Rpc {
             return Err(format!("{method} RPC error"));
         }
         let result = value
-            .get("result")
+            .as_object_mut()
+            .and_then(|object| object.remove("result"))
             .ok_or_else(|| format!("{method} RPC missing result"))?;
-        serde_json::from_value(result.clone()).map_err(|e| format!("{method} RPC result: {e}"))
+        serde_json::from_value(result).map_err(|e| format!("{method} RPC result: {e}"))
     }
     fn view<T: DeserializeOwned>(
         &self,

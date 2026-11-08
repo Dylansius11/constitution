@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "scope": "Local live AI-only rehearsal against the drain source; not a full verifier/CVM/testnet run",
+  "dateUtc": "2026-11-06",
+  "model": "z-ai/glm-5.3-flash",
+  "sdkVersion": "0.1.0",
+  "runtime": "v24.16.0",
+  "runtimeLimit": "Local Node v24.16.0 is not the project-pinned Node 24.22.1; no final-runtime qualification claimed",
+  "sourceSha256s": {
+    "src/demo/VaultV2Drain.sol": "f7649c75c4fa91f851935ce096f7c9653acbe03d4ad806ef2f1cd9163a9c3192",
+    "src/demo/VaultV2Honest.sol": "6326a13660cf8e8bf9d2f45a9ee1895b0780d18c81fbf15962cea387190c1eb3"
+  },
+  "policy": {
+    "e2ee": true,
+    "noAliasing": true,
+    "acceptedTcbStatuses": [
+      "UpToDate"
+    ],
+    "maxCompletionTokens": 8192,
+    "maxCandidates": 4,
+    "timeoutSeconds": 120,
+    "automaticRetries": 0,
+    "attemptsUsed": 3,
+    "furtherInferenceStopped": true
+  },
+  "price": {
+    "source": "https://cloud-api.near.ai/v1/model/list",
+    "checkedAt": "2026-11-06T09:19:02.209Z",
+    "inputUsdPerMillionTokens": 0.08,
+    "outputUsdPerMillionTokens": 0.5,
+    "conservativeThreeAttemptEstimateUsd": 0.019728,
+    "estimateIsNotActualBill": true
+  },
+  "attestationOnlyDiagnostic": {
+    "status": "verified",
+    "inferenceSent": false,
+    "elapsedMs": 56036,
+    "events": [
+      {
+        "phase": "fetch",
+        "host": "nras.attestation.nvidia.com",
+        "path": "[redacted-path]",
+        "method": "POST",
+        "atMs": 54414,
+        "status": 200,
+        "elapsedMs": 783
+      },
+      {
+        "phase": "fetch",
+        "host": "nras.attestation.nvidia.com",
+        "path": "/.well-known/jwks.json",
+        "method": "GET",
+        "atMs": 54416,
+        "status": 200,
+        "elapsedMs": 563
+      }
+    ]
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "finishedAt": "2026-11-06T09:09:00.410Z",
+      "observedWallElapsedMs": 118324,
+      "status": "incomplete",
+      "reason": "timeout",
+      "requestSha256": "41e88655ab028f5288329ba8f78477d7f81a306b398b626cd2805c074c613f04",
+      "completionId": null,
+      "usage": null,
+      "providerResponseVerified": false,
+      "candidatesReplayed": 0,
+      "billedCostUsd": null
+    },
+    {
+      "attempt": 2,
+      "finishedAt": "2026-11-06T09:16:10.960Z",
+      "observedWallElapsedMs": 117712,
+      "status": "incomplete",
+      "reason": "timeout",
+      "requestSha256": "102bf224eef47926e75d1690d518bebabb40a9591fe5ad8d212cd089f486b98c",
+      "completionId": null,
+      "usage": null,
+      "providerResponseVerified": false,
+      "candidatesReplayed": 0,
+      "billedCostUsd": null
+    },
+    {
+      "attempt": 3,
+      "finishedAt": "2026-11-06T09:21:00.023Z",
+      "observedWallElapsedMs": 117785,
+      "status": "incomplete",
+      "reason": "timeout",
+      "requestSha256": "d3acb5d12f738ea271cd3e2625139e345d64ba4c09f7af920288ebb47177e27c",
+      "completionId": null,
+      "usage": null,
+      "providerResponseVerified": false,
+      "candidatesReplayed": 0,
+      "billedCostUsd": null,
+      "transportEvents": [
+        {
+          "phase": "other",
+          "method": "GET",
+          "atMs": 1738,
+          "httpStatus": 200,
+          "elapsedMs": 1104
+        },
+        {
+          "phase": "attestation",
+          "method": "GET",
+          "atMs": 2844,
+          "httpStatus": 200,
+          "elapsedMs": 1241
+        },
+        {
+          "phase": "completion",
+          "method": "POST",
+          "atMs": 6256
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "attempts": 3,
+    "completedVerifiedReviews": 0,
+    "timeouts": 3,
+    "findRate": null,
+    "findRateReason": "No completed review; timeouts are operational failures, not three negative detections",
+    "billedCostUsd": null,
+    "billingReason": "No completion ID or inference-id response header was returned; per-request billing could not be queried",
+    "completionBoundary": "Third attempt entered the unchanged pinned-TLS completion POST at 6256 ms, but returned no HTTP status before the review deadline",
+    "rootCause": "Unverified: evidence does not distinguish upstream inference delay from the request/response network path",
+    "certificatesIssued": 0,
+    "chainWrites": 0,
+    "solverRuns": 0,
+    "nextAction": "Diagnose the completion response path using the pinned runtime/provider support before authorizing another paid batch"
+  }
+}

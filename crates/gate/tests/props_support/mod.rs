@@ -81,8 +81,11 @@ pub fn deposit(gate: &mut Gate, who: AccountId, now: u64, amount: u128) {
     gate.deposit_credit(None);
 }
 
-pub fn proposal_context(gate: &Gate, who: AccountId, now: u64) {
-    context(who, now, gate.get_proposal_fee().0, None);
+pub fn proposal_context(gate: &mut Gate, who: AccountId, now: u64) {
+    // These fixture accounts already paid their entry fee; prepay this proposal's storage.
+    context(who.clone(), now, gate.get_proposal_fee().0, None);
+    gate.deposit_credit(None);
+    context(who, now, 0, None);
 }
 
 pub fn key(index: u8) -> SigningKey {

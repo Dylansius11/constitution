@@ -2,6 +2,8 @@
 .claude/skills/
 # One-time local handoff and private working notes.
 scratch/
+# Founder-supplied brand sources and reference video; copy only shipped derivatives into web/.
+asset/
 .env
 .env.*
 !.env.example

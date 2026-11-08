@@ -5,7 +5,7 @@
 - [V] Founder chose stack **Option C (Phala TDX CVM verifier + Rust-first operations + Astro static page)** on 2026-10-26 in this planning session (D1). ARCHITECTURE is written against it.
 - [V] Founder resolved on 2026-10-26: attestation appraisal off-chain first, on-chain DCAP as P1 (D5); spam control by refundable deposit plus one active proposal per account (D3); verifier host Phala with the USD 20 verified-account credit, OutLayer only as a separately decided fallback (D2); archive RPC Validation Cloud free tier (D10); public repo on GitHub `Dylansius11`, X post from the founder's own account (D9).
 - [V] Founder answers on 2026-11-02 (UTC): the founder creates the GitHub repo personally and the lead commits locally only until told to push (D9); the lead creates NEAR testnet accounts via the faucet with keys in the repo-local gitignored `.secrets/` (B1, done); D7 waits for the founder's logo and references; D8 deferred between Cloudflare Pages and Vercel.
-- Open founder rows: D4 Act 2 (decide at core gate 2026-11-10), D7 visual direction, D8 hosting, D14 funding amounts, D18 verifier uptime budget (after spike P1.6). Open organizer questions: D16.
+- Open founder rows: D8 hosting, D14 funding amounts, D18 verifier uptime budget (after spike P1.6). D7 visual direction resolved 2026-11-07. Open organizer questions: D16. D4 repair scope is approved (2026-11-05); implementation remains gated on core completion.
 - Build opened 2026-11-01T00:00:00Z; build work started 2026-11-02. Remaining BLOCKERS below are founder-owned manual prerequisites.
 
 Founder-owned rows are never silently decided by agents. Status: open, blocked or resolved. Lead-owned rows record the reasoning so the founder can overrule. Each row has its explanation below.
@@ -17,10 +17,10 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D1 | Technology stack | founder | resolved 2026-10-26 | before ARCHITECTURE | Option C |
 | D2 | Verifier host | founder | resolved 2026-10-26, confirm in spike P1.6 | P1.6 | Phala Cloud CVM on USD 20 credit; OutLayer fallback needs a new decision |
 | D3 | Proposal spam control | founder | resolved 2026-10-26 | P2.2 | Refundable credit reservation + one active proposal per account |
-| D4 | Ship Act 2 self-repair | founder | open | core gate 2026-11-10 | Decide after core gate |
+| D4 | Ship Act 2 self-repair | founder | resolved scope 2026-11-05; not implemented | after core gate | Opt-in, semi-autonomous repair of rejected upgrade proposals; developer approval before deployment/resubmission; S1.1 to S1.4 |
 | D5 | Verifier key registration appraisal | founder | resolved 2026-10-26 | P2.4 | Off-chain appraisal + 7-day timelock; on-chain DCAP is P1 |
 | D6 | Gate code mutability | lead | resolved 2026-10-26 | P2.1 | Immutable gate; authority migration only via timelocked change |
-| D7 | Visual direction for the public page | founder | open, founder collecting logo and references (2026-11-02) | P3.4 | Candidates in `docs/DESIGN.md`; page work waits |
+| D7 | Visual direction for the public page | founder | resolved 2026-11-07 | P3.4 | Founder brand (`asset/` logos) and reference video, elevated; recorded in `docs/DESIGN.md` sections 2 to 4 |
 | D8 | Hosting for the public page | founder | open, Cloudflare Pages or Vercel (2026-11-02) | P3.6 | Deferred by founder |
 | D9 | Public repo and X accounts | founder | resolved 2026-10-26, refined 2026-11-02 | P4 | GitHub `Dylansius11`, founder creates the repo; lead commits locally until asked to push; founder's X |
 | D10 | Archive / debug and proof RPC for replay | founder | resolved 2026-10-26, refined 2026-11-05 | P1.7 | Validation Cloud free tier for archive/trace; Base public RPC for recent-block proofs; no QuickNode purchase |
@@ -64,11 +64,19 @@ Founder response, 2026-10-26: "Phala credit, OutLayer cadangan". Resolution: Pha
 
 Options presented: refundable deposit; per-account rate limit; deposit plus one active proposal per account. Founder response, 2026-10-26: deposit plus one active proposal per account.
 
-Implementation consequence [I, lead]: NEAR function-call access keys cannot attach deposits, and the public demo key (D17) is a function-call key. The deposit is therefore an internal **credit reservation**: anyone tops up an account's credit with `deposit_credit` (attached deposit), `propose` reserves `params.proposal_deposit` from that credit, and the reservation returns to credit when the proposal reaches a terminal state. One active proposal per account is enforced in `active_by_account`. The amount is a timelocked parameter set at activation (D14). Residual risk: many funded accounts can still queue verifier work; the verifier service rate-limits its off-chain queue per account and this is disclosed.
+Implementation consequence [I, lead]: NEAR function-call access keys cannot attach deposits, and the public demo key (D17) is a function-call key. The deposit is therefore an internal **credit reservation**: anyone tops up an account's credit with `deposit_credit` (attached deposit), `propose` reserves `params.proposal_deposit` from that credit, and the reservation returns to credit when the proposal reaches a terminal state. The non-refundable proposal storage fee is also prepaid in credit and permanently debited at proposal creation; `propose` attaches zero. Credit must cover their checked sum, not just the refundable reservation. One active proposal per account is enforced in `active_by_account`. The reservation amount is a timelocked parameter set at activation (D14). Residual risk: many funded accounts can still queue verifier work; the verifier service rate-limits its off-chain queue per account and this is disclosed.
 
 ### D4. Act 2 self-repair
 
-Founder response, 2026-10-26: "Putuskan di core gate". No Act 2 work is planned before the core gate (BUILD-PLAN phase 3 acceptance). Decision point: 2026-11-10. If yes, the patch must use exactly the same gate, rules and verifier; no special path.
+Historical decision (2026-10-26): decide at the core gate. [V, founder approval 2026-11-05] The founder selected **semi-autonomous repair of a rejected upgrade proposal**, not repair of the currently active vault. The UI must offer opt-in repair. This resolves the feature choice early; it does not waive the core-gate dependency or the stretch cut trigger in BUILD-PLAN.
+
+[I, approved scope] NEAR AI Cloud generates a proposed patch using the private inference requirements already applied to AI review. Our backend validates untrusted output and runs compilation/checks; inference is not hosted on the VPS/CVM. A developer reviews the diff and explicitly approves before deploying the candidate or submitting a new proposal. The rejected proposal is immutable; the patch gets a new source commitment, runtime code hash and proposal id and passes the same gate, rules, independent veto stage and certificate checks.
+
+[I, bounded implementation] One candidate per explicit repair request, one heavy verifier job at a time, no autonomous retry loop. RPC failures, timeouts and incomplete reviews do not trigger source repair. Repair cannot edit the committed rules, trusted harness or verifier configuration. No new gate bypass, server-held user deployment key, automatic TEE-to-VPS downgrade, payment integration or claim of general bug freedom is authorized by D4. Premium pricing is an unvalidated product hypothesis, not an implemented billing feature.
+
+Tracking: S1.1 to S1.4 in BUILD-PLAN; PRD S1 defines the product contract. Production repair is not implemented and no testnet repair receipt exists. The founder-authorized synthetic Solidity review/patch spike on 2026-11-06 used two verified GLM completions, cost USD 0.00166912 in reported billing, and passed five local behavioral checks plus a before/after Anvil exploit smoke; it is not an integrated proposal repair or general audit (`crates/verifier/evidence/ai/review-patch-probe-2026-11-06.json`). Paid calls, deployments and transactions still require the applicable founder authorization.
+
+[V, founder policy approval 2026-11-06] Review has a 300 s maximum and 45,000 total completion tokens; repair generation has a 100,000 total-completion-token ceiling and the complete repair job has a 1,800 s deadline including validation and review again. Use `thinking_token_budget: null` to remove only the separate reasoning cap; reasoning remains part of completion usage. No automatic retries, new paid rehearsal, model switch or gate bypass is authorized. These are initial operational ceilings, not measured requirements, a safety guarantee or a provider USD spending cap. Repair settings remain planned until S1 is implemented.
 
 ### D5. Verifier key registration appraisal
 
@@ -82,7 +90,9 @@ Meaning [I]: the verifier's Ed25519 key, its release hash and the full TDX quote
 
 ### D7. Visual direction
 
-Founder response, 2026-10-26 (paraphrased from Indonesian): explore Awwwards and save.design for inspiration, relay browser allowed; the frontend must be as premium and semantic as possible and should amaze; references are fine if the direction is still unclear; frontend comes later. `docs/DESIGN.md` holds candidate directions and references. Open until the founder picks; blocks P3.4 only.
+Founder response, 2026-10-26 (paraphrased from Indonesian): explore Awwwards and save.design for inspiration, relay browser allowed; the frontend must be as premium and semantic as possible and should amaze.
+
+Resolved 2026-11-07: the founder supplied the brand (mark and wordmark, lavender) and a reference video (Alia site scroll-through) in `asset/` (gitignored) and asked to follow the reference, then elevate it. `docs/DESIGN.md` sections 2 to 4 record the result: paper ground, ink, flat lavender, Geist and Geist Mono, GSAP ScrollTrigger scroll scenes. Retires the October directions A to C.
 
 ### D8. Hosting
 
@@ -108,7 +118,7 @@ Founder response, 2026-10-26: hackathon credits already requested. Grant amount 
 
 ### D13. Already-signed transactions when rules change (lead)
 
-Resolution [I]: the executor does not know NEAR rule epochs. A signature issued under rule set N stays executable until its `deadline`, which is at most `params.sign_validity_s` after signing. The gate never signs anything under a superseded rule set, and `apply_change(SetRuleSet)` is refused while any proposal is `SignRequested` or `Signed` with an unexpired deadline. A `SignRequested` proposal whose callback never arrives stops blocking after its deadline plus 20 minutes (gate fix 2026-11-03, security review L2). Disclosed in PRD risks.
+Resolution [I]: the executor does not know NEAR rule epochs. A signature issued under rule set N remains executable **through** its `deadline` second, at most `params.sign_validity_s` after signing. The gate refuses `apply_change(SetRuleSet)` while any SignRequested, SignFailed or Signed proposal has `now_s <= deadline_s`. A SignRequested proposal also blocks until at least 20 minutes after its latest request. Superseded-rule retry/bump is allowed only at `now_s > deadline_s`, preserves the original deadline and calldata, and therefore can only fill an expired nonce. Equality is not expiry. Disclosed in PRD risks.
 
 ### D14. Gas, fee caps and funding
 
@@ -159,11 +169,11 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B1 | NEAR testnet accounts (spike, gate, guardian, demo governor, verifier relay) funded from faucet | lead (founder-authorized 2026-11-02) | resolved 2026-11-02 | P1.2, P1.5, P2.x | Accounts and creation txs below; keys only in gitignored `.secrets/` |
 | B2 | Base Sepolia ETH for the derived EOA and a deployer EOA | founder | resolved 2026-11-03 | P1.3, P1.4, P2.8 | A friend of the founder sent 0.05 ETH to the deployer on Ethereum Sepolia; with founder approval the lead bridged 0.049 ETH through the Base L1StandardBridge `0xfd0Bf71F60660E2f608ed56e1659C450eB113120` (address from docs.base.org "Contract Addresses", `otherBridge()` = `0x4200…0010` checked on chain): Sepolia tx `0xa3b4c26bc922789c6abec82b446605ffe275983fbedf8f1b6edd7d5bebc4f2cd`; deployer balance on Base Sepolia read as 0.049 ETH at block 53763980 (2026-11-03T02:57Z). The derived EOAs are funded from the deployer when needed |
 | B3 | Phala Cloud access, actual credited balance, and approved CVM uptime budget | founder | open; founder screenshot 2026-11-05 offers USD 5 on card addition despite marketing's USD 20; neither credited balance nor deploy approval confirmed | P1.6, P2.8 | Confirm workspace credit and resolve D18 before deployment; local non-design work proceeds meanwhile. No auto-topup/post-paid overage authorized |
-| B4 | NEAR AI Cloud credits and API key in local `.env` | founder | resolved 2026-11-04: key present in `.env`; one live `provider_tee` completion verified (BUILD-PLAN P2.6). Needs a synced host clock (LESSONS 2026-11-04) | P2.6 | none |
+| B4 | NEAR AI Cloud credits and API key in local `.env` | founder | credential prerequisite resolved; 2026-11-06 key/credit eligibility HTTP 200, `valid: true`. After the five-attempt diagnosis campaign, founder explicitly authorized one extra untimed 5,000-reasoning-budget measurement: verified `provider_tee`, 98.6 s completion phase, 149.5 s including cold setup | P2.6 prerequisite resolved; P3.1 evidence incomplete | Lead: use measured startup versus remote latency to propose bounded production policy; no production change made. Extra measurement billed USD 0.00274184; prior timeout cost unknown. Evidence: `crates/verifier/evidence/ai/reasoning-5000-2026-11-06.json`. No further inference/retries |
 | B5 | Base Sepolia state/trace and fixed-block proof endpoints | founder (provider access), lead (probe) | resolved 2026-11-05 under refined D10: production witness fetch from Validation Cloud + public Base RPC verified 8 accounts/7 slots at fixed block 54,676,922 | P1.7, P2.5 live R5 integration | No new account or payment required. Keep both endpoints configured in the CVM; public RPC rate limits/window expiry remain liveness risks. Final deployment/corpus proof remains P2.8 |
 | B6 | GitHub repo `Dylansius11/constitution` | founder | resolved 2026-11-03: repo exists (private, empty at start); `main` and `dev` pushed; default branch `dev`; work via branch then PR into `dev`, `dev` into `main` by PR. Open: the repo is PRIVATE, so make it public before submission (founder) | P4 | `git ls-remote origin` lists `main` and `dev` |
 | B7 | Hosting choice | founder | open | P3.6 | Resolve D8 |
-| B8 | Visual direction | founder | open | P3.4 | Resolve D7 |
+| B8 | Visual direction | founder | resolved 2026-11-07 (D7) | P3.4 | Brand and reference supplied in `asset/` |
 | B9 | Local Docker Desktop Linux engine and Ubuntu WSL integration for the compiler regression | founder (Desktop/WSL settings), lead (focused rerun) | resolved 2026-11-05: Docker server 28.5.1 available from Ubuntu; focused `proposal_compilation_error_remains_a_signed_reject` rerun passed (1 passed, 0 failed) after the founder enabled integration | Split-RPC PR merge verification, P4.1 | Merge blocker cleared; no code/test changes, R2/solver, image build or full-suite rerun |
 
 ### B1. NEAR testnet accounts

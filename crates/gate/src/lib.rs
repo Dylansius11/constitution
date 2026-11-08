@@ -267,7 +267,7 @@ impl Gate {
         amount.min(u128::from(WITHDRAWAL_RESERVE_BYTES) * env::storage_byte_cost().as_yoctonear())
     }
 
-    /// Non-refundable fee attached to `propose`; it keeps a proposal record's storage funded.
+    /// Non-refundable fee debited from prepaid credit; funds the permanent proposal record.
     pub(crate) fn proposal_storage_fee() -> u128 {
         u128::from(PROPOSAL_STORAGE_BYTES) * env::storage_byte_cost().as_yoctonear()
     }

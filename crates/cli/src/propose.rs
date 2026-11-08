@@ -178,6 +178,13 @@ pub struct Input<'a> {
     pub account: &'a str,
 }
 
+/// An accepted on-chain proposal; persist these identifiers before starting a verifier run.
+pub struct Registered {
+    pub id: u64,
+    pub tx_hash: String,
+    pub sealed: Vec<u8>,
+}
+
 pub fn propose(
     input: Input<'_>,
     gate: &str,
@@ -185,7 +192,7 @@ pub fn propose(
     near: &Near,
     evm: &Evm,
     verifier: &Verifier,
-) -> Result<(), Failure> {
+) -> Result<Registered, Failure> {
     let bytes = input.bytes;
     let address: Hex20 = serde_json::from_value(json!(input.implementation)).map_err(|e| {
         Failure::new(
@@ -252,16 +259,24 @@ pub fn propose(
             "check --verifier / VERIFIER_URL; nothing was written on chain",
         )
     })?;
+    let sealed = seal(bytes, key.0)?;
     let credit: U128Str = near
         .view(gate, "get_credit", json!({"account": input.account}))
         .map_err(read_error)?;
     let proposal_fee: U128Str = near
         .view(gate, "get_proposal_fee", json!({}))
         .map_err(read_error)?;
-    let mut shortfall = constitution
+    let required = constitution
         .params
         .proposal_deposit
-        .saturating_sub(credit.0);
+        .checked_add(proposal_fee.0)
+        .ok_or_else(|| {
+            Failure::new(
+                "proposal reservation and storage fee exceed the credit amount range",
+                "inspect the gate parameters; no funding or proposal was submitted",
+            )
+        })?;
+    let mut shortfall = required.saturating_sub(credit.0);
     if credit.0 == 0 {
         // A zero balance may be a missing entry. The gate takes a one-time entry fee out of the
         // first deposit to a missing entry; if the entry exists, the same amount is only extra
@@ -288,10 +303,10 @@ pub fn propose(
         )?;
     }
     println!(
-        "paying the non-refundable proposal storage fee: {} yoctoNEAR",
+        "paying the non-refundable proposal storage fee from prepaid credit: {} yoctoNEAR",
         proposal_fee.0
     );
-    let called = writer.call(gate, "propose", json!({"args": args}), proposal_fee.0, "wait for your active proposal to finish (or expire it after its deadline), then propose again; inspect with constitution status <id>")?;
+    let called = writer.call(gate, "propose", json!({"args": args}), 0, "wait for your active proposal to finish (or expire it after its deadline), then propose again; inspect with constitution status <id>")?;
     let id = called.value.as_u64().ok_or_else(|| {
         Failure::new(
             "propose landed but returned no proposal id",
@@ -303,10 +318,11 @@ pub fn propose(
     println!(
         "verifier identity NOT APPRAISED by this command; use constitution verifier appraise (D5)"
     );
-    let sealed = seal(bytes, key.0)?;
-    let run_id = verifier.start(gate, id, &sealed)?;
-    println!("verifier run: {run_id}");
-    Ok(())
+    Ok(Registered {
+        id,
+        tx_hash: called.tx_hash,
+        sealed,
+    })
 }
 
 #[cfg(test)]

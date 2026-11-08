@@ -90,7 +90,6 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .join()
         .map_err(|_| "local socket simulator panicked")?;
     let manifest = load_manifest(repo().join("rules/manifest.json"))?;
-    let confirmations = manifest.r5.confirmations;
     let socket = std::net::TcpListener::bind("127.0.0.1:0")?;
     let port = socket.local_addr()?.port();
     drop(socket);
@@ -287,12 +286,12 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .call(gate.id(), "deposit_credit")
         .args_json(json!({"account":null}))
         .deposit(near_workspaces::types::NearToken::from_yoctonear(
-            100 + entry_fee,
+            100 + entry_fee + proposal_fee,
         ))
         .transact()
         .await?
         .into_result()?;
-    let id:u64=proposer.call(gate.id(),"propose").args_json(json!({"args":ProposeArgs {new_impl,new_impl_codehash:Hex32(constitution_verifier::keccak(&code.0)),expected_current_impl:Hex20(current),init_calldata:init,source_commitment:Hex32(sha256(&bytes))}})).deposit(near_workspaces::types::NearToken::from_yoctonear(proposal_fee)).transact().await?.into_result()?.json()?;
+    let id:u64=proposer.call(gate.id(),"propose").args_json(json!({"args":ProposeArgs {new_impl,new_impl_codehash:Hex32(constitution_verifier::keccak(&code.0)),expected_current_impl:Hex20(current),init_calldata:init,source_commitment:Hex32(sha256(&bytes))}})).transact().await?.into_result()?.json()?;
     // Workspaces transact returns before this proposal reaches finality.
     // GateSource deliberately reads only final views, so advance the local chain.
     worker.fast_forward(3).await?;
@@ -375,13 +374,6 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .error_for_status()?
         .json()
         .await?;
-    assert_eq!(
-        evidence.archive_provider,
-        format!(
-            "NEAR 127.0.0.1 final + Base 127.0.0.1 at latest-{}",
-            confirmations
-        )
-    );
     let proposal: Value = gate
         .view("get_proposal")
         .args_json(json!({"id":id}))

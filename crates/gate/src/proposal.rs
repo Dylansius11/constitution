@@ -13,10 +13,14 @@ impl Gate {
         );
         let balance = self.credit.get(&proposer).copied().unwrap_or(0);
         let reserved = self.constitution.params.proposal_deposit;
+        let fee = Gate::proposal_storage_fee();
+        let required = reserved
+            .checked_add(fee)
+            .unwrap_or_else(|| env::panic_str(GateError::InsufficientCredit.code()));
         check(
-            balance >= reserved,
+            balance >= required,
             GateError::InsufficientCredit,
-            "proposal reservation",
+            "proposal reservation and prepaid storage fee",
         );
         check(
             args.init_calldata.0.len() <= MAX_INIT_CALLDATA,
@@ -34,10 +38,9 @@ impl Gate {
             GateError::DuplicateActive,
             "proposer, codehash and calldata active",
         );
-        let fee = Gate::proposal_storage_fee();
-        if env::attached_deposit().as_yoctonear() != fee {
+        if env::attached_deposit().as_yoctonear() != 0 {
             env::panic_str(&format!(
-                "{STORAGE_FEE}: attach exactly {fee} yocto, the non-refundable proposal storage fee"
+                "{STORAGE_FEE}: attach zero; the proposal storage fee is paid from credit"
             ));
         }
         let now = env::block_timestamp();
@@ -70,7 +73,8 @@ impl Gate {
             json!({"proposal_id": id, "proposal": &proposal,
             "rule_set_hash": constitution_types::Hex32(proposal.rule_set_hash)}),
         );
-        self.credit.insert(proposer.clone(), balance - reserved);
+        self.credit.insert(proposer.clone(), balance - required);
+        self.total_liabilities -= fee;
         self.active_by_account.insert(proposer, id);
         self.active_by_key.insert(key, id);
         self.proposals.insert(id, proposal);

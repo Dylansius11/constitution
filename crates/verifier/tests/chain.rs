@@ -296,3 +296,157 @@ async fn gate_and_source_commitment_prechecks_avoid_expensive_observations() {
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0]["params"]["method_name"], "get_proposal");
 }
+
+async fn oversized_response_stops_admission(chunked: bool) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const LIMIT: usize = 16 * 1024 * 1024;
+    let m = manifest();
+    let state = Stub {
+        fault: "",
+        hash: Hex32(rule_set_hash(&m).unwrap()),
+        calls: Default::default(),
+    };
+    let calls = state.calls.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!(
+        "http://alice:url-password@{}/rpc-path-secret?key=query-secret",
+        listener.local_addr().unwrap()
+    );
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let header_end = loop {
+            let byte = stream.read_u8().await.unwrap();
+            request.push(byte);
+            if request.ends_with(b"\r\n\r\n") {
+                break request.len();
+            }
+        };
+        let headers = std::str::from_utf8(&request).unwrap();
+        let length: usize = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse().unwrap())
+            })
+            .unwrap();
+        request.resize(header_end + length, 0);
+        stream.read_exact(&mut request[header_end..]).await.unwrap();
+        let query = serde_json::from_slice(&request[header_end..]).unwrap();
+        let Json(mut value) = rpc(State(state.clone()), Json(query)).await;
+        value["provider_private"] = json!("body-secret");
+        let json = serde_json::to_vec(&value).unwrap();
+        // Stream valid JSON plus harmless trailing whitespace; never allocate a huge fixture.
+        let padding = LIMIT + 1 - json.len();
+        let framing = if chunked {
+            "Transfer-Encoding: chunked".to_owned()
+        } else {
+            format!("Content-Length: {}", LIMIT + 1)
+        };
+        stream
+            .write_all(
+                format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{framing}\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
+            )
+            .await
+            .unwrap();
+        if chunked {
+            stream
+                .write_all(format!("{:x}\r\n", json.len()).as_bytes())
+                .await
+                .unwrap();
+        }
+        stream.write_all(&json).await.unwrap();
+        if chunked {
+            stream.write_all(b"\r\n").await.unwrap();
+        }
+        let whitespace = [b' '; 8192];
+        let mut remaining = padding;
+        while remaining > 0 {
+            let length = remaining.min(whitespace.len());
+            if chunked
+                && stream
+                    .write_all(format!("{length:x}\r\n").as_bytes())
+                    .await
+                    .is_err()
+            {
+                break;
+            }
+            if stream.write_all(&whitespace[..length]).await.is_err() {
+                break;
+            }
+            if chunked && stream.write_all(b"\r\n").await.is_err() {
+                break;
+            }
+            remaining -= length;
+        }
+        if chunked {
+            // The reader may close immediately after its bounded read.
+            let _ = stream.write_all(b"0\r\n\r\n").await;
+        }
+        drop(stream);
+        axum::serve(
+            listener,
+            Router::new().fallback(post(rpc)).with_state(state),
+        )
+        .await
+        .unwrap();
+    });
+    let source = GateSource::new(&url, &url, &url, &m, "gate.testnet".parse().unwrap()).unwrap();
+    let result = tokio::task::spawn_blocking(move || {
+        let gate = "gate.testnet".parse::<AccountId>().unwrap();
+        let mut admissions = 0;
+        let oversized = source.get_for_bundle(&gate, 7, [6; 32], &mut || {
+            admissions += 1;
+            Ok(())
+        });
+        let oversized_admissions = admissions;
+        let recovery = source.get_for_bundle(&gate, 7, [6; 32], &mut || {
+            admissions += 1;
+            Ok(())
+        });
+        (oversized, oversized_admissions, recovery, admissions)
+    })
+    .await
+    .unwrap();
+    server.abort();
+    let (oversized, oversized_admissions, recovery, admissions) = result;
+    assert!(
+        matches!(&oversized, Err(SourceError::Rpc(_))),
+        "oversized valid JSON must be rejected as an RPC fault, got {oversized:?}"
+    );
+    let error = oversized.unwrap_err().to_string();
+    for secret in [
+        "body-secret",
+        "alice",
+        "url-password",
+        "rpc-path-secret",
+        "query-secret",
+    ] {
+        assert!(
+            !error.contains(secret),
+            "provider secrets must not be echoed"
+        );
+    }
+    assert_eq!(oversized_admissions, 0);
+    let proposal = recovery.unwrap().unwrap();
+    assert_eq!(proposal.proposal_id, 7);
+    assert_eq!(proposal.evidence_block_number, 95);
+    assert_eq!(admissions, 1);
+    let calls = calls.lock().unwrap();
+    assert_eq!(calls.len(), 8);
+    assert_eq!(calls[0]["params"]["method_name"], "get_proposal");
+    assert_eq!(calls[1]["params"]["method_name"], "get_proposal");
+}
+
+#[tokio::test]
+async fn oversized_chunked_rpc_response_is_rejected_before_admission_and_recovers() {
+    oversized_response_stops_admission(true).await;
+}
+
+#[tokio::test]
+async fn oversized_content_length_rpc_response_is_rejected_before_admission_and_recovers() {
+    oversized_response_stops_admission(false).await;
+}

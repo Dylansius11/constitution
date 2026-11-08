@@ -1,0 +1,99 @@
+.live-surface {
+  color: var(--ink);
+  min-width: 0;
+}
+.live-surface h3 {
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.2;
+  margin-bottom: var(--space-4);
+}
+.live-surface p {
+  max-width: var(--measure);
+}
+.live-surface .live-intro {
+  margin-block: var(--space-4) var(--space-5);
+}
+.live-surface dl {
+  margin: var(--space-5) 0;
+}
+.live-surface .live-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.65fr) minmax(0, 1.35fr);
+  gap: var(--space-2) var(--space-5);
+  padding-block: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.live-surface dt {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.live-surface dd {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.live-surface .live-meta {
+  display: block;
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  margin-top: var(--space-2);
+}
+.live-surface .live-action {
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.live-surface .live-action:hover {
+  background: var(--paper-2);
+}
+.live-surface .live-action[aria-disabled="true"] {
+  cursor: wait;
+  color: var(--ink-muted);
+}
+.live-surface output {
+  display: block;
+  font-size: var(--text-sm);
+  margin-top: var(--space-4);
+  max-width: var(--measure);
+}
+.live-surface .live-observations {
+  margin-top: var(--space-5);
+}
+.live-surface [data-stale="true"] {
+  border: 1px dashed var(--line-strong);
+  padding: var(--space-3);
+  color: var(--ink-muted);
+}
+.live-surface[data-tone="pass"] .live-verdict {
+  color: var(--pass);
+}
+.live-surface[data-tone="refuse"] .live-verdict {
+  color: var(--refuse);
+}
+.live-surface[data-tone="pending"] .live-verdict {
+  color: var(--pending);
+}
+.live-surface .live-verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.live-surface[data-tone="neutral"] .live-verdict {
+  color: var(--ink);
+}
+.live-surface [hidden] {
+  display: none !important;
+}
+@media (max-width: 39.999rem) {
+  .live-surface .live-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

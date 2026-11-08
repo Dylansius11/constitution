@@ -9,7 +9,7 @@ impl Gate {
     pub fn get_total_liabilities(&self) -> U128 {
         U128(self.total_liabilities)
     }
-    /// Yocto that must be attached to `propose`, exactly. Non-refundable; it funds the record.
+    /// Non-refundable yocto debited from credit by `propose`; attach zero to that call.
     pub fn get_proposal_fee(&self) -> U128 {
         U128(Gate::proposal_storage_fee())
     }

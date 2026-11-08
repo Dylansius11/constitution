@@ -34,6 +34,30 @@ fn chain_mode_requires_an_explicit_peer_source() {
     assert!(startup(&[], &invalid).contains("VERIFIER_PEER_SOURCE"));
 }
 #[test]
+fn invalid_listen_address_fails_before_attestation_in_both_modes() {
+    for args in [&[][..], &["--insecure-dev-identity"][..]] {
+        for address in [
+            "",
+            "localhost:8787",
+            "0.0.0.0:65536",
+            "invalid-private-value",
+        ] {
+            let error = startup(
+                args,
+                &[
+                    ("PAGE_ORIGIN", "http://page.local"),
+                    ("GATE_ACCOUNT_ID", "gate.testnet"),
+                    ("VERIFIER_PEER_SOURCE", "socket"),
+                    ("VERIFIER_LISTEN_ADDR", address),
+                ],
+            );
+            assert!(error.contains("VERIFIER_LISTEN_ADDR"));
+            assert!(!error.contains("invalid-private-value"));
+            assert!(!error.contains("attestation_required"));
+        }
+    }
+}
+#[test]
 fn startup_rejects_unrecognized_flags() {
     assert!(startup(&["--production"], &[]).contains("usage:"));
 }

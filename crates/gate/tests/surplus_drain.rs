@@ -72,7 +72,9 @@ impl Harness {
             .parse()?;
         who.call(self.gate.id(), "deposit_credit")
             .args_json(json!({"account":null}))
-            .deposit(NearToken::from_yoctonear(fee + 100))
+            .deposit(NearToken::from_yoctonear(
+                fee + 100 + self.amount("get_proposal_fee").await?,
+            ))
             .transact()
             .await?
             .into_result()?;
@@ -89,9 +91,6 @@ impl Harness {
         Ok(who
             .call(self.gate.id(), "propose")
             .args_json(json!({"args":args}))
-            .deposit(NearToken::from_yoctonear(
-                self.amount("get_proposal_fee").await?,
-            ))
             .max_gas()
             .transact()
             .await?

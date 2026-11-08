@@ -1,0 +1,306 @@
+---
+import TimelockQueue from "../live/TimelockQueue.astro";
+
+/** The 7-day public timelock (DESIGN 5 row 5; SMART-CONTRACT governance table). */
+const roles = [
+  {
+    name: "Governor",
+    can: "Schedules a change.",
+    cannot: "Cannot apply it early, and cannot cancel it.",
+  },
+  {
+    name: "Guardian",
+    can: "Cancels a pending change, pauses signing, removes a verifier.",
+    cannot: "Can only take authority away, never add it.",
+  },
+  {
+    name: "Anyone",
+    can: "Applies a change once its 7 days have passed.",
+    cannot: "Nobody, under any role, can apply it before then.",
+  },
+];
+
+// Seven day segments around the dial; each spans 360/7 degrees with a small gap.
+const DAYS = 7;
+const R = 120;
+const C = 2 * Math.PI * R;
+const seg = C / DAYS;
+const gap = 6;
+const segments = Array.from({ length: DAYS }, (_, i) => ({
+  day: i + 1,
+  offset: -i * seg,
+  angle: ((i + 0.5) / DAYS) * 2 * Math.PI - Math.PI / 2,
+}));
+---
+
+<section id="timelock" class="timelock" aria-labelledby="timelock-title">
+  <script is:inline>
+    // The dial starts empty only when the script that fills it exists.
+    document.currentScript.parentElement.classList.add("has-js");
+  </script>
+  <div class="container timelock__grid">
+    <div class="timelock__dial">
+      <svg viewBox="-160 -160 320 320" aria-hidden="true" focusable="false">
+        {
+          segments.map((s) => (
+            <circle
+              r={R}
+              data-day={s.day}
+              class="dial__seg"
+              stroke-dasharray={`${seg - gap} ${C - seg + gap}`}
+              stroke-dashoffset={s.offset}
+              transform="rotate(-90)"
+            />
+          ))
+        }
+        {
+          segments.map((s) => (
+            <text
+              class="dial__day"
+              x={Math.cos(s.angle) * (R + 24)}
+              y={Math.sin(s.angle) * (R + 24)}
+              text-anchor="middle"
+              dominant-baseline="central"
+            >
+              {s.day}
+            </text>
+          ))
+        }
+        <g class="dial__hand">
+          <circle cx="0" cy={-R} r="9" />
+        </g>
+        <text class="dial__count" y="-58" text-anchor="middle"></text>
+        <text class="dial__big" y="-6" text-anchor="middle">7 days</text>
+        <text class="dial__small" y="26" text-anchor="middle">604,800 seconds</text>
+      </svg>
+      <p class="visually-hidden">
+        Diagram: a dial divided into seven day segments. A scheduled change becomes applicable only
+        after all seven have passed.
+      </p>
+    </div>
+
+    <div class="timelock__body">
+      <h2 id="timelock-title" data-reveal>Even the governor waits seven days.</h2>
+      <p class="lede" data-reveal style="--i:1">
+        The rules, the verifier list, the gate's parameters and its authority change only through a
+        public queue. Every change waits a fixed 7 days, in the open, where anyone can see it coming.
+      </p>
+      <p class="timelock__note" data-reveal style="--i:2">
+        <strong>Ordinary upgrades do not wait.</strong> A proposal that passes the committed rules is
+        signed as soon as it is certified. Only changes to the constitution itself sit in the queue.
+      </p>
+
+      <dl class="roles" data-reveal>
+        {
+          roles.map((role) => (
+            <div class="roles__row">
+              <dt>{role.name}</dt>
+              <dd>
+                <span>{role.can}</span>
+                <span class="muted">{role.cannot}</span>
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
+
+      <div class="refusal" data-reveal>
+        <p class="refusal__label mono">apply_change before the delay</p>
+        <p class="refusal__code mono">E53_TIMELOCK_NOT_ELAPSED</p>
+        <p class="refusal__text">
+          The gate refuses. The delay is immutable: no role can shorten it, and a parameter change
+          cannot change it.
+        </p>
+      </div>
+
+      <div class="timelock__queue" data-reveal>
+        <h3>The queue</h3>
+        <TimelockQueue />
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { initTimelock } from "../motion/timelock.ts";
+
+  initTimelock();
+</script>
+
+<style>
+  .timelock {
+    padding: var(--section-y) 0;
+  }
+
+  .timelock__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: var(--space-9);
+    align-items: start;
+  }
+
+  .timelock__dial {
+    position: sticky;
+    top: calc(var(--header-h) + var(--space-7));
+  }
+
+  .timelock__dial svg {
+    width: min(100%, 26rem);
+    margin-inline: auto;
+    overflow: visible;
+  }
+
+  .dial__seg {
+    fill: none;
+    stroke: var(--lav);
+    stroke-width: 22;
+  }
+
+  .dial__hand {
+    display: none;
+  }
+
+  .dial__hand circle {
+    fill: var(--ink);
+    stroke: var(--paper);
+    stroke-width: 4;
+  }
+
+  .dial__count {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    fill: var(--ink);
+  }
+
+  /* Scrolled state: days fill one by one while the section passes; the hand marks the time. */
+  @media (prefers-reduced-motion: no-preference) {
+    .timelock:global(.has-js) .dial__seg {
+      stroke: var(--line);
+      transition: stroke 300ms var(--ease-out);
+    }
+
+    .timelock:global(.has-js) .dial__seg:global(.is-filled) {
+      stroke: var(--lav);
+    }
+
+    .timelock:global(.has-js) .dial__hand {
+      display: block;
+    }
+  }
+
+  .dial__day {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    fill: var(--ink-muted);
+  }
+
+  .dial__big {
+    font-family: var(--font-sans);
+    font-size: 44px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    fill: var(--ink);
+  }
+
+  .dial__small {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    fill: var(--ink-muted);
+  }
+
+  .timelock__body {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  h2 {
+    font-size: var(--text-3xl);
+  }
+
+  .timelock__note {
+    max-width: var(--measure);
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-sm);
+    background: var(--lav-soft);
+    color: var(--ink);
+  }
+
+  .roles {
+    border-top: 1px solid var(--ink);
+  }
+
+  .roles__row {
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: var(--space-4);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  dt {
+    font-weight: 600;
+  }
+
+  dd {
+    display: grid;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+  }
+
+  .refusal {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-5);
+    border-radius: var(--radius-md);
+    background: var(--night);
+    color: var(--night-text);
+  }
+
+  .refusal__label {
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--night-muted);
+  }
+
+  .refusal__code {
+    font-size: var(--text-lg);
+    color: var(--lav);
+    overflow-wrap: anywhere;
+  }
+
+  .refusal__text {
+    font-size: var(--text-sm);
+    color: var(--night-text);
+  }
+
+  .timelock__queue {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+  }
+
+  @media (max-width: 56rem) {
+    .timelock__grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-7);
+    }
+
+    .timelock__dial {
+      position: static;
+    }
+
+    .timelock__dial svg {
+      width: min(100%, 18rem);
+    }
+
+    .roles__row {
+      grid-template-columns: 1fr;
+      gap: var(--space-1);
+    }
+  }
+</style>

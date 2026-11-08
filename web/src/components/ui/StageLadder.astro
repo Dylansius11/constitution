@@ -1,0 +1,107 @@
+---
+import Marker, { type MarkerState } from "./Marker.astro";
+
+/**
+ * Ordered stage list (DESIGN 6.1): each stage carries its own observed status as a marker shape
+ * plus a word. No percentages, no "step n of m".
+ */
+export interface Stage {
+  label: string;
+  state: MarkerState;
+  /** The word next to the marker; defaults per state. */
+  status?: string;
+  detail?: string;
+}
+
+interface Props {
+  stages: Stage[];
+  /** Accessible name of the list. */
+  label: string;
+  compact?: boolean;
+  class?: string;
+}
+
+const DEFAULT_STATUS: Record<MarkerState, string> = {
+  pending: "Pending",
+  active: "In progress",
+  done: "Done",
+  refused: "Refused",
+  skipped: "Not reached",
+};
+
+const { stages, label, compact = false, class: className } = Astro.props;
+---
+
+<ol class:list={["ladder", { "ladder--compact": compact }, className]} aria-label={label}>
+  {
+    stages.map((stage) => (
+      <li class:list={["ladder__row", `is-${stage.state}`]}>
+        <Marker state={stage.state} />
+        <span class="ladder__label">{stage.label}</span>
+        <span class="ladder__status">{stage.status ?? DEFAULT_STATUS[stage.state]}</span>
+        {stage.detail && <span class="ladder__detail">{stage.detail}</span>}
+      </li>
+    ))
+  }
+</ol>
+
+<style>
+  .ladder {
+    list-style: none;
+    display: grid;
+  }
+
+  .ladder__row {
+    display: grid;
+    grid-template-columns: 1rem 1fr auto;
+    align-items: center;
+    column-gap: var(--space-3);
+    row-gap: 0.15rem;
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .ladder__row:first-child {
+    border-top: 0;
+  }
+
+  .ladder--compact .ladder__row {
+    padding: 0.55rem 0;
+  }
+
+  .ladder__label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .ladder__status {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink-muted);
+  }
+
+  .is-done .ladder__status {
+    color: var(--pass);
+  }
+
+  .is-refused .ladder__status {
+    color: var(--refuse);
+  }
+
+  .is-active .ladder__status {
+    color: var(--violet);
+  }
+
+  .is-skipped .ladder__label,
+  .is-pending .ladder__label {
+    color: var(--ink-muted);
+  }
+
+  .ladder__detail {
+    grid-column: 2 / -1;
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    color: var(--ink-muted);
+  }
+</style>

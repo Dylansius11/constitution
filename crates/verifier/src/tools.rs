@@ -43,7 +43,7 @@ impl Sandbox {
         crate::bundle::materialize(bundle, root.path())
             .map_err(|_| "infrastructure:storage_error".to_owned())?;
         let config = format!(
-            "[profile.default]\nsrc='src'\ntest='test'\nout='out'\nlibs=['lib']\nsolc='/usr/local/bin/solc'\nevm_version='prague'\noptimizer=true\noptimizer_runs={}\nbytecode_hash='none'\ncbor_metadata=false\nffi=false\nast=true\ndynamic_test_linking=false\nbuild_info=true\nextra_output=['storageLayout']\nremappings=['@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/','forge-std/=lib/forge-std/src/']\n",
+            "[profile.default]\nsrc='src'\ntest='test'\nout='out'\nlibs=['/opt/constitution/lib']\nsolc='/usr/local/bin/solc'\nevm_version='prague'\noptimizer=true\noptimizer_runs={}\nbytecode_hash='none'\ncbor_metadata=false\nffi=false\nast=true\ndynamic_test_linking=false\nbuild_info=true\nextra_output=['storageLayout']\nremappings=['@openzeppelin/contracts/=/opt/constitution/lib/openzeppelin-contracts/contracts/','@openzeppelin/contracts-upgradeable/=/opt/constitution/lib/openzeppelin-contracts-upgradeable/contracts/','forge-std/=/opt/constitution/lib/forge-std/src/']\n",
             manifest.optimizer_runs
         );
         std::fs::write(root.path().join("foundry.toml"), config).map_err(storage_error)?;
@@ -52,15 +52,14 @@ impl Sandbox {
         Ok(Self {
             root,
             repo: repo.canonicalize().map_err(storage_error)?,
-            image: "constitution-verifier-spike:local".into(),
+            image: std::env::var("VERIFIER_TOOL_IMAGE")
+                .ok()
+                .filter(|image| !image.trim().is_empty())
+                .unwrap_or_else(|| "constitution-verifier-spike:local".into()),
         })
     }
     pub fn run(&self, script: &str, args: &[&str]) -> Result<Output, String> {
         let mount = format!("{}:/work/project", self.root.path().display());
-        let libs = format!(
-            "{}:/work/project/lib:ro",
-            self.repo.join("contracts/lib").display()
-        );
         #[cfg(unix)]
         let (user, home) = {
             use std::os::unix::fs::MetadataExt;
@@ -113,8 +112,6 @@ impl Sandbox {
                 &home,
                 "-v",
                 &mount,
-                "-v",
-                &libs,
                 "-w",
                 "/work/project",
                 &self.image,

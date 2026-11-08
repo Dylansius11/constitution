@@ -187,8 +187,12 @@ constitution/
     r4/initializers.json
     r5/corpus.json
   verifier-image/
-    Dockerfile                  # digest-pinned base and tool binaries
-    docker-compose.yml          # dstack compose; its hash is part of release identity
+    Dockerfile                  # digest-pinned tools and embedded trusted library sources
+    Service.Dockerfile          # Rust verifier + Node sidecar, allowlisted build context
+    run-service.mjs             # fail-closed child lifecycle, no automatic restart
+    compose.service.yaml        # shared staging bind, host-loopback API publication
+    compose.offline.yaml        # explicit local registry; no attestation/submission
+    compose.tee.yaml            # candidate CVM mounts; P1.6 appraisal still required
     ai-sidecar/                 # Node 24, @nearai/inference-sdk, localhost only
   fixtures/proposals/{drain,honest}/
   vectors/                      # shared JSON test vectors (T-ENC)
@@ -226,8 +230,8 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 
 [I] The R3 list is **exactly eight ordered 32-byte values**, with Foundry `0x7109709ecfa91a80626ff3989d68f67f5b1dd12d` and Halmos `0xf3993a62377bcd56ae39d773740a5390411e8bc9` zero-padded to 32 bytes. Numeric PUSH immediates are compared (including Solidity's PUSH20 addresses); both ERC-1967 ASCII labels are rejected anywhere in runtime. Shared `validate_rule_set` enforces the list, so CLI and verifier accept identical inputs. Borsh field order, `Vec<Hex32>` encoding and manifest version 1 are unchanged; this revised supported list and harness produce a new rule-set commitment, not a serialization-format fork. G1 assumes implementations cannot write arbitrary storage: a runtime computing its SSTORE slot from calldata can evade R3, as documented by the filter-limit test. Computed cheatcode addresses, environment fingerprinting beyond chain id, and entry points not explored by R2 remain limits. Filters are filters, not proofs.
 
-[V, local CLI, 2026-11-03] Current rule-set hash:
-`0x8060ddbf63635e14a955b4fef81c8e696c01e349c9f959cae135d48056e89455`
+[V, local CLI, 2026-11-06; AI review deadline updated to 300 s] Current rule-set hash:
+`0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`
 (`cargo run -p constitution-cli -- rules hash rules/manifest.json`).
 
 ### Evidence manifest
@@ -241,9 +245,22 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 - `release_hash = sha256("constitution.v1/release" || MRTD || RTMR0 || RTMR1 || RTMR2 || compose_hash)`; RTMR3 event-log replay must reproduce `compose_hash`.
 - [V] Phala deterministic `GetKey` keys are derived per **application id**, not per measured code (docs.phala.com get-a-key, 2026-10-26). Whoever controls app updates could obtain the same key under different code, so P0 does not use `GetKey` for the certificate key. Consequence: a CVM restart produces a new key that needs a timelocked `AddVerifier` (P0) or, after P1 on-chain DCAP, a permissionless key registration for an already-approved `release_hash`. Budget impact: OPEN-DECISIONS D18.
 
+[I, local packaging] The Rust service and Node sidecar share one container network
+namespace; only port 8787 is published on host loopback. The supervisor separates
+NEARAI settings from the Rust process and relay settings from the sidecar and
+stops both on a child failure. The trusted service alone accesses the host Docker
+socket (root-equivalent); tool jobs receive only staged files and use libraries
+embedded in their image. An identical absolute TMPDIR bind bridges the service
+and daemon filesystems. Both image references must be immutable in the final
+rendered deployment inputs before quote appraisal. Packaging and a candidate
+Compose file do not prove CVM execution, ingress policy or DCAP verification;
+P1.6 remains required. Operator steps and resource limits:
+[`crates/verifier/src/LOCAL.md`](../../crates/verifier/src/LOCAL.md#packaged-linux-service).
+
 ### AI review
 
 - Sidecar uses `new InferenceClient({ baseUrl: "https://cloud-api.near.ai/v1", apiKey, e2ee: true, gatewayVerification: {policy: {acceptedTcbStatuses: ["UpToDate"]}}, modelVerification: {policy: {acceptedTcbStatuses: ["UpToDate"]}} })` [V option names from the JS SDK doc]; header `x-no-aliasing: true`; model `z-ai/glm-5.3-flash`.
+- Review sends `max_tokens: 45000` and `thinking_token_budget: null` under the committed 300 s maximum; reasoning counts inside completion usage. Candidate JSON remains bounded at 64 KiB independently of this model-work ceiling. SDK setup and response verification are inside the review deadline; the Rust caller has 2 s transport grace and the enclosing verifier run retains its 20-minute deadline. No inference retries or certificate-TTL changes follow. S1 repair is separately planned at 100,000 completion tokens and a 30-minute whole-job deadline; production repair is not implemented.
 - Output contract requested from the model: JSON `{candidates: [{rule: "R2", rationale, steps: [{from: "attacker"|"victim"|"0x..", call: "<function signature>", args: [...], value: "0"}]}]}`, at most `max_candidates`.
 - After the stream completes: `receipt = await client.verifyResponse(completion.id)`; require `receipt.signatureKind === "provider_tee"`; otherwise AI review is `incomplete`.
 - The verifier replays each candidate in revm on the evidence-block fork with the new implementation. Only a reproduced R2 violation creates `Reject{2,22}`. Prompt text and model output are untrusted data: nothing from them is executed except as EVM transactions inside the sandboxed replay.
@@ -262,8 +279,37 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 | `constitution executor-runtime-hash [--executor-artifact <Foundry JSON>]` | Offline helper: keccak256 of executor deployed runtime with compiler-declared immutable regions zeroed; writes no deployment record |
 | `constitution verifier appraise <url>` | Off-chain quote appraisal (D5) |
 | `constitution verifier run --proposal <id> --bundle <dir\|file> [--contract src/<file>.sol:<Name>] --gate <gate> [--near-rpc <url>] [--verifier-url <url>]` | [I] Read-only retry for an existing Pending proposal: validates the canonical source bundle and compares its SHA-256 to the on-chain source commitment before contacting the verifier, fetches its current transport key, re-seals and POSTs `/v1/runs`. Directory input requires `--contract`; file input is a canonical Borsh `SourceBundle`. Prints the numeric run id and a `status --run --watch` command; identity is not appraised. Admission refusals give a code-specific recovery; 429 honors `Retry-After` seconds. `propose` remains asynchronous; no automatic retry or resubmission |
+| `constitution demo attack\|upgrade --bundle <dir> --contract <path:Name> --impl <address> --account <id> --key-file <file> --gate <id> --network local\|testnet --near-rpc <url> --evm-rpc <url> --verifier <url> --output <new-directory> [--init <hex>] [--send-rpc <url>] [--watch <seconds>]` | Proposes once, watches the existing proposal, and retains recovery metadata plus an observed receipt. Attack never relays. Upgrade relays only Signed state through the existing sender/transaction checks; success additionally requires inclusion and candidate implementation-slot readback |
 
-`make attack` = propose the drain fixture with the demo key and watch; `make upgrade` = propose the honest fixture, watch, relay. Both print receipt paths.
+`make attack` and `make upgrade` invoke this runner with explicit inputs, rather than deploying implementations or manufacturing certificates. Both print the evidence directory; a successful run prints `receipt.json`. `make audit` invokes the existing read-only audit with an explicit deployment record and RPCs. `make test` runs the Rust workspace serially; it requires the documented sandbox/Foundry/Docker prerequisites and is not a lightweight health check.
+
+#### Demo runner operation
+
+[I, implementation contract] Run from Linux/WSL2 with the CLI toolchain. The gate, executor, proxy, candidate implementation and verifier must already exist. Choose an already-appraised verifier for private source: like `propose`, this runner fetches the transport key but does **not** perform DCAP appraisal. `--network local` labels evidence; it does not create a local network or prevent a user from supplying remote endpoints. No environment file is automatically sourced. Running against a funded verifier can consume inference credits; live writes and spending still require founder approval.
+
+For the existing demo sources, use `BUNDLE=contracts` with `CONTRACT=src/demo/VaultV2Drain.sol:VaultV2Drain` for attack, or `CONTRACT=src/demo/VaultV2Honest.sol:VaultV2Honest` for upgrade. The selected implementation must have been deployed with matching compiler settings. Set `IMPLEMENTATION` to that deployment and supply the intended `INIT` calldata explicitly when initialization is needed; the CLI default is empty `0x`.
+
+```sh
+# Planned operator invocation; values come from the chosen local/testnet deployment.
+# Create the parent once, but OUTPUT itself must not exist.
+mkdir -p receipts
+make attack BUNDLE=contracts CONTRACT=src/demo/VaultV2Drain.sol:VaultV2Drain \
+  IMPLEMENTATION="$DRAIN_IMPL" INIT="$DRAIN_INIT" ACCOUNT="$DEMO_ACCOUNT" \
+  GATE="$GATE_ACCOUNT" KEY_FILE="$DEMO_KEY_FILE" NETWORK=local \
+  NEAR_RPC="$LOCAL_NEAR_RPC" EVM_RPC="$LOCAL_EVM_RPC" \
+  VERIFIER="$LOCAL_VERIFIER_URL" OUTPUT=receipts/local-attack-001
+# Use make upgrade with the honest contract/address/init and a fresh OUTPUT.
+```
+
+All eleven `DEMO_REQUIRED` Makefile inputs are mandatory. `WATCH` defaults to 600 seconds **per polling stage**; HTTP and NEAR transaction waits have their own existing bounds. `SEND_RPC` optionally selects a separate broadcaster; otherwise it uses the explicitly supplied `EVM_RPC`. Make does not echo the command containing endpoint values. Do not put keys or RPC URLs into receipt filenames.
+
+The new output directory is reserved before any network write. Files are create-only and synced before proceeding: `attempt.json` labels the gate/network/scenario; `submission.json` records the accepted proposal id and observed NEAR propose transaction **before** the verifier POST; `run.json` records a returned run id. `receipt.json`, when public state is readable, uses `constitution.receipt/1` and includes the observed propose transaction. `failure.json` retains actionable failure/recovery information without URLs. Files contain no source bundle, sealed bundle, wallet secret or RPC configuration. Unix creation modes are directory `0700`, files `0600`; Windows ACL behavior is not asserted.
+
+Exit 0 requires an observed Rejected attack with no EVM signing record and unchanged proxy slot, or a Signed honest proposal whose EVM transaction is included successfully and whose observed proxy slot equals the candidate. Timeout, withheld AI, SignFailed, unexpected attack signing, reverted inclusion and divergent proxy state exit nonzero. A terminal verifier run is not gate settlement. If run/evidence retrieval fails, a gate-only receipt is retained when readable, but the overall run still fails rather than silently dropping verification.
+
+The runner shares `status`'s terminal-run policy: `done` without a certificate, `failed`, or `submit: Incomplete` cannot be bypassed by observing Signed/Rejected on the gate. A run still submitting is polled rather than treated as authorization to relay. Requested accepted-certificate evidence returning 404 is an incomplete receipt, not a successful evidence check.
+
+On failure, inspect `submission.json` first. Use the existing `status`, `receipt`, `verifier run` or `relay` commands for that proposal as appropriate; do not rerun the demo to retry a verifier POST or uncertain transaction. Existing output directories are rejected, never overwritten. An interrupted process or uncertain NEAR write may require manual chain inspection; the runner is not a crash-recovery database. An offline/unattested verifier still cannot issue Pass or submit verdicts. These runners do not implement a full-VPS signing fallback.
 
 `constitution audit` [I, local implementation; no activated-testnet claim] reads public state at NEAR `final` and EVM `latest` and prints 11 PASS/FAIL preconditions: `gate_has_no_access_keys`, `gate_code_is_committed_build`, `executor_code_is_committed_build`, `gate_binds_this_deployment` (chain, executor, proxy and MPC account match the record and RPC chain), `derived_eoa_is_executor_signer` (MPC derivation equals gate EOA and executor signer), `executor_controls_this_proxy`, `executor_owns_proxy_admin`, `proxy_admin_is_erc1967_admin`, `implementation_tracker_matches_slot`, `active_rule_set_is_committed_manifest`, `verifier_allowlist_is_committed`. The existing ownership and slot checks remain even though the executor constructor deploys the proxy/admin. An unreadable value aborts with named `FAIL read_failed`, exit 1; never a pass.
 
@@ -328,7 +374,7 @@ Transitions are the state machine in SMART-CONTRACT. No database exists; receipt
 | Verifier lacks dstack socket without explicit offline flag | startup identity policy | `attestation_required`; refuses chain mode | Restore socket; `--insecure-dev-identity` only selects local registry/no submitter | startup mode tests |
 | Sandbox/Docker unavailable, tempdir/disk failure, missing tools | tool execution boundary | Run `failed` with stable error code | No certificate; sandbox_unavailable is exempt from cooldown; storage_error and tool_unavailable count | infrastructure classification tests |
 | Tool wall timeout/OOM (exit 124/137) or malformed tool artifacts, unavailable committed harness | tool execution and output validation | Run `failed`/`infrastructure_timeout` or `tool_output_invalid` | No certificate/verdict; Pending, retryable until the canary rule above applies | classification and canary tests |
-| Archive RPC transport/HTTP/protocol failure (including malformed/oversized replies), or unavailable/invalid committed verifier data | observation/replay boundary | `502 rpc_unavailable` before queue; otherwise run `failed`/`rpc_unavailable` or `committed_data_unavailable` | No certificate/verdict before signing; Pending, retryable; post-signing submission uncertainty retains the certificate | RPC redaction/fault regression |
+| Archive RPC transport/HTTP/protocol failure (including malformed/oversized replies), or unavailable/invalid committed verifier data | observation/replay boundary; initial NEAR/Base responses and replay responses are capped at 16 MiB before JSON parsing, including chunked bodies | `502 rpc_unavailable` before queue; otherwise run `failed`/`rpc_unavailable` or `committed_data_unavailable` | No certificate/verdict before signing; Pending, retryable; post-signing submission uncertainty retains the certificate | RPC redaction/fault and oversized-response recovery regressions |
 | Worker panic / poisoned state lock | RAII worker guard / lock recovery | Run `failed`/`worker_panic`; service remains usable | No panic-produced certificate; retry; newest 64 finished runs retained, never evict unfinished runs, evicted IDs return 404 | panic/poison and 65th-request regressions |
 | MPC sign failure / timeout | `on_signed` Err | "Signing failed, retry available" | `retry_sign` same bytes | T-GATE-10 |
 | Underpriced EVM tx | not included after N blocks | "Pending on Base" | `bump_fee` | T-GATE-9, testnet rehearsal |

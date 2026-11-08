@@ -1,0 +1,168 @@
+---
+import Button from "../ui/Button.astro";
+import Logo from "../ui/Logo.astro";
+
+const links = [
+  { href: "#plain", label: "Start here" },
+  { href: "#how", label: "How it works" },
+  { href: "#rules", label: "Rules" },
+  { href: "#timelock", label: "Timelock" },
+  { href: "#evidence", label: "Evidence" },
+  { href: "#limits", label: "Limits" },
+];
+---
+
+<header class="header">
+  <div class="header__inner container">
+    <Logo href="#top" class="header__logo" />
+    <span class="header__scope">Testnet · Not audited</span>
+    <nav class="header__nav" aria-label="Sections">
+      <ul>
+        {links.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+      </ul>
+    </nav>
+    <details class="header__menu">
+      <summary>Menu</summary>
+      <nav aria-label="Sections, compact">
+        <ul>
+          {links.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+        </ul>
+      </nav>
+    </details>
+    <Button href="#try" class="header__cta">Try it</Button>
+  </div>
+</header>
+
+<script>
+  // Close the compact menu after choosing a section.
+  const menu = document.querySelector<HTMLDetailsElement>(".header__menu");
+  menu?.addEventListener("click", (event) => {
+    if ((event.target as Element).closest("a")) menu.open = false;
+  });
+</script>
+
+<style>
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .header__inner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    min-height: var(--header-h);
+  }
+
+  .header__logo {
+    color: var(--ink);
+  }
+
+  .header__scope {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+
+  .header__nav {
+    margin-left: auto;
+  }
+
+  .header__nav ul,
+  .header__menu ul {
+    list-style: none;
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .header__nav a,
+  .header__menu a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding: 0 var(--space-3);
+    color: var(--ink);
+    font-size: var(--text-sm);
+    font-weight: 450;
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    transition: background-color var(--dur-base) ease;
+  }
+
+  .header__nav a:hover {
+    background: rgb(23 21 31 / 0.05);
+  }
+
+  .header__menu {
+    display: none;
+    position: relative;
+    margin-left: auto;
+  }
+
+  .header__menu summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .header__menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .header__menu[open] summary {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+
+  .header__menu nav {
+    position: absolute;
+    right: 0;
+    top: calc(100% + var(--space-2));
+    min-width: 13rem;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .header__menu ul {
+    flex-direction: column;
+  }
+
+  .header__menu a {
+    width: 100%;
+  }
+
+  @media (max-width: 60rem) {
+    .header__nav {
+      display: none;
+    }
+
+    .header__menu {
+      display: block;
+    }
+  }
+
+  @media (max-width: 34rem) {
+    .header__scope {
+      display: none;
+    }
+
+    .header__inner {
+      gap: var(--space-3);
+    }
+  }
+</style>

@@ -1,0 +1,117 @@
+---
+/**
+ * Words used on this page (DESIGN section 5, row 9b). One plain sentence per term, in the order
+ * a first-time reader meets them. Definitions describe what the term means here; they add no
+ * claim beyond PRD G1 to G4.
+ */
+const terms = [
+  {
+    term: "Upgradeable contract",
+    text: "A program on a blockchain whose code can be swapped later. The address people use stays the same; the code behind it changes.",
+  },
+  {
+    term: "Proxy",
+    text: "That permanent address. It forwards every call to the current code, and the upgrade is the act of pointing it at new code.",
+  },
+  {
+    term: "Admin key",
+    text: "A secret that lets its holder point the proxy at any code they like. Stealing it is how an upgradeable app gets taken over.",
+  },
+  {
+    term: "Gate",
+    text: "A program on the NEAR blockchain that holds the upgrade power and signs an upgrade only when it carries a valid certificate.",
+  },
+  {
+    term: "Keyless",
+    text: "After activation nobody holds a private key for that power. The signature comes out of NEAR Chain Signatures, and only the gate's code can ask for it.",
+  },
+  {
+    term: "Chain Signatures",
+    text: "A NEAR network feature that lets a NEAR program produce signatures for other chains, such as Base, without anyone holding the key.",
+  },
+  {
+    term: "Verifier",
+    text: "The program that reads a proposed upgrade, runs the five rules and, if every one passes, signs a certificate for that exact upgrade.",
+  },
+  {
+    term: "Attested machine (TEE)",
+    text: "A sealed machine whose hardware can prove which software it is running, so the verifier's code can be checked rather than trusted.",
+  },
+  {
+    term: "Certificate",
+    text: "The verifier's signed statement that one exact upgrade passed. It expires quickly and covers nothing else.",
+  },
+  {
+    term: "Timelock",
+    text: "A waiting period before a change applies. Changing the rules takes seven days, so anyone can see it coming.",
+  },
+  {
+    term: "Testnet",
+    text: "A practice network with no real money. Everything here runs on one: NEAR testnet and Base Sepolia.",
+  },
+] as const;
+---
+
+<section id="words" class="words" aria-labelledby="words-title">
+  <div class="container">
+    <div class="words__head" data-reveal>
+      <h2 id="words-title">Words used on this page.</h2>
+      <p class="lede">One plain sentence each, in the order you meet them.</p>
+    </div>
+    <dl class="words__list">
+      {
+        terms.map((t, i) => (
+          <div class="word" data-reveal style={`--i:${i % 3}`}>
+            <dt>{t.term}</dt>
+            <dd>{t.text}</dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</section>
+
+<style>
+  .words {
+    padding: var(--section-y) 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .words__head {
+    display: grid;
+    gap: var(--space-4);
+    max-width: 48rem;
+    margin-bottom: var(--space-7);
+  }
+
+  h2 {
+    font-size: var(--text-3xl);
+  }
+
+  .words__list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+    border-top: 1px solid var(--ink);
+  }
+
+  .word {
+    display: grid;
+    align-content: start;
+    gap: var(--space-2);
+    padding: var(--space-5) var(--space-5) var(--space-5) 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  dt {
+    font-size: var(--text-lg);
+    font-weight: 500;
+    letter-spacing: var(--tracking-tight);
+  }
+
+  dd {
+    max-width: 44ch;
+    font-size: var(--text-base);
+    line-height: 1.55;
+    color: var(--ink-muted);
+  }
+</style>
