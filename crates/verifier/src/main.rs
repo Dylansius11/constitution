@@ -1,6 +1,6 @@
-//! Chain-connected by default; dstack evidence is selected only when its socket exists.
+//! Chain-connected mode requires a socket-attested identity; local mode is explicit.
 use constitution_verifier::{
-    api::{Service, router},
+    api::{Service, router, serve},
     chain::GateSource,
     identity::Identity,
     manifest::load_manifest,
@@ -21,12 +21,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         [flag] if flag == "--insecure-dev-identity" => true,
         _ => return Err("usage: constitution-verifier [--insecure-dev-identity]".into()),
     };
+    let listen_addr = match std::env::var("VERIFIER_LISTEN_ADDR") {
+        Ok(value) => value
+            .parse::<std::net::SocketAddr>()
+            .map_err(|_| "invalid VERIFIER_LISTEN_ADDR")?,
+        Err(std::env::VarError::NotPresent) => std::net::SocketAddr::from(([127, 0, 0, 1], 8787)),
+        Err(_) => return Err("invalid VERIFIER_LISTEN_ADDR".into()),
+    };
     let repo = std::env::current_dir()?;
     let manifest = load_manifest(repo.join("rules/manifest.json"))?;
     let origin = required("PAGE_ORIGIN")?;
-    let identity = Identity::new().attest_if_present().await?;
+    let gate = if local {
+        None
+    } else {
+        Some(
+            required("GATE_ACCOUNT_ID")?
+                .parse()
+                .map_err(|_| "invalid GATE_ACCOUNT_ID")?,
+        )
+    };
+    let peer_source = match std::env::var("VERIFIER_PEER_SOURCE") {
+        Ok(value) if value == "socket" => value,
+        Ok(value)
+            if value
+                .strip_prefix("header:")
+                .is_some_and(|name| !name.is_empty()) =>
+        {
+            value
+        }
+        Err(_) if local => "socket".to_owned(),
+        _ => return Err("VERIFIER_PEER_SOURCE must be socket or header:<name>".into()),
+    };
+    if let Some(name) = peer_source.strip_prefix("header:") {
+        axum::http::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| "invalid VERIFIER_PEER_SOURCE header")?;
+    }
+    let identity = Identity::new()
+        .for_mode(
+            local,
+            std::path::Path::new(constitution_verifier::identity::DSTACK_SOCKET),
+        )
+        .await?;
     let identity_label = identity.view([0; 32]).label;
-    let service = if local {
+    let mut service = if local {
         let registry = required("LOCAL_PROPOSAL_REGISTRY")?;
         Service::new(
             identity,
@@ -35,11 +72,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::new(LocalRegistry::load(registry)?),
         )?
     } else {
+        let gate = gate.ok_or("missing GATE_ACCOUNT_ID")?;
         let near_rpc = required("NEAR_RPC_URL")?;
         let base_rpc = match std::env::var("BASE_SEPOLIA_ARCHIVE_RPC_URL") {
             Ok(value) if !value.trim().is_empty() => value,
             _ => required("BASE_SEPOLIA_RPC_URL")?,
         };
+        let proof_rpc = required("BASE_SEPOLIA_PROOF_RPC_URL")?;
         let account = required("VERIFIER_RELAY_ACCOUNT_ID")?;
         let keyfile = match std::env::var("VERIFIER_RELAY_KEY_FILE") {
             Ok(value) if !value.trim().is_empty() => std::path::PathBuf::from(value),
@@ -48,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .join(required("NEAR_NETWORK_ID")?)
                 .join(format!("{account}.json")),
         };
-        let source = GateSource::new(&near_rpc, &base_rpc, &manifest)?;
+        let source = GateSource::new(&near_rpc, &base_rpc, &proof_rpc, &manifest, gate)?;
         let submitter = NearSubmitter::new(&near_rpc, &account, &keyfile)?;
         Service::with_submitter(
             identity,
@@ -58,16 +97,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::new(submitter),
         )?
     };
+    if let Some(header) = peer_source.strip_prefix("header:") {
+        Service::trust_proxy_header(&mut service, header)?;
+    }
     let app = router(service, &origin)?;
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8787").await?;
+    let listener = tokio::net::TcpListener::bind(listen_addr).await?;
+    let bound_addr = listener.local_addr()?;
     eprintln!(
-        "verifier listening on 127.0.0.1:8787; {identity_label}; no Pass certificates; mode={}",
+        "verifier listening on {bound_addr}; {identity_label}; Pass requires provider_tee review; mode={}; admission peers keyed by {}",
         if local {
             "local registry (no submission)"
         } else {
             "gate RPC and verdict submission"
-        }
+        },
+        peer_source,
     );
-    axum::serve(listener, app).await?;
+    serve(listener, app).await?;
     Ok(())
 }

@@ -1,0 +1,38 @@
+# Base service; use compose.offline.yaml locally, or compose.tee.yaml in an approved CVM.
+# Never run `compose config` into a public log: env_file contains operator secrets.
+services:
+  verifier:
+    image: ${VERIFIER_SERVICE_IMAGE:?Set an immutable service image reference}
+    platform: linux/amd64
+    pull_policy: never
+    user: "${VERIFIER_UID:-10001}:${VERIFIER_GID:-10001}"
+    group_add: ["${DOCKER_GID:?Set the host Docker socket group id}"]
+    init: true
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1
+    stop_grace_period: 15s
+    env_file: ["${VERIFIER_ENV_FILE:?Set the private service environment file}"]
+    environment:
+      HOME: /tmp
+      TMPDIR: ${VERIFIER_WORK_DIR:?Set a pre-created absolute shared staging directory}
+      VERIFIER_TOOL_IMAGE: ${VERIFIER_TOOL_IMAGE:?Set an immutable preloaded tool image reference}
+      VERIFIER_LISTEN_ADDR: 0.0.0.0:8787
+      VERIFIER_PEER_SOURCE: socket
+    ports:
+      - "127.0.0.1:${VERIFIER_PORT:-8787}:8787"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${VERIFIER_WORK_DIR:?Set the shared staging directory}
+        target: ${VERIFIER_WORK_DIR:?Set the same absolute staging directory}
+        bind: {create_host_path: false}

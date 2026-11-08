@@ -62,7 +62,12 @@ fn hex0(bytes: &[u8]) -> String {
     format!("0x{}", hex::encode(bytes))
 }
 
-fn vector(name: &str, p: Option<&Proposal>, e: &EvmTx, rotate: Option<([u8; 20], [u8; 32])>) -> Value {
+fn vector(
+    name: &str,
+    p: Option<&Proposal>,
+    e: &EvmTx,
+    rotate: Option<([u8; 20], [u8; 32])>,
+) -> Value {
     let c = config();
     let tx = match (p, rotate) {
         (Some(p), None) => proposal_transaction(&c, p, e).unwrap(),
@@ -111,7 +116,11 @@ fn vectors() -> Value {
     init.extend_from_slice(&amount);
     let max_init = proposal((0..1024u32).map(|i| (i * 31 % 251) as u8).collect());
     let base = evm(0, 1_009_731_712, 1_000_000);
-    let bump = evm(0, bumped(base.max_fee_per_gas), bumped(base.max_priority_fee_per_gas));
+    let bump = evm(
+        0,
+        bumped(base.max_fee_per_gas),
+        bumped(base.max_priority_fee_per_gas),
+    );
     json!({
         "label": "T-ENC-1 vectors produced by the gate (omni-transaction 0.5.0 + alloy-sol-types 1.7.3); recomputed by tools/vectors-viem",
         "vectors": [
@@ -134,5 +143,8 @@ fn t_enc_1_gate_preimages_match_committed_vectors() {
         std::fs::write(FILE, text).unwrap();
     }
     let committed: Value = serde_json::from_str(&std::fs::read_to_string(FILE).unwrap()).unwrap();
-    assert_eq!(produced, committed, "gate encoding drifted from vectors/evm-tx.json");
+    assert_eq!(
+        produced, committed,
+        "gate encoding drifted from vectors/evm-tx.json"
+    );
 }

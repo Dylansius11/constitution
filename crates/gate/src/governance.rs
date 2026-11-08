@@ -11,6 +11,28 @@ impl Gate {
             "schedule only",
         );
         self.validate_change(&kind);
+        if self.pending_changes.len() >= MAX_PENDING_CHANGES {
+            env::panic_str(PENDING_CHANGE_LIMIT);
+        }
+        // Authority kinds are unique; every other kind has a small cap so one kind cannot take
+        // every slot of the queue.
+        let same_kind = self
+            .pending_changes
+            .iter()
+            .filter(|id| {
+                self.changes.get(id).is_some_and(|c| {
+                    std::mem::discriminant(&c.kind) == std::mem::discriminant(&kind)
+                })
+            })
+            .count();
+        let cap = if is_authority_kind(&kind) {
+            1
+        } else {
+            MAX_PENDING_PER_KIND
+        };
+        if same_kind >= cap {
+            env::panic_str(DUPLICATE_AUTHORITY_CHANGE);
+        }
         let now = env::block_timestamp();
         let eta_ns = now
             .checked_add(TIMELOCK_NS)
@@ -34,6 +56,8 @@ impl Gate {
         );
         self.changes.insert(id, change);
         self.next_change_id = next;
+        self.pending_changes.push(id);
+        self.assert_solvent(0);
         id
     }
 
@@ -80,17 +104,20 @@ impl Gate {
                     .get(id)
                     .unwrap_or_else(|| env::panic_str(GateError::SignaturesOutstanding.code()));
                 match proposal.state {
-                    ProposalState::SignRequested => {
-                        env::panic_str(GateError::SignaturesOutstanding.code())
-                    }
-                    ProposalState::SignFailed | ProposalState::Signed => {
+                    ProposalState::SignRequested
+                    | ProposalState::SignFailed
+                    | ProposalState::Signed => {
                         let evm = proposal.evm.as_ref().unwrap_or_else(|| {
                             env::panic_str(GateError::SignaturesOutstanding.code())
                         });
+                        let timed_out = self.sign_requested_at.get(id).is_some_and(|started| {
+                            now.saturating_sub(*started) >= SIGN_REQUEST_TIMEOUT
+                        });
                         check(
-                            evm.deadline_s <= now_s,
+                            evm.deadline_s < now_s
+                                && (proposal.state != ProposalState::SignRequested || timed_out),
                             GateError::SignaturesOutstanding,
-                            "signed deadline not elapsed",
+                            "signature deadline or request timeout not elapsed",
                         );
                         expired.push(*id);
                     }
@@ -102,7 +129,7 @@ impl Gate {
             }
         }
         // All validation precedes state mutation. Move rather than clone the queued payload.
-        let mut change = self.changes.remove(&change_id).unwrap();
+        let change = self.changes.remove(&change_id).unwrap();
         match &change.kind {
             ChangeKind::SetRuleSet {
                 rule_set_hash,
@@ -136,8 +163,10 @@ impl Gate {
             ChangeKind::Unpause => self.signing_paused = false,
             ChangeKind::MigrateAuthority { .. } => unreachable!(),
         }
-        change.status = ChangeStatus::Applied;
-        self.changes.insert(change_id, change);
+        // The body is deleted, not kept: terminal records would be permanent storage that the
+        // public governor key could create for free. Events carry the history.
+        self.pending_changes.retain(|id| *id != change_id);
+        self.assert_solvent(0);
         emit("change_applied", json!({"change_id":change_id}));
         PromiseOrValue::Value(())
     }
@@ -146,15 +175,42 @@ impl Gate {
         self.assert_guardian();
         let change = self
             .changes
-            .get_mut(&change_id)
+            .get(&change_id)
             .unwrap_or_else(|| env::panic_str(GateError::ChangeNotFound.code()));
         check(
             change.status == ChangeStatus::Pending,
             GateError::NotPending,
             "change status",
         );
-        change.status = ChangeStatus::Cancelled;
+        self.changes.remove(&change_id);
+        self.pending_changes.retain(|id| *id != change_id);
         emit("change_cancelled", json!({"change_id":change_id}));
+    }
+
+    pub fn cancel_changes(&mut self, ids: Vec<u64>) {
+        self.assert_guardian();
+        if ids.len() > MAX_PENDING_CHANGES {
+            env::panic_str(PENDING_CHANGE_LIMIT);
+        }
+        for (index, id) in ids.iter().enumerate() {
+            check(
+                !ids[..index].contains(id),
+                GateError::InvalidChange,
+                "duplicate change id",
+            );
+            let change = self
+                .changes
+                .get(id)
+                .unwrap_or_else(|| env::panic_str(GateError::ChangeNotFound.code()));
+            check(
+                change.status == ChangeStatus::Pending,
+                GateError::NotPending,
+                "change status",
+            );
+        }
+        for id in ids {
+            self.cancel_change(id);
+        }
     }
 
     pub fn pause_signing(&mut self) {
@@ -197,10 +253,15 @@ impl Gate {
             ChangeKind::SetRuleSet { manifest_uri, .. } => validate_uri(manifest_uri),
             ChangeKind::AddVerifier {
                 pubkey,
+                release_hash,
                 attestation_uri,
-                ..
             } => {
                 validate_uri(attestation_uri);
+                check(
+                    *release_hash != [0; 32],
+                    GateError::InvalidChange,
+                    "zero release_hash",
+                );
                 check(
                     !self.verifiers.contains_key(pubkey),
                     GateError::InvalidChange,
@@ -225,4 +286,13 @@ impl Gate {
             | ChangeKind::Unpause => {}
         }
     }
+}
+
+fn is_authority_kind(kind: &ChangeKind) -> bool {
+    matches!(
+        kind,
+        ChangeKind::MigrateAuthority { .. }
+            | ChangeKind::SetGuardian { .. }
+            | ChangeKind::SetGovernor { .. }
+    )
 }

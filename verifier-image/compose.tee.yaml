@@ -1,0 +1,18 @@
+# Requires separately authorized CVM deployment, quote appraisal and ingress verification.
+# Never combine with compose.offline.yaml; never substitute a simulated dstack socket.
+services:
+  verifier:
+    command: []
+    environment:
+      VERIFIER_RELAY_KEY_FILE: /run/constitution/relay.json
+    volumes:
+      - type: bind
+        source: /var/run/dstack.sock
+        target: /var/run/dstack.sock
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${VERIFIER_RELAY_KEY_FILE:?Set the host relay credential file}
+        target: /run/constitution/relay.json
+        read_only: true
+        bind: {create_host_path: false}

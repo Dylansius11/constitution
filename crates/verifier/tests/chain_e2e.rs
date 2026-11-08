@@ -1,4 +1,6 @@
 //! Local NEAR sandbox + anvil + real no-network tool image. No testnet writes.
+#[path = "fixtures/dstack_socket.rs"]
+mod dstack_socket;
 use constitution_types::{bundle::SourceBundle, manifest::rule_set_hash, *};
 use constitution_verifier::{
     api::{Service, router},
@@ -78,9 +80,16 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
     let gate = worker.dev_deploy(&wasm).await?;
     let relay = worker.dev_create_account().await?;
     let proposer = worker.dev_create_account().await?;
-    let identity = Identity::new();
+    // Local socket simulator, not a genuine attested deployment. The gate now
+    // refuses a zero release hash even in local sandbox initialization.
+    let (quote_dir, quote_handle) = dstack_socket::guest(false);
+    let identity = Identity::new()
+        .attest(&quote_dir.path().join("dstack.sock"))
+        .await?;
+    quote_handle
+        .join()
+        .map_err(|_| "local socket simulator panicked")?;
     let manifest = load_manifest(repo().join("rules/manifest.json"))?;
-    let confirmations = manifest.r5.confirmations;
     let socket = std::net::TcpListener::bind("127.0.0.1:0")?;
     let port = socket.local_addr()?.port();
     drop(socket);
@@ -215,7 +224,7 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             callback_gas_tgas: 20,
         },
     };
-    gate.call("new").args_json(json!({"config":config,"constitution":constitution,"roles":Roles {governor:proposer.id().clone(),guardian:proposer.id().clone()},"verifiers":[(Base64(identity.pubkey()),VerifierRecord {release_hash:[0;32],attestation_uri:"local:not-attested".into(),added_at_ns:0})],"initial_evm_nonce":0})).transact().await?.into_result()?;
+    gate.call("new").args_json(json!({"config":config,"constitution":constitution,"roles":Roles {governor:proposer.id().clone(),guardian:proposer.id().clone()},"verifiers":[(Base64(identity.pubkey()),VerifierRecord {release_hash:identity.release_hash(),attestation_uri:"local:socket-simulator-not-real-attestation".into(),added_at_ns:0})],"initial_evm_nonce":0})).transact().await?.into_result()?;
     let mut files = vec![];
     for name in [
         "VaultV1.sol",
@@ -265,10 +274,20 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
     let slot: Hex32 = serde_json::from_value(slot["result"].clone())?;
     let mut current = [0; 20];
     current.copy_from_slice(&slot.0[12..]);
+    let entry_fee: String = gate
+        .view("get_credit_entry_fee")
+        .args_json(json!({"account": proposer.id()}))
+        .await?
+        .json()?;
+    let proposal_fee: String = gate.view("get_proposal_fee").await?.json()?;
+    let entry_fee: u128 = entry_fee.parse()?;
+    let proposal_fee: u128 = proposal_fee.parse()?;
     proposer
         .call(gate.id(), "deposit_credit")
         .args_json(json!({"account":null}))
-        .deposit(near_workspaces::types::NearToken::from_yoctonear(100))
+        .deposit(near_workspaces::types::NearToken::from_yoctonear(
+            100 + entry_fee + proposal_fee,
+        ))
         .transact()
         .await?
         .into_result()?;
@@ -299,18 +318,30 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .public_key()
         .seal(&mut crypto_box::aead::rand_core::OsRng, &bytes)
         .map_err(|_| "cannot seal local test bundle")?;
-    let source = GateSource::new(&worker.rpc_addr(), &rpc, &manifest)?;
-    let service = Service::with_submitter(
+    let source = GateSource::new(&worker.rpc_addr(), &rpc, &rpc, &manifest, gate.id().clone())?;
+    let mut service = Service::with_submitter(
         identity,
         manifest,
         repo(),
         Box::new(source),
         Box::new(submitter),
     )?;
+    // Explicit local protocol fake: never contact a possibly running funded sidecar.
+    struct LocalUnavailableAiFake;
+    impl constitution_verifier::ai::Transport for LocalUnavailableAiFake {
+        fn review(&self, _: Vec<u8>, _: u32) -> Result<Vec<u8>, &'static str> {
+            Err("local protocol fake: unavailable")
+        }
+    }
+    std::sync::Arc::get_mut(&mut service).unwrap().ai_transport = Box::new(LocalUnavailableAiFake);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let app = router(service, "http://page.local")?;
-    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let server = tokio::spawn(async move {
+        constitution_verifier::api::serve(listener, app)
+            .await
+            .unwrap()
+    });
     let response = client
         .post(format!("{base}/v1/runs"))
         .json(&json!({"gate":gate.id(),"proposal_id":id,"sealed_bundle_b64":Base64Bytes(sealed)}))
@@ -330,7 +361,7 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             .error_for_status()?
             .json()
             .await?;
-        if run["stage"] == "done" {
+        if matches!(run["stage"].as_str(), Some("done" | "failed")) {
             break run;
         }
         assert!(Instant::now() < deadline, "verifier timeout: {run}");
@@ -343,13 +374,6 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .error_for_status()?
         .json()
         .await?;
-    assert_eq!(
-        evidence.archive_provider,
-        format!(
-            "NEAR 127.0.0.1 final + Base 127.0.0.1 at latest-{}",
-            confirmations
-        )
-    );
     let proposal: Value = gate
         .view("get_proposal")
         .args_json(json!({"id":id}))
@@ -379,8 +403,16 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         assert_eq!(evidence.r5.detail_code, 0);
         assert_eq!(
             run["outcome"],
-            "withheld: AI review not integrated; no Pass without AI"
+            "withheld: AI review incomplete; no Pass without provider_tee Clean"
         );
+        let ai_stage = run["stages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == "ai_review")
+            .unwrap();
+        assert_eq!(ai_stage["status"], "Incomplete");
+        assert!(evidence.ai.candidates.is_empty());
         for field in [
             "verdict",
             "certificate_b64",

@@ -1,0 +1,10 @@
+{
+  "name": "constitution-ai-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "packageManager": "pnpm@12.15.0",
+  "scripts": { "start": "node server.mjs", "test": "node --test", "review:live": "node live-review.mjs" },
+  "dependencies": { "@nearai/inference-sdk": "0.1.0" }
+}

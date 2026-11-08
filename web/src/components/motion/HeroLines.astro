@@ -1,0 +1,321 @@
+---
+import Mark from "../ui/Mark.astro";
+
+/**
+ * Hero line art (DESIGN 2, reference frames 1 s and 4 s). Five authority lines run in from the left
+ * and every one STOPS at the gate node; one line, `certified upgrade`, passes through and exits right
+ * to the proxy. Two drawings share one geometry function (wide and narrow) so labels and strokes stay
+ * the same size on a phone instead of shrinking with a scaled viewBox.
+ *
+ * Static baseline: the final converged drawing, fully visible. `hero.ts` draws it in once, then sends
+ * attempts down each line: every stolen-key attempt dies at its tick, the certified one passes the
+ * gate and lands on the proxy. The `trip` paths are invisible rails for those moving dots.
+ */
+interface Variant {
+  name: "wide" | "narrow";
+  w: number;
+  h: number;
+  cx: number;
+  cy: number;
+  r: number;
+  gap: number;
+  delta: number;
+  labelX: number;
+  fs: number;
+  tick: number;
+  stopGap: number;
+  mark: number;
+  proxyX: number;
+  starts: readonly number[];
+}
+
+const FAR = -1400;
+
+const variants: readonly Variant[] = [
+  {
+    name: "wide",
+    w: 1440,
+    h: 330,
+    cx: 840,
+    cy: 186,
+    r: 72,
+    gap: 52,
+    delta: 20,
+    labelX: 72,
+    fs: 13.5,
+    tick: 22,
+    stopGap: 9,
+    mark: 80,
+    proxyX: 1330,
+    starts: [380, 440, 500, 500, 440],
+  },
+  {
+    name: "narrow",
+    w: 390,
+    h: 262,
+    cx: 268,
+    cy: 150,
+    r: 44,
+    gap: 40,
+    delta: 22,
+    labelX: 14,
+    fs: 10.5,
+    tick: 14,
+    stopGap: 6,
+    mark: 48,
+    proxyX: 358,
+    starts: [128, 142, 156, 156, 142],
+  },
+];
+
+// Top to bottom. The certified line sits between deployer and relayer.
+const authorities = [
+  { label: "admin key", offset: -3 },
+  { label: "governor key", offset: -2 },
+  { label: "deployer key", offset: -1 },
+  { label: "relayer", offset: 1 },
+  { label: "verifier operator", offset: 2 },
+] as const;
+
+const fmt = (n: number) => Number(n.toFixed(1));
+
+function build(v: Variant) {
+  const lines = authorities.map((a, i) => {
+    const y = v.cy + a.offset * v.gap;
+    // Arrival angle on the node, measured from +x. Upper lines land on the upper left, lower lines on
+    // the lower left; the certified line (offset 0) crosses at 180 degrees.
+    const rad = ((180 + a.offset * v.delta) * Math.PI) / 180;
+    const ux = Math.cos(rad);
+    const uy = -Math.sin(rad);
+    const xs = v.starts[i] ?? 0;
+    // Every authority line ends just short of the node, at a tick set across its direction.
+    const ex = v.cx + (v.r + v.stopGap) * ux;
+    const ey = v.cy + (v.r + v.stopGap) * uy;
+    const span = ex - xs;
+    const c1x = xs + span * 0.55;
+    const c2x = ex + ux * span * 0.22;
+    const c2y = ey + uy * span * 0.22;
+    const half = v.tick / 2;
+    return {
+      label: a.label,
+      y,
+      ex: fmt(ex),
+      ey: fmt(ey),
+      // The path a stolen-key attempt travels: from the left edge to its stop at the gate.
+      trip: `M0 ${y}H${xs}C${fmt(c1x)} ${y} ${fmt(c2x)} ${fmt(c2y)} ${fmt(ex)} ${fmt(ey)}`,
+      run: `M${FAR} ${y}H${xs}`,
+      curve: `M${xs} ${y}C${fmt(c1x)} ${y} ${fmt(c2x)} ${fmt(c2y)} ${fmt(ex)} ${fmt(ey)}`,
+      stop: `M${fmt(ex - uy * half)} ${fmt(ey + ux * half)}L${fmt(ex + uy * half)} ${fmt(ey - ux * half)}`,
+    };
+  });
+  const left = v.cx - v.r;
+  return {
+    lines,
+    certRun: `M${FAR} ${v.cy}H${left}`,
+    certThrough: `M${left} ${v.cy}H${v.proxyX}`,
+    certTrip: `M0 ${v.cy}H${v.proxyX}`,
+    markX: v.cx - v.mark / 2,
+    markY: v.cy - v.mark / 2,
+  };
+}
+---
+
+{
+  variants.map((v) => {
+    const g = build(v);
+    return (
+      <svg
+        class={`hero-lines hero-lines--${v.name}`}
+        viewBox={`0 0 ${v.w} ${v.h}`}
+        aria-hidden="true"
+        focusable="false"
+      >
+        <g class="authority" style={`font-size:${v.fs}px`}>
+          {g.lines.map((l) => (
+            <g class="authority__line">
+              <path class="run" d={l.run} />
+              <path class="curve" d={l.curve} pathLength="1000" />
+              <path class="stop" d={l.stop} />
+              <path class="trip" d={l.trip} />
+              <circle class="burst" cx={l.ex} cy={l.ey} r={v.tick * 0.9} />
+              <circle class="packet" r={v.name === "wide" ? 5 : 3.5} cx="0" cy="0" />
+              <text class="label" x={v.labelX} y={l.y - v.fs * 0.7}>
+                {l.label}
+              </text>
+            </g>
+          ))}
+        </g>
+        <g class="certified" style={`font-size:${v.fs}px`}>
+          <path class="run" d={g.certRun} />
+          <path class="through" d={g.certThrough} pathLength="1000" />
+          <path class="trip" d={g.certTrip} />
+          <text class="label label--cert" x={v.labelX} y={v.cy - v.fs * 0.7}>
+            certified upgrade
+          </text>
+          <g class="proxy">
+            <circle class="proxy__end" cx={v.proxyX} cy={v.cy} r={v.name === "wide" ? 6 : 4.5} />
+            <text class="label" x={v.proxyX} y={v.cy - v.fs * 1.5} text-anchor="middle">
+              proxy
+            </text>
+          </g>
+        </g>
+        <circle class="node" cx={v.cx} cy={v.cy} r={v.r} pathLength="1000" />
+        <circle class="packet packet--cert" r={v.name === "wide" ? 6.5 : 4.5} cx="0" cy="0" />
+        <g class="node__mark" transform={`translate(${g.markX} ${g.markY})`}>
+          <Mark size={`${v.mark}`} />
+        </g>
+      </svg>
+    );
+  })
+}
+
+<script is:inline>
+  // Marks the figure so the scrubbed start state is in the first paint (no flash of the final drawing).
+  // Without JavaScript this class never exists and the static, fully drawn diagram stays.
+  document.currentScript.parentElement.classList.add("has-js");
+</script>
+
+<style>
+  .hero-lines {
+    display: none;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    color: var(--ink);
+  }
+
+  .hero-lines--narrow {
+    display: block;
+  }
+
+  @media (min-width: 48rem) {
+    .hero-lines--wide {
+      display: block;
+    }
+
+    .hero-lines--narrow {
+      display: none;
+    }
+  }
+
+  .run,
+  .curve,
+  .through,
+  .node,
+  .proxy__end {
+    fill: none;
+    stroke: var(--lav);
+    stroke-width: 2;
+  }
+
+  .hero-lines--narrow .run,
+  .hero-lines--narrow .curve,
+  .hero-lines--narrow .through,
+  .hero-lines--narrow .node,
+  .hero-lines--narrow .proxy__end {
+    stroke-width: 1.75;
+  }
+
+  .curve,
+  .through {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 0;
+  }
+
+  .proxy__end {
+    fill: var(--paper);
+  }
+
+  .stop {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 3;
+    stroke-linecap: butt;
+  }
+
+  .label {
+    fill: var(--ink-muted);
+    font-family: var(--font-mono);
+    letter-spacing: var(--tracking-mono);
+  }
+
+  .label--cert {
+    fill: var(--ink);
+    font-weight: 600;
+  }
+
+  .node__mark {
+    color: var(--ink);
+  }
+
+  .node {
+    stroke-dasharray: 1000;
+    transition:
+      stroke var(--dur-base) var(--ease-out),
+      stroke-width var(--dur-base) var(--ease-out);
+  }
+
+  .node.is-open {
+    stroke: var(--violet);
+    stroke-width: 3;
+  }
+
+  .stop {
+    transition: stroke var(--dur-fast) linear;
+  }
+
+  .stop.is-hit {
+    stroke: var(--refuse);
+  }
+
+  .proxy__end {
+    transition: fill var(--dur-swap) var(--ease-out);
+  }
+
+  .proxy.is-upgraded .proxy__end {
+    fill: var(--lav);
+  }
+
+  .trip {
+    fill: none;
+    stroke: none;
+  }
+
+  /* Moving attempts exist only while the scene runs; the static drawing never shows them. */
+  .packet,
+  .burst {
+    visibility: hidden;
+  }
+
+  .packet {
+    fill: var(--ink);
+  }
+
+  .packet--cert {
+    fill: var(--lav);
+    stroke: var(--ink);
+    stroke-width: 2;
+  }
+
+  .burst {
+    fill: none;
+    stroke: var(--refuse);
+    stroke-width: 1.5;
+  }
+
+  /* Entrance start state, only when JavaScript is present and motion is welcome. */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(.has-js) .curve,
+    :global(.has-js) .through,
+    :global(.has-js) .node {
+      stroke-dashoffset: 1000;
+    }
+
+    :global(.has-js) .stop,
+    :global(.has-js) .proxy,
+    :global(.has-js) .label,
+    :global(.has-js) .node__mark {
+      opacity: 0;
+    }
+  }
+</style>

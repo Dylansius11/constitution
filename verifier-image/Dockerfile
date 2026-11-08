@@ -8,6 +8,12 @@ COPY verifier-image/requirements.lock /opt/requirements.lock
 RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir --require-hashes -r /opt/requirements.lock
 COPY verifier-image/package.json verifier-image/package-lock.json /opt/tools/
 RUN cd /opt/tools && npm ci --ignore-scripts --no-audit --no-fund && npm cache clean --force
+COPY contracts/lib/openzeppelin-contracts/contracts /opt/constitution/lib/openzeppelin-contracts/contracts
+COPY contracts/lib/openzeppelin-contracts/LICENSE /opt/constitution/lib/openzeppelin-contracts/LICENSE
+COPY contracts/lib/openzeppelin-contracts-upgradeable/contracts /opt/constitution/lib/openzeppelin-contracts-upgradeable/contracts
+COPY contracts/lib/openzeppelin-contracts-upgradeable/LICENSE /opt/constitution/lib/openzeppelin-contracts-upgradeable/LICENSE
+COPY contracts/lib/forge-std/src /opt/constitution/lib/forge-std/src
+COPY contracts/lib/forge-std/LICENSE-MIT contracts/lib/forge-std/LICENSE-APACHE /opt/constitution/lib/forge-std/
 RUN useradd --uid 10001 --create-home tool && install -d -o tool -g tool /work
 COPY spikes/verifier-min /opt/spike
 RUN chmod -R a+rX /opt/spike && chmod +x /opt/spike/*.sh

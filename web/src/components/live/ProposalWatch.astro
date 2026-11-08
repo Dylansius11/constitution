@@ -1,0 +1,156 @@
+---
+import { site } from "../../data/site.ts";
+import { surfaceView } from "../../lib/surface-view.ts";
+import Marker from "../ui/Marker.astro";
+import StageLadder from "../ui/StageLadder.astro";
+import "./live.css";
+
+/** A run id must belong to the proposal the page actually started or remembered. */
+interface Props {
+  id?: string;
+  proposalId?: number;
+  runId?: number;
+}
+
+const { id = "proposal-watch", proposalId, runId } = Astro.props;
+const initial = surfaceView({ kind: "idle" });
+const fields = [
+  ["id", "Proposal id"],
+  ["proposer", "Proposer"],
+  ["target", "Target proxy"],
+  ["new_impl", "New implementation"],
+  ["codehash", "New implementation code hash"],
+  ["init", "Initializer calldata"],
+  ["source", "Source commitment"],
+  ["expected", "Expected current implementation · proposal commitment"],
+  ["rules", "Rule set hash"],
+  ["ai", "AI review"],
+  ["verdict", "Gate verdict"],
+  ["certificate", "Certificate hash"],
+  ["evidence", "Rejection evidence root"],
+  ["reason", "Refusal reason code"],
+  ["near", "NEAR transactions"],
+  ["nonce", "EVM nonce"],
+  ["tx", "Signed transaction hash"],
+  ["inclusion", "Base Sepolia inclusion"],
+  ["before", "Implementation before · observed"],
+  ["after", "Implementation after · observed"],
+];
+---
+
+{
+  site.gateAccount !== null && (
+    <div
+      id={id}
+      class="live-surface proposal-watch"
+      data-watch
+      data-gate={site.gateAccount}
+      data-near-rpc={site.nearRpc}
+      data-base-rpc={site.baseRpc}
+      data-verifier={site.verifierUrl}
+      data-explorer={site.baseExplorer}
+      data-initial-id={proposalId}
+      data-run-id={runId}
+      data-tone="neutral"
+    >
+      <form class="watch-form" data-watch-form>
+        <label for={`${id}-input`}>Proposal id</label>
+        <input
+          id={`${id}-input`}
+          name="proposal"
+          type="number"
+          min="0"
+          max={Number.MAX_SAFE_INTEGER}
+          step="1"
+          required
+          value={proposalId}
+          inputmode="numeric"
+        />
+        <button type="submit" class="live-action">Watch</button>
+      </form>
+      <output aria-live="polite" data-watch-status>
+        Enter a proposal id. This page only reads; it cannot submit, sign or relay a proposal.
+      </output>
+      <article aria-labelledby={`${id}-title`} data-watch-record>
+        <h3 id={`${id}-title`} class="live-verdict" tabindex="-1">
+          <Marker state="pending" />
+          <span data-watch-title>{initial.title}</span>
+        </h3>
+        <p data-watch-body>{initial.body}</p>
+        <p class="live-meta" data-watch-time></p>
+        <p class="live-meta" data-watch-run-note>
+          Verifier stages: Not observed by this page. The verifier API needs a run id;
+          it cannot look up a run by proposal id.
+        </p>
+        <StageLadder stages={initial.stages} label="Observed proposal stages" compact />
+        <dl data-watch-fields hidden>
+          {fields.map(([key, label]) => (
+            <div class="live-row">
+              <dt>{label}</dt>
+              <dd data-field={key}>Pending</dd>
+            </div>
+          ))}
+        </dl>
+        <p class="live-meta" data-watch-base-time></p>
+        <a data-watch-explorer hidden rel="noopener">View on Base Sepolia explorer</a>
+        <span class="live-meta" data-watch-explorer-note hidden>Opens the explorer.</span>
+        <p class="live-meta">
+          This is a partial record of public chain reads, not a canonical receipt. Use
+          <code>constitution receipt &lt;proposal id&gt;</code> for the complete receipt and evidence.
+        </p>
+      </article>
+      <noscript>
+        <p>
+          JavaScript is needed to watch a proposal. Use the CLI to read it without this page.
+        </p>
+      </noscript>
+    </div>
+  )
+}
+
+<script>
+  import "./proposal-watch.ts";
+</script>
+
+<style>
+  .watch-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    margin-bottom: var(--space-4);
+  }
+
+  .watch-form label {
+    font-size: var(--text-sm);
+  }
+
+  .watch-form input {
+    min-height: 44px;
+    width: 10rem;
+    min-width: 0;
+    max-width: 100%;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-2) var(--space-3);
+    color: var(--ink);
+    font: inherit;
+    font-family: var(--font-mono);
+  }
+
+  article {
+    margin-top: var(--space-6);
+  }
+
+  article :global(.ladder__detail) {
+    grid-column: 2 / -1;
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+  }
+
+  [data-stale="true"] :global(.ladder__status),
+  [data-stale="true"] :global(.marker) {
+    color: var(--ink-muted);
+  }
+</style>

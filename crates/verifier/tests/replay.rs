@@ -74,6 +74,84 @@ fn deploy(repo: &Path, url: &str, actor: &str, contract: &str) -> Address {
         .unwrap()
 }
 
+// Real Anvil remains the state source; these gateways model providers with
+// complementary capabilities and allow corrupt proof responses to be rejected.
+struct RpcGateway {
+    url: String,
+    fault: std::sync::Arc<std::sync::Mutex<&'static str>>,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+impl Drop for RpcGateway {
+    fn drop(&mut self) {
+        let _ = self.stop.take().unwrap().send(());
+        let _ = self.thread.take().unwrap().join();
+    }
+}
+fn gateway(upstream: &str, proofs: bool) -> RpcGateway {
+    use axum::{Json, Router, routing::post};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let upstream = upstream.to_owned();
+    let fault = std::sync::Arc::new(std::sync::Mutex::new(""));
+    let faults = fault.clone();
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let thread = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async move {
+                let client = reqwest::Client::new();
+                let app = Router::new().route("/", post(move |Json(query): Json<Value>| {
+                    let (client, upstream, faults) =
+                        (client.clone(), upstream.clone(), faults.clone());
+                    async move {
+                        let method = query["method"].as_str().unwrap();
+                        if (!proofs && method == "eth_getProof")
+                            || (proofs && method == "debug_traceCall")
+                        {
+                            return Json(json!({"jsonrpc":"2.0","id":query["id"],
+                                "error":{"code":-32602,"message":"provider does not serve this method"}}));
+                        }
+                        let mut response: Value = client.post(upstream).json(&query)
+                            .send().await.unwrap().json().await.unwrap();
+                        let fault = *faults.lock().unwrap();
+                        match (fault, method) {
+                            ("reorg", "eth_getBlockByNumber") => {
+                                // Serve the pinned header first, then change it on the final read.
+                                *faults.lock().unwrap() = "header";
+                            }
+                            ("unavailable", _) => {
+                                response = json!({"jsonrpc":"2.0","id":query["id"],
+                                    "error":{"code":-32000,"message":"provider unavailable"}});
+                            }
+                            ("chain", "eth_chainId") => response["result"] = json!("0x1"),
+                            ("header", "eth_getBlockByNumber") =>
+                                response["result"]["hash"] = json!(B256::ZERO),
+                            ("proof", "eth_getProof")
+                                if response["result"]["storageProof"][0].is_object() =>
+                            {
+                                response["result"]["storageProof"][0]["value"] = json!("0xdead");
+                            }
+                            _ => {}
+                        }
+                        Json(response)
+                    }
+                }));
+                axum::serve(tokio::net::TcpListener::from_std(listener).unwrap(), app)
+                    .with_graceful_shutdown(async { let _ = stopped.await; })
+                    .await.unwrap();
+            });
+    });
+    RpcGateway {
+        url,
+        fault,
+        stop: Some(stop),
+        thread: Some(thread),
+    }
+}
 #[test]
 fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -170,27 +248,59 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
             .trim_start_matches("0x"),
     )
     .unwrap();
+    let archive_rpc = gateway(&url, false);
+    let proof_rpc = gateway(&url, true);
     let witness = fetch_witness(
-        &url,
+        &archive_rpc.url,
+        &proof_rpc.url,
         block,
         &corpus,
         proxy,
         honest_address,
         honest_hash,
         &init,
+        Instant::now() + std::time::Duration::from_secs(300),
     )
     .expect("anvil prestateTracer and state-root proofs");
-    assert!(
-        fetch_witness(
-            &url,
+    for fault in ["chain", "header", "proof", "reorg", "unavailable"] {
+        *proof_rpc.fault.lock().unwrap() = fault;
+        let error = fetch_witness(
+            &archive_rpc.url,
+            &proof_rpc.url,
             block,
             &corpus,
             proxy,
             honest_address,
-            B256::ZERO,
-            &init
+            honest_hash,
+            &init,
+            Instant::now() + Duration::from_secs(60),
         )
-        .is_err()
+        .unwrap_err();
+        assert_eq!(
+            error.kind,
+            constitution_verifier::replay::IncompleteKind::Environment,
+            "unverifiable {fault} must not become a proposal rejection"
+        );
+        assert!(!error.message.contains(&proof_rpc.url));
+    }
+    *proof_rpc.fault.lock().unwrap() = "";
+    // Candidate code that does not hash to the proposal's code hash at a confirmed block is a
+    // contradiction, not a provider fault.
+    let error = fetch_witness(
+        &url,
+        &url,
+        block,
+        &corpus,
+        proxy,
+        honest_address,
+        B256::ZERO,
+        &init,
+        Instant::now() + std::time::Duration::from_secs(300),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.kind,
+        constitution_verifier::replay::IncompleteKind::Environment
     );
     let start = Instant::now();
     assert_eq!(
@@ -207,12 +317,14 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     let negative_hash = B256::from(constitution_verifier::keccak(&negative_r2));
     let candidate_witness = fetch_witness(
         &url,
+        &url,
         block,
         &corpus,
         proxy,
         negative_address,
         negative_hash,
         &init,
+        Instant::now() + std::time::Duration::from_secs(300),
     )
     .expect("production candidate access discovery");
     let result = replay(&candidate_witness, &corpus, &current, &negative_r2, &init);
@@ -339,12 +451,14 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     assert!(
         fetch_witness(
             &url,
+            &url,
             wrong_hash,
             &corpus,
             proxy,
             honest_address,
             honest_hash,
-            &init
+            &init,
+            Instant::now() + std::time::Duration::from_secs(300)
         )
         .is_err()
     );
@@ -353,12 +467,14 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     assert!(
         fetch_witness(
             &url,
+            &url,
             block,
             &unconfirmed,
             proxy,
             honest_address,
             honest_hash,
-            &init
+            &init,
+            Instant::now() + std::time::Duration::from_secs(300)
         )
         .is_err()
     );
@@ -391,6 +507,153 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
                 "token Transfer and vault event"
             );
         }
+    }
+    // Local protocol fake only: real revm/proof replay, no model or TEE claim.
+    let review_actor = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
+    send(token, "mint(address,uint256)", &[review_actor, "10"]);
+    run(Command::new(foundry("cast")).args([
+        "send",
+        &token.to_string(),
+        "approve(address,uint256)",
+        &proxy.to_string(),
+        "10",
+        "--rpc-url",
+        &url,
+        "--unlocked",
+        "--from",
+        review_actor,
+    ]));
+    let header = rpc(&url, "eth_getBlockByNumber", json!(["latest", false]));
+    let ai_block = EvidenceBlock {
+        number: u64::from_str_radix(
+            header["number"].as_str().unwrap().trim_start_matches("0x"),
+            16,
+        )
+        .unwrap(),
+        hash: header["hash"].as_str().unwrap().parse().unwrap(),
+    };
+    rpc(&url, "anvil_mine", json!(["0x2"]));
+    let candidate_json = json!({"candidates":[{"rule":"R2", "rationale":"local R2 Fail fixture regression", "steps":[
+        {"from":review_actor,"call":"deposit(uint256)","args":["1"],"value":"0"},
+        {"from":review_actor,"call":"withdraw(uint256)","args":["1"],"value":"0"},
+        {"from":review_actor,"call":"deposit(uint256)","args":["1"],"value":"0"},
+        {"from":review_actor,"call":"withdraw(uint256)","args":["101"],"value":"0"}
+    ]}]});
+    let candidates = constitution_verifier::ai::parse_candidates(
+        &serde_json::to_vec(&candidate_json).unwrap(),
+        4,
+    )
+    .unwrap();
+    let calls =
+        constitution_verifier::ai::candidate_corpus(&candidates[0], actor.parse().unwrap(), 2)
+            .unwrap();
+    let ai_witness = constitution_verifier::ai::fetch_candidate_witness(
+        &archive_rpc.url,
+        &proof_rpc.url,
+        ai_block,
+        &calls,
+        proxy,
+        negative_address,
+        negative_hash,
+        &init,
+        actor.parse().unwrap(),
+        Instant::now() + std::time::Duration::from_secs(300),
+    )
+    .unwrap();
+    struct LocalProtocolFake(Vec<u8>);
+    impl constitution_verifier::ai::Transport for LocalProtocolFake {
+        fn review(&self, _: Vec<u8>, _: u32) -> Result<Vec<u8>, &'static str> {
+            Ok(self.0.clone())
+        }
+    }
+    let fake = LocalProtocolFake(
+        serde_json::to_vec(&json!({
+            "status":"complete", "reason":"verified_provider_response", "provider":"near",
+            "signatureKind":"provider_tee", "completionId":"chatcmpl-local-protocol-fake",
+            "requestSha256":"ab".repeat(32), "responseSha256":"cd".repeat(32),
+            "usage":null, "costUsd":null, "candidates":candidate_json["candidates"],
+            "receipt":{"kind":"provider_tee","signingAlgo":"ed25519","signingAddress":"11".repeat(32),"signature":"22".repeat(64),"signedText":format!("z-ai/glm-5.3-flash:{}:{}","aa".repeat(32),"bb".repeat(32))}
+        }))
+        .unwrap(),
+    );
+    let request = constitution_verifier::ai::ReviewRequest {
+        files: vec![],
+        rules: vec![],
+        nonce: "ab".repeat(32),
+        max_candidates: 4,
+        timeout_s: 1,
+    };
+    let report = constitution_verifier::ai::review(&fake, &request, |_| {
+        Ok(constitution_verifier::ai::reproduce(
+            &ai_witness,
+            &calls,
+            &current,
+            &negative_r2,
+            &init,
+            actor.parse().unwrap(),
+        )
+        .expect("local candidate replay must be complete"))
+    });
+    assert_eq!(
+        report.verdict(),
+        Some(constitution_types::Verdict::Reject {
+            rule_id: 2,
+            reason_code: 22
+        }),
+        "{}",
+        report.detail
+    );
+    assert!(
+        matches!(report.review, constitution_types::AiReview::Vetoed { counterexample_hash, .. } if counterexample_hash != [0;32])
+    );
+    assert!(report.evidence.candidates[0].reproduced);
+    assert!(
+        !constitution_verifier::ai::reproduce(
+            &ai_witness,
+            &calls,
+            &current,
+            &honest,
+            &init,
+            actor.parse().unwrap()
+        )
+        .unwrap()
+    );
+    // A non-reproducing, early-reverting candidate still needs a complete R2
+    // baseline witness. It must not become Incomplete just because no token
+    // transfer was reached by the candidate tracer.
+    let mut withdraw_only = candidates[0].clone();
+    withdraw_only.steps = vec![withdraw_only.steps[3].clone()];
+    for from in [review_actor, "0x1111111111111111111111111111111111111111"] {
+        withdraw_only.steps[0].from = from.into();
+        let bounded =
+            constitution_verifier::ai::candidate_corpus(&withdraw_only, actor.parse().unwrap(), 2)
+                .unwrap();
+        let outcome = constitution_verifier::ai::fetch_candidate_witness(
+            &archive_rpc.url,
+            &proof_rpc.url,
+            ai_block,
+            &bounded,
+            proxy,
+            honest_address,
+            honest_hash,
+            &init,
+            actor.parse().unwrap(),
+            Instant::now() + std::time::Duration::from_secs(300),
+        )
+        .map_err(|e| e.to_string())
+        .and_then(|predicate_witness| {
+            constitution_verifier::ai::reproduce(
+                &predicate_witness,
+                &bounded,
+                &current,
+                &honest,
+                &init,
+                actor.parse().unwrap(),
+            )
+        });
+        // R5's sandbox disables gas charging. Even an unfunded witnessed EOA can
+        // execute a reverting call; neither caller has a token balance to withdraw.
+        assert!(!outcome.unwrap());
     }
 }
 

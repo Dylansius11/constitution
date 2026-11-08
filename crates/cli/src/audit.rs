@@ -2,7 +2,10 @@
 //! aborts the audit (fail closed), any violated precondition is a named FAIL line.
 use crate::failure::Failure;
 use crate::rpc::{Evm, Near};
-use constitution_types::{AccountId, Base64, Config, Constitution, Hex20, Hex32, VerifierRecord};
+use constitution_types::{
+    AccountId, Base64, ChangeKind, ChangeStatus, Config, Constitution, Hex20, Hex32, PendingChange,
+    Roles, U128Str, VerifierRecord,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -11,6 +14,9 @@ use std::path::Path;
 pub const ADMIN_SLOT: &str = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
 pub const IMPLEMENTATION_SLOT: &str =
     "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+/// Documented activation minimum for the uncredited operating surplus (SMART-CONTRACT,
+/// "Activation operating minimum"): 1 NEAR in yoctoNEAR.
+pub const MIN_OPERATING_SURPLUS: u128 = 1_000_000_000_000_000_000_000_000;
 
 /// The committed deployment record the audit compares public state against (P2.8 writes it).
 #[derive(Debug, Clone, Deserialize)]
@@ -22,8 +28,24 @@ pub struct Deployment {
     pub gate_code_hash: String,
     pub mpc_account: AccountId,
     pub executor: Hex20,
+    /// Keccak256 of the committed executor runtime with compiler immutable regions zeroed.
+    /// Optional at decode only so a legacy/missing commitment produces a named FAIL.
+    #[serde(default)]
+    pub executor_runtime_hash: Option<Hex32>,
     pub proxy: Hex20,
     pub verifiers: Vec<DeployedVerifier>,
+    #[serde(default)]
+    pub planned_changes: Vec<PlannedChange>,
+    /// Optional governor/guardian the ceremony committed; when present the audit compares them.
+    #[serde(default)]
+    pub roles: Option<CommittedRoles>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommittedRoles {
+    pub governor: AccountId,
+    pub guardian: AccountId,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -31,6 +53,14 @@ pub struct Deployment {
 pub struct DeployedVerifier {
     pub pubkey: Base64<32>,
     pub release_hash: Hex32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlannedChange {
+    pub id: u64,
+    pub kind: ChangeKind,
+    pub eta_ns: u64,
 }
 
 /// Everything the audit reads. Filled only by `observe`, never defaulted.
@@ -50,6 +80,13 @@ pub struct Observed {
     pub proxy_admin_owner: [u8; 20],
     pub proxy_admin_slot: [u8; 20],
     pub proxy_impl_slot: [u8; 20],
+    pub executor_build_hash: [u8; 32],
+    pub executor_runtime_hash: Option<[u8; 32]>,
+    pub roles: Roles,
+    pub signing_paused: bool,
+    /// `get_operating_surplus`: liquid balance after storage and every user liability.
+    pub operating_surplus: u128,
+    pub changes: Vec<PendingChange>,
 }
 
 #[derive(Debug)]
@@ -57,6 +94,7 @@ pub struct Check {
     pub name: &'static str,
     pub ok: bool,
     pub detail: String,
+    pub warning: bool,
 }
 
 fn addr(a: &[u8; 20]) -> String {
@@ -64,7 +102,12 @@ fn addr(a: &[u8; 20]) -> String {
 }
 
 fn check(name: &'static str, ok: bool, detail: String) -> Check {
-    Check { name, ok, detail }
+    Check {
+        name,
+        ok,
+        detail,
+        warning: false,
+    }
 }
 
 pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Check> {
@@ -74,7 +117,7 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
         .iter()
         .map(|v| (v.pubkey.0, v.release_hash.0))
         .collect();
-    vec![
+    let mut checks = vec![
         check(
             "gate_has_no_access_keys",
             o.access_keys == 0,
@@ -87,6 +130,23 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
             "gate_code_is_committed_build",
             o.code_hash == d.gate_code_hash,
             format!("code hash {} (committed {})", o.code_hash, d.gate_code_hash),
+        ),
+        check(
+            "executor_code_is_committed_build",
+            d.executor_runtime_hash.as_ref().is_some_and(|h| {
+                h.0 == o.executor_build_hash && o.executor_runtime_hash == Some(h.0)
+            }),
+            format!(
+                "masked runtime {}; committed {}; artifact 0x{}",
+                o.executor_runtime_hash
+                    .map(|h| format!("0x{}", hex::encode(h)))
+                    .unwrap_or_else(|| "length mismatch".into()),
+                d.executor_runtime_hash
+                    .as_ref()
+                    .map(|h| format!("0x{}", hex::encode(h.0)))
+                    .unwrap_or_else(|| "MISSING executor_runtime_hash".into()),
+                hex::encode(o.executor_build_hash),
+            ),
         ),
         check(
             "gate_binds_this_deployment",
@@ -163,7 +223,90 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
                 expected_verifiers.len()
             ),
         ),
-    ]
+    ];
+    let roles_match = d
+        .roles
+        .as_ref()
+        .is_none_or(|r| r.governor == o.roles.governor && r.guardian == o.roles.guardian);
+    checks.push(check(
+        "gate_roles",
+        roles_match,
+        format!(
+            "governor={} guardian={}{}",
+            o.roles.governor,
+            o.roles.guardian,
+            match &d.roles {
+                None => "; no committed roles to compare".to_string(),
+                Some(_) if roles_match => "; match the deployment record".to_string(),
+                Some(r) => format!(
+                    "; deployment record commits governor={} guardian={}",
+                    r.governor, r.guardian
+                ),
+            }
+        ),
+    ));
+    checks.push(check(
+        "gate_operating_surplus",
+        o.operating_surplus >= MIN_OPERATING_SURPLUS,
+        format!(
+            "operating_surplus={} yoctoNEAR, required at least {MIN_OPERATING_SURPLUS}; only plain transfers can top up a keyless gate",
+            o.operating_surplus
+        ),
+    ));
+    checks.push(Check {
+        name: "signing_paused",
+        ok: !o.signing_paused,
+        warning: o.signing_paused,
+        detail: format!(
+            "signing_paused={}; pause does not revoke already signed transactions",
+            o.signing_paused
+        ),
+    });
+    let pending: Vec<_> = o
+        .changes
+        .iter()
+        .filter(|c| c.status == ChangeStatus::Pending)
+        .collect();
+    checks.push(check(
+        "pending_governance_changes",
+        true,
+        format!("{} pending change(s)", pending.len()),
+    ));
+    for c in pending {
+        let planned = d
+            .planned_changes
+            .iter()
+            .any(|p| p.id == c.id && p.kind == c.kind && p.eta_ns == c.eta_ns);
+        // SetRuleSet changes what a Pass means, SetParams changes fee caps and validity windows and
+        // RemoveVerifier shrinks the allowlist, so an unplanned one is as noteworthy as an
+        // authority change.
+        let authority = matches!(
+            c.kind,
+            ChangeKind::MigrateAuthority { .. }
+                | ChangeKind::SetGuardian { .. }
+                | ChangeKind::SetGovernor { .. }
+                | ChangeKind::AddVerifier { .. }
+                | ChangeKind::RemoveVerifier { .. }
+                | ChangeKind::SetRuleSet { .. }
+                | ChangeKind::SetParams { .. }
+        );
+        checks.push(Check {
+            name: if authority && !planned {
+                "pending_authority_change"
+            } else {
+                "pending_governance_change"
+            },
+            ok: planned || !authority,
+            warning: authority && !planned,
+            detail: format!(
+                "id={} kind={} eta_ns={} planned={planned}",
+                c.id,
+                serde_json::to_string(&c.kind).expect("ChangeKind JSON"),
+                c.eta_ns
+            ),
+        });
+    }
+    checks
 }
 
 /// `secp256k1:<base58 of the 64-byte uncompressed point>` to the EVM address keccak(point)[12..].
@@ -203,12 +346,17 @@ pub fn read_deployment(path: &Path) -> Result<Deployment, Failure> {
 
 fn read_failed(cause: String) -> Failure {
     Failure::new(
-        cause,
+        format!("FAIL read_failed: {cause}"),
         "check NEAR_RPC_URL and BASE_SEPOLIA_RPC_URL and retry; an unreadable precondition is never a pass",
     )
 }
 
-pub fn observe(d: &Deployment, near: &Near, evm: &Evm) -> Result<Observed, Failure> {
+pub fn observe(
+    d: &Deployment,
+    near: &Near,
+    evm: &Evm,
+    build: &crate::executor_build::ExecutorBuild,
+) -> Result<Observed, Failure> {
     let gate = d.gate.as_str();
     let config: Config = near
         .view(gate, "get_config", json!({}))
@@ -235,11 +383,48 @@ pub fn observe(d: &Deployment, near: &Near, evm: &Evm) -> Result<Observed, Failu
             json!({ "predecessor": gate, "path": config.mpc_path, "domain_id": config.mpc_domain_id }),
         )
         .map_err(read_failed)?;
+    let roles = near
+        .view(gate, "get_roles", json!({}))
+        .map_err(read_failed)?;
+    let signing_paused = near
+        .view(gate, "is_signing_paused", json!({}))
+        .map_err(read_failed)?;
+    let operating_surplus: U128Str = near
+        .view(gate, "get_operating_surplus", json!({}))
+        .map_err(read_failed)?;
+    let mut changes = Vec::new();
+    let mut from_id = 0u64;
+    loop {
+        let page: Vec<PendingChange> = near
+            .view(gate, "list_changes", json!({"from_id":from_id, "limit":50}))
+            .map_err(read_failed)?;
+        if page.is_empty() {
+            break;
+        }
+        let mut next = from_id;
+        for c in &page {
+            if c.id < next {
+                return Err(read_failed(
+                    "list_changes returned unordered or repeated ids".into(),
+                ));
+            }
+            next =
+                c.id.checked_add(1)
+                    .ok_or_else(|| read_failed("change id overflow".into()))?;
+        }
+        from_id = next;
+        let done = page.len() < 50;
+        changes.extend(page);
+        if done {
+            break;
+        }
+    }
     let executor = d.executor.0;
     let executor_proxy_admin = evm
         .address_getter(executor, "proxyAdmin()")
         .map_err(read_failed)?;
     Ok(Observed {
+        operating_surplus: operating_surplus.0,
         access_keys: near.access_key_count(gate).map_err(read_failed)?,
         code_hash: near.code_hash(gate).map_err(read_failed)?,
         verifiers: listed.iter().map(|(k, r)| (k.0, r.release_hash)).collect(),
@@ -263,6 +448,11 @@ pub fn observe(d: &Deployment, near: &Near, evm: &Evm) -> Result<Observed, Failu
         proxy_impl_slot: evm
             .storage_address(d.proxy.0, IMPLEMENTATION_SLOT)
             .map_err(read_failed)?,
+        executor_runtime_hash: build.masked_hash(&evm.code(executor).map_err(read_failed)?),
+        executor_build_hash: build.hash(),
+        roles,
+        signing_paused,
+        changes,
         executor_proxy_admin,
         config,
         constitution,
@@ -274,18 +464,38 @@ pub fn report(checks: &[Check]) -> Result<(), Failure> {
     for c in checks {
         println!(
             "{} {}: {}",
-            if c.ok { "PASS" } else { "FAIL" },
+            if c.warning {
+                "WARN"
+            } else if c.ok {
+                "PASS"
+            } else {
+                "FAIL"
+            },
             c.name,
             c.detail
         );
     }
-    let failed: Vec<_> = checks.iter().filter(|c| !c.ok).map(|c| c.name).collect();
+    let failed: Vec<_> = checks
+        .iter()
+        .filter(|c| !c.ok && !c.warning)
+        .map(|c| c.name)
+        .collect();
+    let has_warnings = checks.iter().any(|c| c.warning);
+    if checks
+        .iter()
+        .any(|c| c.name == "pending_authority_change" && c.warning)
+    {
+        println!("audit WARNING: pending authority change; guardian must review/cancel before eta");
+    } else if has_warnings {
+        println!("audit WARNING: signing is paused; review WARN lines");
+    }
     if failed.is_empty() {
-        println!(
-            "audit passed: {} of {} preconditions hold",
-            checks.len(),
-            checks.len()
-        );
+        if !has_warnings {
+            println!(
+                "audit passed: {} named checks/information lines",
+                checks.len()
+            );
+        }
         return Ok(());
     }
     Err(Failure::new(
@@ -314,11 +524,14 @@ mod tests {
             gate_code_hash: "Code111".into(),
             mpc_account: "v1.signer-prod.testnet".parse().unwrap(),
             executor: Hex20(EXECUTOR),
+            executor_runtime_hash: Some(Hex32([0xab; 32])),
+            planned_changes: vec![],
             proxy: Hex20(PROXY),
             verifiers: vec![DeployedVerifier {
                 pubkey: Base64([7; 32]),
                 release_hash: Hex32([6; 32]),
             }],
+            roles: None,
         }
     }
 
@@ -363,6 +576,15 @@ mod tests {
             proxy_admin_owner: EXECUTOR,
             proxy_admin_slot: ADMIN,
             proxy_impl_slot: IMPL,
+            executor_build_hash: [0xab; 32],
+            executor_runtime_hash: Some([0xab; 32]),
+            roles: Roles {
+                governor: "governor.testnet".parse().unwrap(),
+                guardian: "guardian.testnet".parse().unwrap(),
+            },
+            signing_paused: false,
+            operating_surplus: 2 * MIN_OPERATING_SURPLUS,
+            changes: vec![],
         }
     }
 
@@ -377,7 +599,7 @@ mod tests {
     #[test]
     fn healthy_deployment_passes_every_precondition() {
         let checks = evaluate(&deployment(), RULES, &healthy());
-        assert_eq!(checks.len(), 10);
+        assert_eq!(checks.len(), 15);
         assert!(checks.iter().all(|c| c.ok), "{checks:?}");
         assert!(report(&checks).is_ok());
     }
@@ -385,10 +607,16 @@ mod tests {
     #[test]
     fn t_aud_1_each_violation_fails_exactly_its_named_precondition() {
         type Break = fn(&mut Observed);
-        let cases: [(&str, Break); 12] = [
+        let cases: [(&str, Break); 14] = [
+            ("gate_operating_surplus", |o| {
+                o.operating_surplus = MIN_OPERATING_SURPLUS - 1
+            }),
             ("gate_has_no_access_keys", |o| o.access_keys = 1),
             ("gate_code_is_committed_build", |o| {
                 o.code_hash = "Other".into()
+            }),
+            ("executor_code_is_committed_build", |o| {
+                o.executor_runtime_hash = Some([0; 32])
             }),
             ("gate_binds_this_deployment", |o| o.evm_chain_id = 8453),
             ("gate_binds_this_deployment", |o| {
@@ -428,6 +656,139 @@ mod tests {
         }
     }
 
+    #[test]
+    fn missing_executor_commitment_fails_by_name() {
+        let d: Deployment = serde_json::from_value(json!({
+            "chain_id":84532, "gate":GATE, "gate_code_hash":"Code111",
+            "mpc_account":"v1.signer-prod.testnet", "executor":addr(&EXECUTOR),
+            "proxy":addr(&PROXY), "verifiers":[{"pubkey":Base64([7;32]),"release_hash":Hex32([6;32])}]
+        })).unwrap();
+        let checks = evaluate(&d, RULES, &healthy());
+        assert!(
+            checks
+                .iter()
+                .any(|c| c.name == "executor_code_is_committed_build" && !c.ok)
+        );
+    }
+
+    #[test]
+    fn pause_warns_and_never_hides_a_failed_precondition() {
+        let mut o = healthy();
+        o.signing_paused = true;
+        let checks = evaluate(&deployment(), RULES, &o);
+        assert!(
+            checks
+                .iter()
+                .any(|c| c.name == "signing_paused" && c.warning && c.detail.contains("true"))
+        );
+        assert!(checks.iter().any(|c| c.name == "gate_roles"
+            && c.detail.contains("guardian.testnet")
+            && c.detail.contains("governor.testnet")));
+        assert!(report(&checks).is_ok());
+        o.access_keys = 1;
+        assert!(
+            report(&evaluate(&deployment(), RULES, &o))
+                .unwrap_err()
+                .cause
+                .contains("gate_has_no_access_keys")
+        );
+    }
+
+    #[test]
+    fn planned_changes_require_exact_kind_and_eta_and_ignore_terminal_changes() {
+        let mut o = healthy();
+        let c = PendingChange {
+            id: 1,
+            kind: ChangeKind::SetGuardian {
+                account: "replacement.testnet".parse().unwrap(),
+            },
+            scheduled_by: o.roles.governor.clone(),
+            scheduled_at_ns: 1,
+            eta_ns: 604_800_000_000_001,
+            status: ChangeStatus::Pending,
+            evm: None,
+        };
+        o.changes.push(c.clone());
+        let mut d = deployment();
+        let warned = |d: &Deployment, o: &Observed| {
+            evaluate(d, RULES, o)
+                .iter()
+                .any(|c| c.name == "pending_authority_change" && c.warning)
+        };
+        assert!(warned(&d, &o));
+        d.planned_changes.push(PlannedChange {
+            id: c.id,
+            kind: c.kind.clone(),
+            eta_ns: c.eta_ns,
+        });
+        assert!(!warned(&d, &o));
+        d.planned_changes[0].eta_ns += 1;
+        assert!(warned(&d, &o));
+        d.planned_changes[0].eta_ns = c.eta_ns;
+        d.planned_changes[0].kind = ChangeKind::SetGovernor {
+            account: "replacement.testnet".parse().unwrap(),
+        };
+        assert!(warned(&d, &o));
+        for status in [ChangeStatus::Applied, ChangeStatus::Cancelled] {
+            o.changes[0].status = status;
+            assert!(!warned(&d, &o));
+            assert!(evaluate(&d, RULES, &o).iter().any(
+                |c| c.name == "pending_governance_changes" && c.detail == "0 pending change(s)"
+            ));
+        }
+    }
+
+    #[test]
+    fn committed_roles_are_compared_and_a_mismatch_fails_gate_roles() {
+        let mut d = deployment();
+        d.roles = Some(CommittedRoles {
+            governor: "governor.testnet".parse().unwrap(),
+            guardian: "guardian.testnet".parse().unwrap(),
+        });
+        assert!(failed_with(&d, &healthy()).is_empty());
+        d.roles.as_mut().unwrap().guardian = "someone-else.testnet".parse().unwrap();
+        assert_eq!(failed_with(&d, &healthy()), vec!["gate_roles"]);
+    }
+
+    fn failed_with(d: &Deployment, o: &Observed) -> Vec<&'static str> {
+        evaluate(d, RULES, o)
+            .into_iter()
+            .filter(|c| !c.ok)
+            .map(|c| c.name)
+            .collect()
+    }
+
+    #[test]
+    fn unplanned_rule_set_and_verifier_removal_warn_like_authority_changes() {
+        for kind in [
+            ChangeKind::SetRuleSet {
+                rule_set_hash: [9; 32],
+                manifest_uri: "ipfs://other".into(),
+                ai_required: false,
+            },
+            ChangeKind::RemoveVerifier { pubkey: [7; 32] },
+            ChangeKind::SetParams {
+                params: healthy().constitution.params,
+            },
+        ] {
+            let mut o = healthy();
+            o.changes.push(PendingChange {
+                id: 3,
+                kind: kind.clone(),
+                scheduled_by: o.roles.governor.clone(),
+                scheduled_at_ns: 1,
+                eta_ns: 604_800_000_000_001,
+                status: ChangeStatus::Pending,
+                evm: None,
+            });
+            assert!(
+                evaluate(&deployment(), RULES, &o)
+                    .iter()
+                    .any(|c| c.name == "pending_authority_change" && c.warning),
+                "{kind:?}"
+            );
+        }
+    }
     #[test]
     fn near_derived_key_maps_to_the_recorded_spike_address() {
         // vectors/mpc-derivation.json and spikes/gate-min/README.md, finalized block 275927720.

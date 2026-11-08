@@ -1310,6 +1310,7 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "omni-transaction",
+ "proptest",
  "rlp 0.6.1",
  "serde",
  "serde_json",
@@ -1336,6 +1337,7 @@ dependencies = [
 name = "constitution-verifier"
 version = "0.1.0"
 dependencies = [
+ "alloy-sol-types",
  "axum",
  "base64 0.23.1",
  "borsh",

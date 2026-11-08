@@ -15,7 +15,7 @@ Minimum depth: **4 successful vault calls by the same account** after setup (ini
 
 ## What should catch it
 
-- R2 solvency (an account withdraws more than its recorded balance). The committed R2 invariant depth must be at least 4 for R2 to reach this path; the bound and this depth are shown side by side on the page (BUILD-PLAN P3.1).
+- R2 checks aggregate solvency (`totalDeposits() <= token.balanceOf(vault)`) and implementation-slot preservation, not per-depositor withdrawability. This fixture empties the assets while leaving victim liabilities recorded, so it violates the aggregate invariant. Its minimum exploit depth is **4**; the current `rules/manifest.json` commits to **invariant depth 4**, loop bound 2, a 10 s assertion-solver timeout, and 2,000 seeded fuzz runs at depth 128. Those are bounded checks, not a proof for arbitrary call sequences or every depositor.
 - R3 does not: the runtime has no `SELFDESTRUCT`, `CALLCODE`, `DELEGATECALL` and no ERC-1967 slot constant (`test_drainRuntimePassesR3OpcodeAndSlotFilter`).
 
 ## Local evidence

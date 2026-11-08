@@ -1,7 +1,7 @@
 //! Final NEAR views plus confirmed Base observations. Call from a blocking worker.
 use crate::{
     keccak,
-    proposals::{LocalProposal, ProposalSource},
+    proposals::{Admit, LocalProposal, ProposalSource, SourceError},
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use constitution_types::{
@@ -11,18 +11,27 @@ use constitution_types::{
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::{io::Read, time::Duration};
+const MAX_RPC_RESPONSE: u64 = 16 * 1024 * 1024;
 
 const IMPLEMENTATION_SLOT: &str =
     "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 pub struct GateSource {
     near_rpc: reqwest::Url,
     base_rpc: reqwest::Url,
+    proof_rpc: reqwest::Url,
     rule_set_hash: [u8; 32],
     confirmations: u64,
+    gate: AccountId,
 }
 impl GateSource {
-    pub fn new(near_rpc: &str, base_rpc: &str, manifest: &RuleSetManifest) -> Result<Self, String> {
+    pub fn new(
+        near_rpc: &str,
+        base_rpc: &str,
+        proof_rpc: &str,
+        manifest: &RuleSetManifest,
+        gate: AccountId,
+    ) -> Result<Self, String> {
         fn url(value: &str) -> Result<reqwest::Url, String> {
             let url = reqwest::Url::parse(value).map_err(|_| "invalid RPC URL")?;
             if !matches!(url.scheme(), "http" | "https") {
@@ -33,8 +42,10 @@ impl GateSource {
         Ok(Self {
             near_rpc: url(near_rpc)?,
             base_rpc: url(base_rpc)?,
+            proof_rpc: url(proof_rpc)?,
             rule_set_hash: rule_set_hash(manifest).map_err(|e| e.to_string())?,
             confirmations: u64::from(manifest.r5.confirmations),
+            gate,
         })
     }
 }
@@ -53,19 +64,27 @@ impl Rpc {
             .send()
             .and_then(|r| r.error_for_status())
             .map_err(|e| format!("{method} RPC transport: {}", e.without_url()))?;
-        let value: Value = response
-            .json()
-            .map_err(|e| format!("{method} RPC response: {}", e.without_url()))?;
+        let mut bytes = Vec::new();
+        response
+            .take(MAX_RPC_RESPONSE + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| format!("{method} RPC unreadable response"))?;
+        if bytes.len() as u64 > MAX_RPC_RESPONSE {
+            return Err(format!("{method} RPC response exceeds bound"));
+        }
+        let mut value: Value =
+            serde_json::from_slice(&bytes).map_err(|_| format!("{method} RPC invalid JSON"))?;
         if value["jsonrpc"] != "2.0" || value["id"] != 1 {
             return Err(format!("{method} RPC invalid envelope"));
         }
-        if let Some(error) = value.get("error") {
-            return Err(format!("{method} RPC error: {error}"));
+        if value.get("error").is_some() {
+            return Err(format!("{method} RPC error"));
         }
         let result = value
-            .get("result")
+            .as_object_mut()
+            .and_then(|object| object.remove("result"))
             .ok_or_else(|| format!("{method} RPC missing result"))?;
-        serde_json::from_value(result.clone()).map_err(|e| format!("{method} RPC result: {e}"))
+        serde_json::from_value(result).map_err(|e| format!("{method} RPC result: {e}"))
     }
     fn view<T: DeserializeOwned>(
         &self,
@@ -92,39 +111,77 @@ fn quantity(text: &str) -> Result<u64, String> {
     u64::from_str_radix(digits, 16).map_err(|e| format!("invalid hex quantity: {e}"))
 }
 impl ProposalSource for GateSource {
+    fn gate_account(&self) -> Option<&AccountId> {
+        Some(&self.gate)
+    }
+    fn get_for_bundle(
+        &self,
+        gate: &AccountId,
+        id: u64,
+        commitment: [u8; 32],
+        admit: Admit<'_>,
+    ) -> Result<Option<LocalProposal>, SourceError> {
+        self.observe(gate, id, Some((commitment, admit)))
+    }
     fn archive_rpc(&self) -> Option<String> {
         Some(self.base_rpc.as_str().to_owned())
     }
+    fn proof_rpc(&self) -> Option<String> {
+        Some(self.proof_rpc.as_str().to_owned())
+    }
     fn archive_provider(&self) -> String {
         format!(
-            "NEAR {} final + Base {} at latest-{}",
+            "NEAR {} final + Base {} at latest-{}; proofs {}",
             self.near_rpc.host_str().expect("http(s) URL host"),
             self.base_rpc.host_str().expect("http(s) URL host"),
             self.confirmations,
+            self.proof_rpc.host_str().expect("http(s) URL host"),
         )
     }
-    fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, String> {
+    fn get(&self, gate: &AccountId, id: u64) -> Result<Option<LocalProposal>, SourceError> {
+        self.observe(gate, id, None)
+    }
+}
+impl GateSource {
+    fn observe(
+        &self,
+        gate: &AccountId,
+        id: u64,
+        authenticate: Option<([u8; 32], Admit<'_>)>,
+    ) -> Result<Option<LocalProposal>, SourceError> {
+        if gate != &self.gate {
+            return Err(SourceError::WrongGate);
+        }
         let rpc = Rpc(reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| e.without_url().to_string())?);
-        let config: Config = rpc.view(&self.near_rpc, gate, "get_config", json!({}))?;
+            .map_err(|_| "rpc_unavailable")?);
         let proposal: Option<Proposal> =
             rpc.view(&self.near_rpc, gate, "get_proposal", json!({"id":id}))?;
         let Some(p) = proposal else { return Ok(None) };
         if p.id != id {
-            return Err("get_proposal id mismatch".into());
+            return Err(SourceError::Unsupported("get_proposal id mismatch"));
         }
         if p.state != ProposalState::Pending {
-            return Err("proposal must be Pending".into());
+            return Err(SourceError::NotPending);
         }
         if p.rule_set_hash != self.rule_set_hash {
-            return Err("unsupported rule_set_hash".into());
+            return Err(SourceError::Unsupported("unsupported rule_set_hash"));
         }
+        if let Some((commitment, admit)) = authenticate {
+            if commitment != p.source_commitment {
+                return Err(SourceError::BadBundle);
+            }
+            admit()?;
+        }
+        let config: Config = rpc.view(&self.near_rpc, gate, "get_config", json!({}))?;
         let latest: String = rpc.call(&self.base_rpc, "eth_blockNumber", json!([]))?;
-        let number = quantity(&latest)?
-            .checked_sub(self.confirmations)
-            .ok_or("insufficient blocks for manifest confirmations")?;
+        let number =
+            quantity(&latest)?
+                .checked_sub(self.confirmations)
+                .ok_or(SourceError::NotReady(
+                    "insufficient blocks for manifest confirmations",
+                ))?;
         let tag = format!("0x{number:x}");
         #[derive(serde::Deserialize)]
         struct Block {
@@ -141,14 +198,16 @@ impl ProposalSource for GateSource {
             json!([Hex20(config.proxy), IMPLEMENTATION_SLOT, tag]),
         )?;
         if slot.0[..12] != [0; 12] {
-            return Err("implementation slot high 12 bytes must be zero".into());
+            return Err(SourceError::Unsupported(
+                "implementation slot high 12 bytes must be zero",
+            ));
         }
         let mut address = [0; 20];
         address.copy_from_slice(&slot.0[12..]);
         let code: HexBytes =
             rpc.call(&self.base_rpc, "eth_getCode", json!([Hex20(address), tag]))?;
         if address == [0; 20] || code.0.is_empty() {
-            return Err("empty current implementation".into());
+            return Err(SourceError::NotReady("empty current implementation"));
         }
         // Refuse a reorg observed during the numbered reads rather than combining forks.
         let after: Block = rpc.call(&self.base_rpc, "eth_getBlockByNumber", json!([tag, false]))?;

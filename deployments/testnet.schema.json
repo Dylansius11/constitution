@@ -1,0 +1,348 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CONSTITUTION audit deployment record",
+  "description": "Wire schema for crates/cli/src/audit.rs Deployment. Missing/null executor_runtime_hash decodes only to yield a named audit FAIL. No activated testnet record exists yet.",
+  "type": "object",
+  "required": [
+    "chain_id",
+    "gate",
+    "gate_code_hash",
+    "mpc_account",
+    "executor",
+    "proxy",
+    "verifiers"
+  ],
+  "properties": {
+    "chain_id": {
+      "$ref": "#/$defs/u64"
+    },
+    "gate": {
+      "$ref": "#/$defs/account"
+    },
+    "gate_code_hash": {
+      "type": "string",
+      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$",
+      "description": "NEAR view_account code hash: base58 of the gate wasm SHA-256."
+    },
+    "mpc_account": {
+      "$ref": "#/$defs/account"
+    },
+    "executor": {
+      "$ref": "#/$defs/hex20"
+    },
+    "executor_runtime_hash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hex32"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Immutable-masked executor runtime keccak256. Required for a PASS; optional/null at decode to emit FAIL executor_code_is_committed_build."
+    },
+    "proxy": {
+      "$ref": "#/$defs/hex20"
+    },
+    "verifiers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/verifier"
+      }
+    },
+    "planned_changes": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/plannedChange"
+      }
+    },
+    "roles": {
+      "type": "object",
+      "description": "Optional. Governor and guardian committed at activation; the audit fails gate_roles when the gate reports different accounts.",
+      "required": ["governor", "guardian"],
+      "additionalProperties": false,
+      "properties": {
+        "governor": { "$ref": "#/$defs/account" },
+        "guardian": { "$ref": "#/$defs/account" }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "u64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "account": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$"
+    },
+    "hex20": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{40}$"
+    },
+    "hex32": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "pubkey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$"
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Decimal u128 string (0 through 340282366920938463463374607431768211455); Rust decoding enforces the numeric bound, matching the shared U128Str wire schema."
+    },
+    "params": {
+      "type": "object",
+      "required": [
+        "proposal_deposit",
+        "max_fee_per_gas",
+        "max_priority_fee_per_gas",
+        "fee_cap",
+        "proposal_ttl_s",
+        "max_cert_ttl_s",
+        "sign_validity_s",
+        "gas_limit",
+        "sign_gas_tgas",
+        "callback_gas_tgas"
+      ],
+      "properties": {
+        "proposal_deposit": {
+          "$ref": "#/$defs/amount"
+        },
+        "max_fee_per_gas": {
+          "$ref": "#/$defs/amount"
+        },
+        "max_priority_fee_per_gas": {
+          "$ref": "#/$defs/amount"
+        },
+        "fee_cap": {
+          "$ref": "#/$defs/amount"
+        },
+        "proposal_ttl_s": {
+          "$ref": "#/$defs/u64"
+        },
+        "max_cert_ttl_s": {
+          "$ref": "#/$defs/u64"
+        },
+        "sign_validity_s": {
+          "$ref": "#/$defs/u64"
+        },
+        "gas_limit": {
+          "$ref": "#/$defs/u64"
+        },
+        "sign_gas_tgas": {
+          "$ref": "#/$defs/u64"
+        },
+        "callback_gas_tgas": {
+          "$ref": "#/$defs/u64"
+        }
+      }
+    },
+    "changeKind": {
+      "oneOf": [
+        {
+          "const": "Unpause"
+        },
+        {
+          "type": "object",
+          "required": [
+            "SetRuleSet"
+          ],
+          "properties": {
+            "SetRuleSet": {
+              "type": "object",
+              "required": [
+                "rule_set_hash",
+                "manifest_uri",
+                "ai_required"
+              ],
+              "properties": {
+                "rule_set_hash": {
+                  "$ref": "#/$defs/hex32"
+                },
+                "manifest_uri": {
+                  "type": "string"
+                },
+                "ai_required": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "AddVerifier"
+          ],
+          "properties": {
+            "AddVerifier": {
+              "type": "object",
+              "required": [
+                "pubkey",
+                "release_hash",
+                "attestation_uri"
+              ],
+              "properties": {
+                "pubkey": {
+                  "$ref": "#/$defs/pubkey"
+                },
+                "release_hash": {
+                  "$ref": "#/$defs/hex32"
+                },
+                "attestation_uri": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "RemoveVerifier"
+          ],
+          "properties": {
+            "RemoveVerifier": {
+              "type": "object",
+              "required": [
+                "pubkey"
+              ],
+              "properties": {
+                "pubkey": {
+                  "$ref": "#/$defs/pubkey"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "SetParams"
+          ],
+          "properties": {
+            "SetParams": {
+              "type": "object",
+              "required": [
+                "params"
+              ],
+              "properties": {
+                "params": {
+                  "$ref": "#/$defs/params"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "SetGovernor"
+          ],
+          "properties": {
+            "SetGovernor": {
+              "type": "object",
+              "required": [
+                "account"
+              ],
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/account"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "SetGuardian"
+          ],
+          "properties": {
+            "SetGuardian": {
+              "type": "object",
+              "required": [
+                "account"
+              ],
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/account"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "MigrateAuthority"
+          ],
+          "properties": {
+            "MigrateAuthority": {
+              "type": "object",
+              "required": [
+                "new_signer"
+              ],
+              "properties": {
+                "new_signer": {
+                  "$ref": "#/$defs/hex20"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "verifier": {
+      "type": "object",
+      "required": [
+        "pubkey",
+        "release_hash"
+      ],
+      "properties": {
+        "pubkey": {
+          "$ref": "#/$defs/pubkey"
+        },
+        "release_hash": {
+          "$ref": "#/$defs/hex32"
+        }
+      },
+      "additionalProperties": false
+    },
+    "plannedChange": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "eta_ns"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/u64"
+        },
+        "kind": {
+          "$ref": "#/$defs/changeKind"
+        },
+        "eta_ns": {
+          "$ref": "#/$defs/u64"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

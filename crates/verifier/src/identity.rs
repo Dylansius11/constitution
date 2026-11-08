@@ -91,12 +91,12 @@ impl Identity {
             .as_ref()
             .map_or([0; 32], |a| a.release_hash)
     }
-    pub async fn attest_if_present(self) -> Result<Self, String> {
-        if Path::new(DSTACK_SOCKET)
-            .try_exists()
-            .map_err(|e| e.to_string())?
-        {
-            self.attest(Path::new(DSTACK_SOCKET)).await
+    /// Local mode is an explicit opt-out; a present but broken socket never downgrades.
+    pub async fn for_mode(self, local: bool, socket: &Path) -> Result<Self, String> {
+        if socket.try_exists().map_err(|e| e.to_string())? {
+            self.attest(socket).await
+        } else if !local {
+            Err("attestation_required: dstack socket missing; use --insecure-dev-identity only for offline development".into())
         } else {
             Ok(self)
         }
@@ -201,6 +201,38 @@ impl Identity {
                 "local, not attested; never register on testnet"
             },
         }
+    }
+    /// Local identities retain their Reject-only policy. Pass requires socket-bound
+    /// attestation and provider-verified Clean; independent appraisal is still required.
+    pub fn sign_certificate(
+        &self,
+        certificate: &Certificate,
+    ) -> Result<([u8; 64], Vec<u8>), String> {
+        if matches!(
+            certificate.verdict,
+            constitution_types::Verdict::Reject { .. }
+        ) {
+            return self.sign_reject(certificate);
+        }
+        if self.attestation.is_none() || self.release_hash() == [0; 32] {
+            return Err("local verifier never signs Pass".into());
+        }
+        if certificate.verifier_pubkey != self.pubkey()
+            || certificate.verifier_release_hash != self.release_hash()
+            || !matches!(
+                certificate.ai,
+                constitution_types::AiReview::Clean {
+                    signature_kind: 1,
+                    ..
+                }
+            )
+        {
+            return Err("Pass requires bound attested identity and provider_tee Clean".into());
+        }
+        let bytes = certificate
+            .to_canonical_bytes()
+            .map_err(|e| e.to_string())?;
+        Ok((self.signing.sign(&crate::sha256(&bytes)).to_bytes(), bytes))
     }
     pub fn sign_reject(&self, certificate: &Certificate) -> Result<([u8; 64], Vec<u8>), String> {
         if !matches!(

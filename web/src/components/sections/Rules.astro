@@ -1,0 +1,306 @@
+---
+import { manifestFacts as m } from "../../data/manifest.ts";
+import RuleFigure from "../motion/RuleFigure.astro";
+
+/**
+ * The rules (DESIGN 5 row 4). Rule text follows docs/PRD.md F5 and the limits in "Risks and
+ * guarantees"; the numbers come from rules/manifest.json at build time.
+ */
+const rules: {
+  id: "R1" | "R2" | "R3" | "R4" | "R5";
+  name: string;
+  checks: string;
+  limit: string;
+}[] = [
+  {
+    id: "R1",
+    name: "Storage layout",
+    checks:
+      "The new storage layout must extend the current one, append only, using the compiler's layout output for the deployed implementation.",
+    limit: "Compares declared layouts only. Slots computed at runtime are outside it.",
+  },
+  {
+    id: "R2",
+    name: "Solvency",
+    checks:
+      "Bounded symbolic execution and seeded fuzzing of two fixed depositors: no sequence of deposits and withdrawals may leave the vault owing more than it holds.",
+    limit: `Aggregate solvency, not each depositor's withdrawal. Bounded at depth ${m.r2.invariant_depth}, loop bound ${m.r2.loop_bound}, ${m.r2.fuzz_runs.toLocaleString("en-US")} fuzz runs.`,
+  },
+  {
+    id: "R3",
+    name: "Opcode and slot filter",
+    checks: `Rejects ${m.r3.forbidden_opcodes.join(", ")}, literal proxy implementation and admin slots and their neighbours, and test cheatcode addresses.`,
+    limit: "A filter, not a proof. A storage slot computed at runtime can evade it.",
+  },
+  {
+    id: "R4",
+    name: "Initializer allowlist",
+    checks:
+      "The upgrade's init calldata must be empty or match a committed function selector and argument schema.",
+    limit: `${m.r4.allowlist.length} committed selector${m.r4.allowlist.length === 1 ? "" : "s"}${m.r4.allow_empty ? ", or empty calldata" : ""}.`,
+  },
+  {
+    id: "R5",
+    name: "Differential replay",
+    checks:
+      "A committed corpus of transactions replays against the old and the new code from a pinned state. Outputs and state must match, except declared changes.",
+    limit: `Only the committed corpus, up to ${m.r5.max_txs} transactions.`,
+  },
+];
+
+const pinned = [
+  { term: "Compiler", value: `solc ${m.solc}, EVM ${m.evm_version}` },
+  { term: "Symbolic checker", value: `Halmos ${m.tools.halmos}` },
+  { term: "Fuzzer", value: `Foundry ${m.tools.foundry}, depth ${m.r2.fuzz_depth}` },
+  {
+    term: "AI reviewer",
+    value: `${m.ai.model}, ${m.ai.signature_kind}, up to ${m.ai.max_candidates} candidates`,
+  },
+  { term: "Certificate lifetime", value: `${m.max_cert_ttl_s} seconds` },
+];
+---
+
+<section id="rules" class="rules" aria-labelledby="rules-title">
+  <script is:inline>
+    // Start state for the rule figures; without JavaScript every figure shows its finished check.
+    document.currentScript.parentElement.classList.add("has-js");
+  </script>
+  <div class="container">
+    <div class="rules__head" data-reveal>
+      <h2 id="rules-title">Five rules, committed before any proposal arrives.</h2>
+      <p class="lede">
+        The owner commits the rules once. Every upgrade is checked against them inside the attested
+        verifier, and changing them takes the 7-day timelock. Each rule says what it checks and
+        where it stops.
+      </p>
+    </div>
+
+    <ol class="rules__list">
+      {
+        rules.map((rule) => (
+          <li class="rule" data-reveal>
+            <p class="rule__id mono" aria-hidden="true">
+              {rule.id}
+            </p>
+            <div class="rule__body">
+              <h3 class="rule__name">
+                <span class="visually-hidden">{rule.id}: </span>
+                {rule.name}
+              </h3>
+              <p class="rule__checks">{rule.checks}</p>
+              <p class="rule__limit">
+                <span class="rule__limit-label mono">Where it stops</span>
+                {rule.limit}
+              </p>
+            </div>
+            <RuleFigure rule={rule.id} />
+          </li>
+        ))
+      }
+    </ol>
+
+    <div class="rules__veto" data-reveal>
+      <p class="rules__veto-label mono">Not a rule</p>
+      <p>
+        <strong>The private AI reviewer can only refuse.</strong> It searches for a counterexample;
+        a refusal counts only when the verifier reproduces it deterministically. It can never
+        certify an upgrade.
+      </p>
+    </div>
+
+    <div class="rules__pinned" data-reveal>
+      <h3>Pinned in <code>rules/manifest.json</code></h3>
+      <dl>
+        {
+          pinned.map((row) => (
+            <div>
+              <dt>{row.term}</dt>
+              <dd class="mono">{row.value}</dd>
+            </div>
+          ))
+        }
+      </dl>
+      <p class="muted rules__note">
+        Read from this build's manifest file. The rule set the production gate enforces is the hash
+        stored on the gate, shown under Evidence once the gate is activated.
+      </p>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { initRules } from "../motion/rules.ts";
+
+  initRules();
+</script>
+
+<style>
+  .rules {
+    padding: var(--section-y) 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .rules__head {
+    display: grid;
+    gap: var(--space-5);
+    max-width: 50rem;
+    margin-bottom: var(--space-8);
+  }
+
+  h2 {
+    font-size: var(--text-3xl);
+  }
+
+  .rules__list {
+    list-style: none;
+    border-top: 1px solid var(--ink);
+  }
+
+  .rule {
+    display: grid;
+    grid-template-columns: minmax(0, 9rem) minmax(0, 1fr) minmax(18rem, 27rem);
+    gap: var(--space-5) var(--space-7);
+    align-items: start;
+    padding: var(--space-7) 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .rule__id {
+    font-size: clamp(3rem, 2rem + 3vw, 5.5rem);
+    font-weight: 500;
+    line-height: 0.9;
+    letter-spacing: -0.06em;
+  }
+
+  .rule__body {
+    display: grid;
+    gap: var(--space-4);
+    max-width: 40rem;
+  }
+
+  .rule__name {
+    font-size: var(--text-2xl);
+    letter-spacing: var(--tracking-display);
+    line-height: 1;
+  }
+
+  .rule__checks {
+    font-size: var(--text-lg);
+    line-height: 1.5;
+  }
+
+  .rule__limit {
+    display: grid;
+    gap: var(--space-1);
+    padding-left: var(--space-4);
+    border-left: 2px solid var(--lav);
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+
+  .rule__limit-label {
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink);
+  }
+
+  .rules__veto {
+    display: grid;
+    grid-template-columns: 10rem 1fr;
+    gap: var(--space-5);
+    margin-top: var(--space-6);
+    padding: var(--space-5);
+    border-radius: var(--radius-md);
+    background: var(--lav-soft);
+  }
+
+  .rules__veto-label {
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    padding-top: 0.2rem;
+  }
+
+  .rules__veto p:last-child {
+    max-width: var(--measure);
+  }
+
+  .rules__pinned {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: var(--space-4) var(--space-7);
+    margin-top: var(--space-8);
+  }
+
+  .rules__pinned h3 {
+    font-size: var(--text-lg);
+  }
+
+  .rules__pinned h3 code {
+    font-size: 0.85em;
+    letter-spacing: 0;
+  }
+
+  .rules__pinned dl {
+    display: grid;
+    border-top: 1px solid var(--ink);
+  }
+
+  .rules__pinned dl > div {
+    display: grid;
+    grid-template-columns: 11rem 1fr;
+    gap: var(--space-4);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--line);
+    font-size: var(--text-sm);
+  }
+
+  dt {
+    color: var(--ink-muted);
+  }
+
+  dd {
+    overflow-wrap: anywhere;
+  }
+
+  .rules__note {
+    grid-column: 2;
+    font-size: var(--text-sm);
+    max-width: var(--measure);
+  }
+
+  @media (max-width: 68rem) {
+    .rule {
+      grid-template-columns: minmax(0, 6rem) minmax(0, 1fr);
+    }
+
+    .rule > :global(.fig) {
+      grid-column: 2;
+      max-width: 27rem;
+    }
+  }
+
+  @media (max-width: 52rem) {
+    .rule {
+      grid-template-columns: minmax(0, 1fr);
+      padding: var(--space-6) 0;
+    }
+
+    .rule > :global(.fig) {
+      grid-column: auto;
+    }
+
+    .rules__veto,
+    .rules__pinned {
+      grid-template-columns: 1fr;
+    }
+
+    .rules__pinned dl > div {
+      grid-template-columns: 1fr;
+      gap: var(--space-1);
+    }
+
+    .rules__note {
+      grid-column: auto;
+    }
+  }
+</style>

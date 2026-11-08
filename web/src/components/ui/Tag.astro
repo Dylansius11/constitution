@@ -1,0 +1,47 @@
+---
+/**
+ * Small mono chip. `lav` is the reference's step number chip; `outline` a neutral label;
+ * `ink` for emphasis on lavender grounds. Content is real text, never decoration.
+ */
+interface Props {
+  tone?: "lav" | "outline" | "ink";
+  class?: string;
+}
+
+const { tone = "lav", class: className } = Astro.props;
+---
+
+<span class:list={["tag", `tag--${tone}`, className]}><slot /></span>
+
+<style>
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 1.5rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    letter-spacing: var(--tracking-mono);
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums slashed-zero;
+    white-space: nowrap;
+  }
+
+  .tag--lav {
+    background: var(--lav);
+    color: var(--ink);
+  }
+
+  .tag--outline {
+    border: 1px solid var(--line-strong);
+    color: var(--ink);
+  }
+
+  .tag--ink {
+    background: var(--ink);
+    color: var(--paper);
+  }
+</style>

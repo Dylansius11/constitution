@@ -164,7 +164,11 @@ pub fn observe(
     Ok(value)
 }
 
-fn add_evidence(value: &mut Value, raw: Value) -> Result<(), Failure> {
+fn add_evidence(value: &mut Value, raw: Option<Value>) -> Result<(), Failure> {
+    let raw = raw.ok_or_else(|| Failure::new(
+        "accepted certificate evidence is unavailable; receipt is incomplete",
+        "retain the gate-only receipt and restore the matching evidence; do not claim complete verification",
+    ))?;
     let evidence: constitution_types::EvidenceManifest =
         serde_json::from_value(raw).map_err(|e| read_error(format!("evidence manifest: {e}")))?;
     let bytes = borsh::to_vec(&evidence).map_err(|e| read_error(e.to_string()))?;
@@ -186,6 +190,23 @@ fn add_evidence(value: &mut Value, raw: Value) -> Result<(), Failure> {
     Ok(())
 }
 
+pub fn collect(
+    near: &Near,
+    gate: &str,
+    id: u64,
+    evm: &Evm,
+    network: &str,
+    run: Option<(&Verifier, &str)>,
+) -> Result<Value, Failure> {
+    let proposal = read_proposal(near, gate, id)?;
+    let run_value = run.map(|(client, id)| client.run(id)).transpose()?;
+    let mut value = observe(near, gate, &proposal, evm, network, run_value.as_ref())?;
+    if let Some((client, id)) = run.filter(|_| value.get("evidence_root").is_some()) {
+        add_evidence(&mut value, client.evidence(id)?)?;
+    }
+    Ok(value)
+}
+
 pub fn receipt(
     near: &Near,
     gate: &str,
@@ -195,14 +216,7 @@ pub fn receipt(
     run: Option<(&Verifier, &str)>,
     as_json: bool,
 ) -> Result<(), Failure> {
-    let proposal = read_proposal(near, gate, id)?;
-    let run_value = run.map(|(client, id)| client.run(id)).transpose()?;
-    let mut value = observe(near, gate, &proposal, evm, network, run_value.as_ref())?;
-    if let Some((client, id)) = run.filter(|_| value.get("evidence_root").is_some())
-        && let Some(evidence) = client.evidence(id)?
-    {
-        add_evidence(&mut value, evidence)?;
-    }
+    let value = collect(near, gate, id, evm, network, run)?;
     if !as_json {
         println!("Observed receipt ({}): proposal {id}", network);
     }
@@ -411,11 +425,19 @@ mod tests {
         let bytes = borsh::to_vec(&evidence).unwrap();
         let mut r =
             json!({"evidence_root":hex(&constitution_types::certificate_hash(&bytes)), "proxy":{}});
-        add_evidence(&mut r, serde_json::to_value(&evidence).unwrap()).unwrap();
+        add_evidence(&mut r, Some(serde_json::to_value(&evidence).unwrap())).unwrap();
         assert_eq!(r["proxy"]["implementation_before"], hex(&[5; 20]));
         assert_eq!(r["ai"]["reproduced_candidates"], 1);
         let mut changed = evidence;
         changed.current.address = Hex20([99; 20]);
-        assert!(add_evidence(&mut r, serde_json::to_value(changed).unwrap()).is_err());
+        assert!(add_evidence(&mut r, Some(serde_json::to_value(changed).unwrap())).is_err());
+    }
+
+    #[test]
+    fn accepted_certificate_with_unavailable_evidence_is_not_complete() {
+        let mut receipt = json!({"evidence_root":hex(&[8;32]),"proxy":{}});
+        assert!(add_evidence(&mut receipt, None).is_err());
+        assert!(receipt["proxy"].get("implementation_before").is_none());
+        assert!(receipt.get("ai").is_none());
     }
 }

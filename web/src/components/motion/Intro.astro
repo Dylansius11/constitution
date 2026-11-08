@@ -1,0 +1,181 @@
+---
+import Mark from "../ui/Mark.astro";
+
+/**
+ * Entrance (DESIGN 4.3). Once per browser session the page opens on the night ground: the mark's
+ * three parts lock together, the wordmark rises, and the certified line crosses the screen and splits
+ * the ground open onto the hero. It is a curtain, not a loader: nothing here claims progress.
+ *
+ * It never runs without JavaScript, with reduced motion, on a deep link, or a second time in the same
+ * session. A click, a key or five seconds always ends it.
+ */
+---
+
+<script is:inline>
+  (() => {
+    const root = document.documentElement;
+    let seen = false;
+    try {
+      seen = sessionStorage.getItem("constitution:intro") === "1";
+    } catch {
+      seen = true;
+    }
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (seen || calm || location.hash) return;
+    root.classList.add("intro");
+    // Safety net: the page is never held behind the curtain if the scene fails to load.
+    window.setTimeout(() => {
+      if (!root.classList.contains("intro")) return;
+      root.classList.remove("intro");
+      document.dispatchEvent(new Event("constitution:intro-done"));
+    }, 5000);
+  })();
+</script>
+
+<div class="intro" aria-hidden="true" data-intro>
+  <div class="intro__half intro__half--top"></div>
+  <div class="intro__half intro__half--bottom"></div>
+  <svg class="intro__line" viewBox="0 0 100 2" preserveAspectRatio="none">
+    <path d="M0 1H100" pathLength="1"></path>
+  </svg>
+  <div class="intro__brand">
+    <div class="intro__mark">
+      <svg class="intro__ring" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="48" pathLength="1"></circle>
+      </svg>
+      <Mark size="100%" />
+    </div>
+    <p class="intro__word">
+      {
+        [..."Constitution"].map((c) => (
+          <span class="intro__clip">
+            <span class="intro__char">{c}</span>
+          </span>
+        ))
+      }
+    </p>
+    <p class="intro__note">Upgrade authority under committed rules</p>
+  </div>
+</div>
+
+<script>
+  import { initIntro } from "./intro.ts";
+
+  initIntro();
+</script>
+
+<style>
+  .intro {
+    display: none;
+  }
+
+  :global(html.intro) {
+    overflow: hidden;
+  }
+
+  :global(html.intro) .intro {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    color: var(--night-text);
+    cursor: pointer;
+  }
+
+  .intro__half {
+    position: absolute;
+    inset-inline: 0;
+    height: 50.5%;
+    background: var(--night);
+  }
+
+  .intro__half--top {
+    top: 0;
+  }
+
+  .intro__half--bottom {
+    bottom: 0;
+  }
+
+  .intro__line {
+    position: absolute;
+    top: calc(50% - 1px);
+    left: 0;
+    width: 100%;
+    height: 2px;
+    overflow: visible;
+  }
+
+  .intro__line path {
+    fill: none;
+    stroke: var(--lav);
+    stroke-width: 2;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+  }
+
+  .intro__brand {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: var(--space-5);
+  }
+
+  .intro__mark {
+    position: relative;
+    display: grid;
+    width: clamp(5.5rem, 4rem + 6vw, 9rem);
+    height: clamp(5.5rem, 4rem + 6vw, 9rem);
+    padding: clamp(1.25rem, 0.9rem + 1.4vw, 2rem);
+  }
+
+  .intro__mark > :global(.mark) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .intro__ring {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+  }
+
+  .intro__ring circle {
+    fill: none;
+    stroke: var(--lav);
+    stroke-width: 1.5;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transform: rotate(-90deg);
+    transform-origin: center;
+  }
+
+  .intro__word {
+    display: flex;
+    font-size: clamp(2.25rem, 1.4rem + 3.6vw, 4.5rem);
+    font-weight: 600;
+    letter-spacing: var(--tracking-display);
+    line-height: 1;
+  }
+
+  .intro__clip {
+    display: inline-block;
+    overflow: clip;
+    padding-block: 0.08em;
+  }
+
+  .intro__char {
+    display: inline-block;
+    transform: translateY(110%);
+  }
+
+  .intro__note {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--night-muted);
+    opacity: 0;
+  }
+</style>

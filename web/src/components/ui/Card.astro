@@ -1,0 +1,64 @@
+---
+/**
+ * Product-like surface (the reference's white UI card). One elevation: soft tinted shadow, no border.
+ * `title` renders a small header row with optional meta text on the right.
+ */
+interface Props {
+  title?: string;
+  meta?: string;
+  as?: "div" | "article" | "figure" | "li";
+  class?: string;
+}
+
+const { title, meta, as: Tag = "div", class: className } = Astro.props;
+---
+
+<Tag class:list={["card", className]}>
+  {
+    title && (
+      <div class="card__head">
+        <span class="card__title">{title}</span>
+        {meta && <span class="card__meta">{meta}</span>}
+        <slot name="head" />
+      </div>
+    )
+  }
+  <div class="card__body">
+    <slot />
+  </div>
+</Tag>
+
+<style>
+  .card {
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-card);
+  }
+
+  .card__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5) var(--space-3);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .card__title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .card__meta {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-mono);
+    color: var(--ink-muted);
+  }
+
+  .card__body {
+    padding: var(--space-4) var(--space-5) var(--space-5);
+  }
+</style>

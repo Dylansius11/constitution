@@ -45,6 +45,14 @@ near-api = "=0.8.6"
 revm = { version = "=43.0.3", features = ["serde", "optional_fee_charge"] }
 dcap-qvl = { version = "=0.7.1", default-features = false, features = ["std", "report", "ring", "default-x509"] }
 
+# Debug builds reached 42 GB: every integration-test binary linked near-workspaces, revm and
+# alloy with full DWARF. Keep line tables for backtraces and drop debuginfo of dependencies.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 codegen-units = 1
 lto = true

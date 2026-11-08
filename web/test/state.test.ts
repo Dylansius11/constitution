@@ -66,6 +66,10 @@ const scenarios: Record<SurfaceKind, () => SurfaceState> = {
     reduceSurface(withProposal(proposal(), { run: withRun({ stage: "r2_solvency" }) })),
   ai_review: () =>
     reduceSurface(withProposal(proposal(), { run: withRun({ stage: "ai_review" }) })),
+  verifier_failed: () =>
+    reduceSurface(
+      withProposal(proposal(), { run: withRun({ stage: "failed", error_code: "worker_panic" }) }),
+    ),
   certified: () => reduceSurface(withProposal(proposal({ state: "SignRequested", ...CERTIFIED }))),
   signing: () =>
     reduceSurface(withProposal(proposal({ state: "SignRequested", ...CERTIFIED })), "certified"),
@@ -135,6 +139,7 @@ describe("surface state matrix", () => {
         "idle",
         "submitting",
         "verifying",
+        "verifier_failed",
         "ai_review",
         "certified",
         "signing",
@@ -281,6 +286,173 @@ describe("verifying and AI review", () => {
     );
     expect(state).toMatchObject({ kind: "error", cause: "verifier_incomplete" });
     expect((state as { detail: string }).detail).toContain("r2_solvency");
+  });
+});
+
+describe("failed verifier runs", () => {
+  const failedRun = (over: Partial<VerifierRun> = {}) =>
+    withRun({ stage: "failed", error_code: "rpc_unavailable", ...over });
+
+  it("verifying -> failed is verifier_failed with the error code, retryable, and still no verdict", () => {
+    const verifying = reduceSurface(
+      withProposal(proposal(), { run: withRun({ stage: "r5_replay" }) }),
+    );
+    expect(verifying.kind).toBe("verifying");
+    const failed = reduceSurface(withProposal(proposal(), { run: failedRun() }), verifying.kind);
+    expect(failed).toEqual({
+      kind: "verifier_failed",
+      errorCode: "rpc_unavailable",
+      retryable: true,
+    });
+  });
+
+  it("a failed run without a named cause keeps errorCode null; an unknown code stays unknown_code", () => {
+    expect(
+      reduceSurface(withProposal(proposal(), { run: failedRun({ error_code: null }) })),
+    ).toEqual({ kind: "verifier_failed", errorCode: null, retryable: true });
+    expect(
+      reduceSurface(withProposal(proposal(), { run: failedRun({ error_code: "unknown_code" }) })),
+    ).toMatchObject({ kind: "verifier_failed", errorCode: "unknown_code" });
+  });
+
+  it("a failed run beats an Incomplete stage it recorded, so it is never review_incomplete", () => {
+    const state = reduceSurface(
+      withProposal(proposal(), {
+        run: failedRun({
+          error_code: "tool_output_invalid",
+          stages: [{ name: "ai_review", status: "Incomplete", detail: "x", elapsed_ms: 1 }],
+        }),
+      }),
+    );
+    expect(state).toMatchObject({ kind: "verifier_failed", errorCode: "tool_output_invalid" });
+  });
+
+  it("done runs with AI withheld or submit Incomplete stay distinct from failed", () => {
+    const withheld = reduceSurface(
+      withProposal(proposal(), {
+        run: withRun({
+          stage: "done",
+          outcome: "withheld: AI review incomplete; no Pass without provider_tee Clean",
+          stages: [{ name: "ai_review", status: "Incomplete", detail: "timeout", elapsed_ms: 1 }],
+        }),
+      }),
+    );
+    expect(withheld.kind).toBe("review_incomplete");
+    const submit = reduceSurface(
+      withProposal(proposal(), {
+        run: withRun({
+          stage: "done",
+          verdict: { kind: "Pass" },
+          stages: [{ name: "submit", status: "Incomplete", detail: "relay lost", elapsed_ms: 1 }],
+        }),
+      }),
+    );
+    expect(submit).toMatchObject({
+      kind: "error",
+      cause: "verifier_incomplete",
+      detail: expect.stringContaining("submit"),
+    });
+  });
+
+  it("the proposal stays Pending: a failed run never makes it rejected, expired or certified", () => {
+    const state = reduceSurface(withProposal(proposal({ state: "Pending" }), { run: failedRun() }));
+    expect(state.kind).toBe("verifier_failed");
+    expect(JSON.stringify(state)).not.toMatch(/certificate|verdict|rejected/i);
+  });
+
+  it("a failed run reports no certificate even when the run object were to carry one", () => {
+    const state = reduceSurface(
+      withProposal(proposal(), {
+        run: failedRun({ certificate_b64: "AAEC", verdict: { kind: "Pass" } }),
+      }),
+    );
+    expect(state).toEqual({
+      kind: "verifier_failed",
+      errorCode: "rpc_unavailable",
+      retryable: true,
+    });
+  });
+
+  it("failed, then a later successful run replaces it and the gate wins once it moves on", () => {
+    const base = proposal();
+    const failed = reduceSurface(withProposal(base, { run: failedRun() }));
+    const retry = reduceSurface(
+      withProposal(base, { run: withRun({ stage: "compiling" }) }),
+      failed.kind,
+    );
+    expect(retry).toMatchObject({ kind: "verifying", stage: "compiling", runObserved: true });
+    const certified = reduceSurface(
+      withProposal(proposal({ state: "SignRequested", ...CERTIFIED }), {
+        run: withRun({ stage: "done", verdict: { kind: "Pass" } }),
+      }),
+      retry.kind,
+    );
+    expect(certified).toEqual({ kind: "certified", certificateHash: hex(0xce, 32) });
+    // An older failed run left in the input does not hide the gate's later outcome.
+    const rejected = reduceSurface(
+      withProposal(
+        proposal({
+          state: "Rejected",
+          rejection: { rule_id: 2, reason_code: 22, evidence_root: hex(0xe7, 32) },
+        }),
+        { run: failedRun() },
+      ),
+    );
+    expect(rejected.kind).toBe("rejected");
+  });
+
+  it("a refused retry shows over the failed run until the gate moves", () => {
+    const refused = {
+      phase: "failed",
+      cause: "run_refused",
+      detail: "rate_limited; retry after 7s",
+    } as const;
+    expect(
+      reduceSurface(withProposal(proposal(), { run: failedRun(), submission: refused })),
+    ).toEqual({ kind: "error", cause: "run_refused", detail: "rate_limited; retry after 7s" });
+  });
+
+  it("three failed fetches while showing a failed run is an outage that keeps it as last known", () => {
+    const state = reduceSurface(
+      withProposal(proposal(), {
+        run: down(3, run({ stage: "failed", error_code: "storage_error" })),
+      }),
+    );
+    expect(state).toMatchObject({
+      kind: "network_unavailable",
+      source: "verifier",
+      lastKnown: { kind: "verifier_failed", errorCode: "storage_error" },
+    });
+  });
+});
+
+describe("evicted runs", () => {
+  it("a 404 for a run the page holds is run_evicted, not a network error, and the proposal stays Pending", () => {
+    const state = reduceSurface(withProposal(proposal(), { run: ok(null), runId: 12 }));
+    expect(state).toMatchObject({
+      kind: "error",
+      cause: "run_evicted",
+      detail: expect.stringContaining("12"),
+    });
+  });
+
+  it("without a held run id, no run is just verifying; a never-polled run is not evicted", () => {
+    expect(reduceSurface(withProposal(proposal(), { run: ok(null), runId: null })).kind).toBe(
+      "verifying",
+    );
+    expect(reduceSurface(withProposal(proposal(), { run: idle, runId: 12 })).kind).toBe(
+      "verifying",
+    );
+  });
+
+  it("an evicted run does not hide the gate's outcome", () => {
+    const state = reduceSurface(
+      withProposal(proposal({ state: "SignRequested", ...CERTIFIED }), {
+        run: ok(null),
+        runId: 12,
+      }),
+    );
+    expect(state.kind).toBe("certified");
   });
 });
 

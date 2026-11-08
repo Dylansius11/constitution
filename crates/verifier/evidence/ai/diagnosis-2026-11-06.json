@@ -1,0 +1,325 @@
+{
+  "schemaVersion": 1,
+  "dateUtc": "2026-11-06",
+  "scope": "Key/credit authentication and controlled AI-only timeout diagnosis; no production implementation change, full pipeline, candidate replay, chain write or CVM deployment",
+  "authentication": {
+    "checkedAt": "2026-11-06T09:31:58.221Z",
+    "runtime": "v24.16.0",
+    "rows": [
+      {
+        "label": "valid-key-attestation",
+        "method": "GET",
+        "inferenceRequested": false,
+        "status": 200,
+        "bodyBytes": 318326,
+        "requestId": "7bb1ed8b-7718-47c3-b546-6f86c8239146",
+        "elapsedMs": 1941
+      },
+      {
+        "label": "invalid-key-control",
+        "method": "GET",
+        "inferenceRequested": false,
+        "status": 401,
+        "bodyBytes": 100,
+        "requestId": "71183270-ddeb-4f9e-8069-2ff32341729f",
+        "elapsedMs": 276
+      },
+      {
+        "label": "fetch-missing-model-control",
+        "method": "POST",
+        "inferenceRequested": false,
+        "status": 400,
+        "bodyBytes": 178,
+        "requestId": "054a4e08-343d-4acf-a265-9ad0e4598a92",
+        "elapsedMs": 309
+      },
+      {
+        "label": "node-https-missing-model-auto-length",
+        "method": "POST",
+        "inferenceRequested": false,
+        "explicitLength": false,
+        "events": [
+          {
+            "phase": "tls_connected",
+            "atMs": 914
+          },
+          {
+            "phase": "body_sent",
+            "atMs": 914
+          }
+        ],
+        "contentLength": null,
+        "transferEncoding": null,
+        "status": 400,
+        "requestId": "47dab45e-1526-4894-890f-8ef5dcabf5ff",
+        "bodyBytes": 178,
+        "elapsedMs": 1218
+      },
+      {
+        "label": "node-https-missing-model-explicit-length",
+        "method": "POST",
+        "inferenceRequested": false,
+        "explicitLength": true,
+        "events": [
+          {
+            "phase": "tls_connected",
+            "atMs": 852
+          },
+          {
+            "phase": "body_sent",
+            "atMs": 853
+          }
+        ],
+        "contentLength": "2",
+        "transferEncoding": null,
+        "status": 400,
+        "requestId": "002c0f53-69a7-495d-9397-b687ba6e73fd",
+        "bodyBytes": 178,
+        "elapsedMs": 1186
+      }
+    ],
+    "paidInferenceRequests": 0,
+    "note": "Completion probes send only {}, with no model/messages. They cannot request model inference. No raw provider bodies or credentials recorded."
+  },
+  "eligibility": {
+    "checkedAt": "2026-11-06T09:33:49.589Z",
+    "endpoint": "/v1/check_api_key",
+    "status": 200,
+    "valid": true,
+    "elapsedMs": 1212,
+    "requestId": "2ac16a49-b432-49ec-b459-ebbfd856bf62",
+    "inferenceRequested": false,
+    "meaning": "Provider accepts the key, rate limits and sufficient-credit eligibility at check time"
+  },
+  "providerStatus": {
+    "source": "https://status.near.ai/status-data.json",
+    "generatedAt": "2026-11-06T09:31:19.000Z",
+    "summary": "operational",
+    "glmCompletionProbeCurrent": 1,
+    "qualification": "Provider monitoring is not proof that every tenant request succeeds"
+  },
+  "primarySources": {
+    "reasoning": "https://docs.near.ai/cloud/reasoning-models.md",
+    "chatSchema": "https://docs.near.ai/api-reference/chat/create-chat-completion.md",
+    "eligibility": "https://docs.near.ai/api-reference/gateway/check-api-key-validity.md",
+    "runtimeChecksums": "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt"
+  },
+  "runtimeDownload": {
+    "version": "v24.22.1",
+    "linuxX64TarXzSha256": "6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6",
+    "checksumVerified": true
+  },
+  "boundedReasoningDiagnostic": {
+    "policy": {
+      "overallAttempt": 4,
+      "paidRequestsInThisDiagnostic": 1,
+      "runtime": "v24.22.1",
+      "model": "z-ai/glm-5.3-flash",
+      "max_tokens": 8192,
+      "thinking_token_budget": 512,
+      "reviewTimeoutSeconds": 120,
+      "retries": 0,
+      "e2ee": true,
+      "strictAttestation": true,
+      "productionCodeChanged": false,
+      "note": "Diagnostic overrides completion parameters only; same source/rules and production review validation. Runtime also changed from prior v24.16.0 to the pinned v24.22.1, so this is not a single-variable causal experiment."
+    },
+    "finishedAt": "2026-11-06T09:37:49.535Z",
+    "elapsedMs": 24771,
+    "requestSha256": "965c169bb79153a512ba6004b9e197c116e368616cb66dd74190aaacabe5027d",
+    "events": [
+      {
+        "phase": "preflight",
+        "method": "GET",
+        "atMs": 1768,
+        "status": 200,
+        "elapsedMs": 1230
+      },
+      {
+        "phase": "preflight",
+        "method": "GET",
+        "atMs": 3000,
+        "status": 200,
+        "elapsedMs": 1230
+      },
+      {
+        "phase": "completion",
+        "method": "POST",
+        "atMs": 6380,
+        "status": 200,
+        "elapsedMs": 13069,
+        "billingRequestId": "8bbb577f-d6c0-5e8a-bad1-552db04c54ae"
+      },
+      {
+        "phase": "preflight",
+        "method": "GET",
+        "atMs": 19465,
+        "status": 200,
+        "elapsedMs": 1139
+      }
+    ],
+    "result": {
+      "status": "complete",
+      "reason": "verified_provider_response",
+      "provider": "near",
+      "candidates": [
+        {
+          "rule": "R2",
+          "rationale": "Stage-3 withdraw transfers an unchecked `amount` while only decrementing totalDeposits by the recorded balance, draining vault tokens below totalDeposits.",
+          "steps": [
+            {
+              "from": "attacker",
+              "call": "deposit(uint256)",
+              "args": [
+                "1"
+              ],
+              "value": "0"
+            },
+            {
+              "from": "attacker",
+              "call": "withdraw(uint256)",
+              "args": [
+                "1"
+              ],
+              "value": "0"
+            },
+            {
+              "from": "attacker",
+              "call": "deposit(uint256)",
+              "args": [
+                "1"
+              ],
+              "value": "0"
+            },
+            {
+              "from": "attacker",
+              "call": "withdraw(uint256)",
+              "args": [
+                "2000000000000000000000"
+              ],
+              "value": "0"
+            }
+          ]
+        }
+      ],
+      "signatureKind": "provider_tee",
+      "completionId": "06dc886361ab40769ffd135360c0e358",
+      "requestSha256": "965c169bb79153a512ba6004b9e197c116e368616cb66dd74190aaacabe5027d",
+      "responseSha256": "bb718a23a7c917fdcb5affbcac684fc7589d10ff3350c7fc722bb550fe7915ef",
+      "usage": {
+        "prompt_tokens": 1720,
+        "completion_tokens": 699,
+        "total_tokens": 2419
+      },
+      "costUsd": null,
+      "receipt": {
+        "kind": "provider_tee",
+        "signingAlgo": "ed25519",
+        "signingAddress": "5a0210f2442c79355784f9de021985429561da5bacc3a4424b01ac52b7e0caff",
+        "signedText": "z-ai/glm-5.3-flash:f1cbe257e8294da15865271538a8751e3a64ee101e99ef0b65446bdc5c4b926c:c8136a2eb9d1b1b1f1052b0de2ee5ca9b9fe4655ce61293abefed5dc0d2a2b4e",
+        "signature": "60c0b6487d63367983ff30636a068c338b9e283fd0804efe19ba1f122bb93a1e41781c8993e6e34d810eb7ec7ad8a66ba9f1d6a73d85bb2ebda2c6d83326bd00"
+      }
+    },
+    "observed": {
+      "id": "06dc886361ab40769ffd135360c0e358",
+      "finishReason": "stop",
+      "usage": {
+        "prompt_tokens": 1720,
+        "total_tokens": 2419,
+        "completion_tokens": 699,
+        "prompt_tokens_details": null,
+        "reasoning_tokens": 513,
+        "completion_tokens_details": {
+          "reasoning_tokens": 513
+        }
+      }
+    },
+    "sdkCode": null,
+    "signatureVerified": true,
+    "billing": {
+      "status": "reported",
+      "requestId": "8bbb577f-d6c0-5e8a-bad1-552db04c54ae",
+      "costNanoUsd": 487100,
+      "costUsd": 0.0004871
+    }
+  },
+  "defaultReasoningControl": {
+    "policy": {
+      "overallAttempt": 5,
+      "paidRequestsInThisDiagnostic": 1,
+      "runtime": "v24.22.1",
+      "model": "z-ai/glm-5.3-flash",
+      "max_tokens": 8192,
+      "thinking_token_budget": "omitted (provider default 8192)",
+      "reviewTimeoutSeconds": 120,
+      "retries": 0,
+      "e2ee": true,
+      "strictAttestation": true,
+      "productionCodeChanged": false,
+      "note": "Controlled comparison with attempt 4: same pinned runtime, source/rules, max_tokens and deadline; only explicit thinking_token_budget omitted. Fresh nonce and provider routing are not controlled."
+    },
+    "finishedAt": "2026-11-06T09:42:01.297Z",
+    "elapsedMs": 120183,
+    "requestSha256": "04ffa34bc4bce7cbdcf8e463384c25cb7ffe865c35d02e722c175df00c40e453",
+    "events": [
+      {
+        "phase": "preflight",
+        "method": "GET",
+        "atMs": 1733,
+        "status": 200,
+        "elapsedMs": 1165
+      },
+      {
+        "phase": "preflight",
+        "method": "GET",
+        "atMs": 2900,
+        "status": 200,
+        "elapsedMs": 1244
+      },
+      {
+        "phase": "completion",
+        "method": "POST",
+        "atMs": 7170
+      }
+    ],
+    "result": {
+      "status": "incomplete",
+      "reason": "timeout",
+      "provider": "near",
+      "candidates": [],
+      "signatureKind": "",
+      "completionId": "",
+      "requestSha256": "04ffa34bc4bce7cbdcf8e463384c25cb7ffe865c35d02e722c175df00c40e453",
+      "responseSha256": "",
+      "usage": null,
+      "costUsd": null,
+      "receipt": null
+    },
+    "observed": null,
+    "sdkCode": null,
+    "signatureVerified": false,
+    "billing": {
+      "status": "unavailable",
+      "costUsd": null
+    }
+  },
+  "summary": {
+    "overallInferenceAttemptsUsed": 5,
+    "furtherInferenceAuthorizedByThisRun": false,
+    "newInferenceCalls": 2,
+    "keyAccepted": true,
+    "sufficientCreditEligibility": true,
+    "completedVerifiedDiagnosticReviews": 1,
+    "boundedReasoningElapsedMs": 24771,
+    "defaultReasoningStatus": "incomplete_timeout",
+    "defaultReasoningElapsedMs": 120183,
+    "verifiedDiagnosticCostUsd": 0.0004871,
+    "totalBilledCostAllFiveAttemptsUsd": null,
+    "totalCostReason": "The four timeout attempts returned no completion/billing identifiers; their billed cost remains unknown, not zero",
+    "assessment": "Strong evidence for a reasoning-work-budget/deadline mismatch: with the same pinned runtime, documented max_tokens=8192, source/rules and 120 s deadline, explicit thinking_token_budget=512 completed with provider_tee verification; omitting it timed out. Provider docs say omitted GLM reasoning budget is 8192. Fresh nonce/provider routing/load are not controlled, so universal causality is not claimed.",
+    "maxCompletionTokensFinding": "Old production code uses max_completion_tokens; the documented NEAR chat schema and metadata advertise max_tokens. Equivalence/forwarding of the old field was not established.",
+    "security": "E2EE, strict UpToDate policy, no-aliasing and response signature verification stayed enabled. Candidate is untrusted and has not been replayed, so no exploit detection rate or gate verdict is claimed.",
+    "processLimit": "The default-reasoning control saved its 120 s incomplete result, but its outer WSL command remained live and was terminated by the 300 s tool deadline; cancellation of upstream generation/billing is not proven.",
+    "nextAction": "Propose an explicit model work budget using documented max_tokens and thinking_token_budget without extending deadlines or weakening attestation. Before keeping a lower reasoning budget in production, acknowledge its unmeasured effect on detection quality. No further paid request or automatic retry."
+  }
+}

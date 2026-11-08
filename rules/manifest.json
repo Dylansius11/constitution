@@ -14,6 +14,7 @@
   "reference": {
     "contract_name": "src/demo/VaultV1.sol:VaultV1",
     "source_sha256s": {
+      "src/demo/MockToken.sol": "0xc9d4bf771ab446a4d7d6e83c86b97d6e494646f24168e5728c3a100d549e80ea",
       "src/demo/VaultV1.sol": "0x34c43de600beb580e3319c9887da4d1614b3e296832523aa10d89786bc98c1f9"
     }
   },
@@ -21,7 +22,7 @@
     "unsafe_allow": ["constructor", "missing-initializer", "delegatecall", "selfdestruct"]
   },
   "r2": {
-    "harness_sha256": "0xcf2652a7125cdef0816d83ceba4f267a6ae23cfedd527d57af82b1406587bf66",
+    "harness_sha256": "0x240f6c97ab34099e65c9c0e400f8f271a934b22ce9eaa5ac4f8f8df8ecfec91b",
     "invariant_depth": 4,
     "loop_bound": 2,
     "array_lengths": "",
@@ -38,7 +39,13 @@
     ],
     "forbidden_constants": [
       "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
-      "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103"
+      "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103",
+      "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbb",
+      "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbd",
+      "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6102",
+      "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6104",
+      "0x0000000000000000000000007109709ecfa91a80626ff3989d68f67f5b1dd12d",
+      "0x000000000000000000000000f3993a62377bcd56ae39d773740a5390411e8bc9"
     ]
   },
   "r4": {
@@ -65,7 +72,7 @@
     "model": "z-ai/glm-5.3-flash",
     "signature_kind": "provider_tee",
     "max_candidates": 4,
-    "timeout_s": 120
+    "timeout_s": 300
   },
   "max_cert_ttl_s": 300
 }

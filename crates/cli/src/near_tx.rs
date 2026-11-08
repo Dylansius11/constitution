@@ -11,6 +11,7 @@ pub struct Writer {
     account: near_api::AccountId,
     signer: Arc<Signer>,
     runtime: tokio::runtime::Runtime,
+    rpc_url: String,
 }
 
 /// A landed call: the NEAR transaction hash, the method's JSON return (Null if none) and logs.
@@ -28,9 +29,9 @@ pub fn default_key_file(network: &str, account: &str) -> PathBuf {
 
 impl Writer {
     pub fn new(rpc_url: &str, account: &str, key_file: &Path) -> Result<Self, Failure> {
-        let url = rpc_url.parse().map_err(|e| {
+        let url = rpc_url.parse().map_err(|_| {
             Failure::new(
-                format!("NEAR RPC URL {rpc_url}: {e}"),
+                format!("invalid NEAR RPC endpoint ({})", crate::rpc::host(rpc_url)),
                 "set NEAR_RPC_URL to an http(s) URL",
             )
         })?;
@@ -55,6 +56,7 @@ impl Writer {
             account,
             signer,
             runtime,
+            rpc_url: rpc_url.to_owned(),
         })
     }
 
@@ -83,7 +85,11 @@ impl Writer {
             .send_to(&self.network);
         let result = self.runtime.block_on(send).map_err(|e| {
             Failure::new(
-                format!("{method} was not sent: {e}"),
+                format!(
+                    "{method} was not sent via {}: {}",
+                    crate::rpc::host(&self.rpc_url),
+                    crate::rpc::safe_error(&self.rpc_url, e)
+                ),
                 "check NEAR_RPC_URL, the account and that the key may call this method",
             )
         })?;
@@ -100,7 +106,10 @@ impl Writer {
                 value: success.json::<Value>().unwrap_or(Value::Null),
             }),
             Err(failure) => Err(Failure::new(
-                format!("{method} failed in tx {tx_hash}: {failure}"),
+                format!(
+                    "{method} failed in tx {tx_hash}: {}",
+                    crate::rpc::safe_error(&self.rpc_url, failure)
+                ),
                 next,
             )),
         }

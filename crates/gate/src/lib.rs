@@ -20,6 +20,37 @@ mod signing;
 mod verdict;
 mod views;
 
+const MAX_PENDING_CHANGES: usize = 8;
+const SIGN_REQUEST_TIMEOUT: u64 = 1_200_000_000_000;
+const MIN_CERT_TTL_S: u64 = 30;
+const MAX_CERT_TTL_S: u64 = 86_400;
+const MIN_SIGN_VALIDITY_S: u64 = 60;
+const MAX_SIGN_VALIDITY_S: u64 = 86_400;
+const MIN_PROPOSAL_TTL_S: u64 = 300;
+const MAX_PROPOSAL_TTL_S: u64 = 604_800;
+const STORAGE_INSOLVENT: &str = "E12_STORAGE_INSOLVENT";
+const AI_SIGNATURE_KIND: &str = "E58_AI_SIGNATURE_KIND";
+const PENDING_CHANGE_LIMIT: &str = "E59_PENDING_CHANGE_LIMIT";
+const DUPLICATE_AUTHORITY_CHANGE: &str = "E60_DUPLICATE_AUTHORITY_CHANGE";
+const STORAGE_FEE: &str = "E61_STORAGE_FEE";
+const BUMP_TOO_EARLY: &str = "E62_BUMP_TOO_EARLY";
+/// Pending changes of each non-authority kind that may be queued at once.
+const MAX_PENDING_PER_KIND: usize = 2;
+/// A fee bump is allowed only this long after the previous signing request.
+const MIN_BUMP_AGE: u64 = 600_000_000_000;
+const MAX_PROPOSAL_DEPOSIT: u128 = 10_000_000_000_000_000_000_000_000;
+const MAX_GAS_LIMIT: u64 = 2_000_000;
+const MAX_FEE_CAP: u128 = 1_000_000_000_000;
+/// Upper bound of all storage a proposal can ever occupy (record at maximum calldata, signed
+/// transaction, fee-bump counter, signing indexes). A test measures the real worst case.
+pub(crate) const PROPOSAL_STORAGE_BYTES: u64 = 4096;
+/// NEAR charges the key, the value and a fixed 40-byte record overhead per entry. The credit key
+/// is one storage-prefix byte plus a 4-byte length plus the account id; the value is 16 bytes.
+const CREDIT_ENTRY_FIXED_BYTES: u64 = 80;
+/// The refund-window reserve of an in-flight withdrawal is capped at this much storage. It only
+/// has to cover the unpaid growth that can happen between a refund arriving and its callback;
+/// reserving the whole amount would let any large depositor lock every write for the window.
+const WITHDRAWAL_RESERVE_BYTES: u64 = 16_384;
 #[derive(borsh::BorshSerialize, BorshStorageKey)]
 enum StorageKey {
     Verifiers,
@@ -31,6 +62,9 @@ enum StorageKey {
     OutstandingSignatures,
     FeeBumps,
     MigrationSigning,
+    SignRequestedAt,
+    MigrationRequestedAt,
+    MigrationFeeBumps,
 }
 
 #[near(contract_state)]
@@ -53,6 +87,12 @@ pub struct Gate {
     outstanding_signatures: IterableSet<u64>,
     fee_bumps: LookupMap<u64, u8>,
     migration_signing: LookupMap<u64, signing::MigrationSigning>,
+    total_liabilities: u128,
+    pending_withdrawals: u128,
+    pending_changes: Vec<u64>,
+    sign_requested_at: LookupMap<u64, u64>,
+    migration_requested_at: LookupMap<u64, u64>,
+    migration_fee_bumps: LookupMap<u64, u8>,
 }
 
 use constitution_types::Roles;
@@ -105,6 +145,11 @@ impl Gate {
         for (index, (pubkey, record)) in verifiers.iter().enumerate() {
             validate_uri(&record.attestation_uri);
             check(
+                record.release_hash != [0; 32],
+                GateError::InvalidChange,
+                "zero release_hash",
+            );
+            check(
                 !verifiers[..index].iter().any(|(key, _)| key == pubkey),
                 GateError::InvalidChange,
                 "duplicate verifier",
@@ -127,10 +172,17 @@ impl Gate {
             outstanding_signatures: IterableSet::new(StorageKey::OutstandingSignatures),
             fee_bumps: LookupMap::new(StorageKey::FeeBumps),
             migration_signing: LookupMap::new(StorageKey::MigrationSigning),
+            total_liabilities: 0,
+            pending_withdrawals: 0,
+            pending_changes: Vec::new(),
+            sign_requested_at: LookupMap::new(StorageKey::SignRequestedAt),
+            migration_requested_at: LookupMap::new(StorageKey::MigrationRequestedAt),
+            migration_fee_bumps: LookupMap::new(StorageKey::MigrationFeeBumps),
         };
         for (key, record) in verifiers {
             gate.verifiers.insert(key.0, record);
         }
+        gate.assert_solvent(0);
         gate
     }
 }
@@ -151,15 +203,89 @@ fn validate_uri(uri: &str) {
 
 fn validate_params(params: &Params) {
     check(
-        params.sign_gas_tgas >= 15,
+        (15..=200).contains(&params.sign_gas_tgas)
+            && (10..=100).contains(&params.callback_gas_tgas)
+            && params.sign_gas_tgas + params.callback_gas_tgas <= 250
+            && (MIN_CERT_TTL_S..=MAX_CERT_TTL_S).contains(&params.max_cert_ttl_s)
+            && (MIN_SIGN_VALIDITY_S..=MAX_SIGN_VALIDITY_S).contains(&params.sign_validity_s)
+            && (MIN_PROPOSAL_TTL_S..=MAX_PROPOSAL_TTL_S).contains(&params.proposal_ttl_s)
+            && params.gas_limit > 0
+            && params.gas_limit <= MAX_GAS_LIMIT
+            && params.proposal_deposit <= MAX_PROPOSAL_DEPOSIT
+            && params.max_priority_fee_per_gas <= params.max_fee_per_gas
+            && params.max_fee_per_gas <= params.fee_cap
+            && params.fee_cap <= MAX_FEE_CAP,
         GateError::InvalidChange,
-        "sign_gas_tgas < 15",
+        "unsafe gas, time or fee parameters",
     );
-    check(
-        s_to_ns(params.proposal_ttl_s).is_some(),
-        GateError::InvalidChange,
-        "proposal_ttl_s overflows nanoseconds",
-    );
+}
+
+impl Gate {
+    // SDK store collections defer writes. Flush before measuring, including the
+    // root value normally written by the generated wrapper after this method.
+    fn flush_storage(&mut self) {
+        self.verifiers.flush();
+        self.changes.flush();
+        self.proposals.flush();
+        self.active_by_account.flush();
+        self.credit.flush();
+        self.active_by_key.flush();
+        self.outstanding_signatures.flush();
+        self.fee_bumps.flush();
+        self.migration_signing.flush();
+        self.sign_requested_at.flush();
+        self.migration_requested_at.flush();
+        self.migration_fee_bumps.flush();
+        env::state_write(self);
+    }
+
+    fn liquid_balance(&self) -> Option<u128> {
+        env::account_balance()
+            .as_yoctonear()
+            .checked_sub(u128::from(env::storage_usage()) * env::storage_byte_cost().as_yoctonear())
+    }
+
+    fn has_liquid_backing(&self, outgoing: u128) -> bool {
+        match (
+            self.liquid_balance()
+                .and_then(|liquid| liquid.checked_sub(outgoing)),
+            self.total_liabilities.checked_add(self.pending_withdrawals),
+        ) {
+            (Some(liquid), Some(required)) => liquid >= required,
+            _ => false,
+        }
+    }
+
+    /// Storage cost charged once when a credit entry is created.
+    pub(crate) fn credit_entry_fee(account: &AccountId) -> u128 {
+        (u128::from(CREDIT_ENTRY_FIXED_BYTES) + account.as_str().len() as u128)
+            * env::storage_byte_cost().as_yoctonear()
+    }
+
+    /// Contingent refund reserve held while a withdrawal of `amount` is in flight.
+    pub(crate) fn withdrawal_reserve(amount: u128) -> u128 {
+        amount.min(u128::from(WITHDRAWAL_RESERVE_BYTES) * env::storage_byte_cost().as_yoctonear())
+    }
+
+    /// Non-refundable fee debited from prepaid credit; funds the permanent proposal record.
+    pub(crate) fn proposal_storage_fee() -> u128 {
+        u128::from(PROPOSAL_STORAGE_BYTES) * env::storage_byte_cost().as_yoctonear()
+    }
+
+    /// Liquid balance minus everything owed to users (including in-flight withdrawals).
+    pub(crate) fn operating_surplus(&self) -> u128 {
+        let owed = self
+            .total_liabilities
+            .saturating_add(self.pending_withdrawals);
+        self.liquid_balance().unwrap_or(0).saturating_sub(owed)
+    }
+
+    fn assert_solvent(&mut self, outgoing: u128) {
+        self.flush_storage();
+        if !self.has_liquid_backing(outgoing) {
+            env::panic_str(STORAGE_INSOLVENT);
+        }
+    }
 }
 
 fn emit(event: &str, data: serde_json::Value) {

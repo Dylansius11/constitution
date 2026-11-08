@@ -1,0 +1,47 @@
+---
+/**
+ * The CONSTITUTION mark: nine bars around a negative-space triangle with a T stem.
+ * Traced from the founder's asset/logo-only-black.png; three filled paths so scenes can move
+ * the left, right and base pieces independently (data-part). Colour is currentColor.
+ */
+interface Props {
+  /** Accessible name. Omit for a decorative mark (aria-hidden). */
+  label?: string;
+  class?: string;
+  size?: string;
+}
+
+const { label, class: className, size = "1.5rem" } = Astro.props;
+---
+
+<svg
+  class:list={["mark", className]}
+  viewBox="0 0 428 422"
+  width={size}
+  height={size}
+  fill="currentColor"
+  role={label ? "img" : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : "true"}
+  focusable="false"
+>
+  <path
+    data-part="left"
+    d="M126 15 177 2 214 127 142 250 17 284 2 230 111 201 117 190 26 131 54 84 148 140 158 122Z"
+  ></path>
+  <path
+    data-part="right"
+    d="M270 122 280 140 374 84 402 131 311 190 317 201 426 230 411 284 286 250 214 127 251 2 302 15Z"
+  ></path>
+  <path
+    data-part="base"
+    d="M144 252 284 252 374 346 337 383 259 305 242 305 242 420 187 420 187 305 170 305 92 383 54 346Z"
+  ></path>
+</svg>
+
+<style>
+  .mark {
+    flex: none;
+    overflow: visible;
+  }
+</style>

@@ -41,12 +41,11 @@ fn attest_help_documents_pccs_and_expected_compose_options() {
         .unwrap();
     assert!(result.status.success());
     let text = String::from_utf8(result.stdout).unwrap();
-    for flag in [
-        "--expect-compose-hash",
-        "--pccs-url",
-        "https://pccs.phala.network",
-        "--json",
-    ] {
+    for flag in ["--expect-compose-hash", "--pccs-url", "PCCS_URL", "--json"] {
         assert!(text.contains(flag), "{text}");
     }
+    assert!(
+        !text.contains("https://"),
+        "endpoint values must stay private: {text}"
+    );
 }

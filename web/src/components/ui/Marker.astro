@@ -1,0 +1,70 @@
+---
+/**
+ * Stage marker shapes (DESIGN 6.1 rule 5). Shape carries the state with the text label next to it;
+ * colour is a second cue only. Decorative: the adjacent text is the accessible state.
+ */
+export type MarkerState = "pending" | "active" | "done" | "refused" | "skipped";
+
+interface Props {
+  state: MarkerState;
+  class?: string;
+}
+
+const { state, class: className } = Astro.props;
+---
+
+<svg
+  class:list={["marker", `marker--${state}`, className]}
+  viewBox="0 0 16 16"
+  width="16"
+  height="16"
+  aria-hidden="true"
+  focusable="false"
+>
+  {state === "pending" && <circle cx="8" cy="8" r="6" />}
+  {
+    state === "active" && (
+      <>
+        <circle cx="8" cy="8" r="6" />
+        <circle cx="8" cy="8" r="2.75" class="marker__fill" />
+      </>
+    )
+  }
+  {state === "done" && <path d="M3.5 8.4 6.6 11.3 12.5 4.9" />}
+  {state === "refused" && <path d="M4 4 12 12M12 4 4 12" />}
+  {state === "skipped" && <path d="M3.5 8h9" />}
+</svg>
+
+<style>
+  .marker {
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: color var(--dur-fast) var(--ease-out);
+  }
+
+  .marker__fill {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  .marker--pending,
+  .marker--skipped {
+    color: var(--line-strong);
+  }
+
+  .marker--active {
+    color: var(--violet);
+  }
+
+  .marker--done {
+    color: var(--pass);
+  }
+
+  .marker--refused {
+    color: var(--refuse);
+  }
+</style>

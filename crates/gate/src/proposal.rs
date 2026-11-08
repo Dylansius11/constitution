@@ -3,6 +3,7 @@ use crate::{GateExt, credit::active_key};
 
 #[near]
 impl Gate {
+    #[payable]
     pub fn propose(&mut self, args: ProposeArgs) -> u64 {
         let proposer = env::predecessor_account_id();
         check(
@@ -12,10 +13,14 @@ impl Gate {
         );
         let balance = self.credit.get(&proposer).copied().unwrap_or(0);
         let reserved = self.constitution.params.proposal_deposit;
+        let fee = Gate::proposal_storage_fee();
+        let required = reserved
+            .checked_add(fee)
+            .unwrap_or_else(|| env::panic_str(GateError::InsufficientCredit.code()));
         check(
-            balance >= reserved,
+            balance >= required,
             GateError::InsufficientCredit,
-            "proposal reservation",
+            "proposal reservation and prepaid storage fee",
         );
         check(
             args.init_calldata.0.len() <= MAX_INIT_CALLDATA,
@@ -27,12 +32,17 @@ impl Gate {
             GateError::ZeroAddress,
             "implementation",
         );
-        let key = active_key(&args.new_impl_codehash.0, &args.init_calldata.0);
+        let key = active_key(&proposer, &args.new_impl_codehash.0, &args.init_calldata.0);
         check(
             !self.active_by_key.contains_key(&key),
             GateError::DuplicateActive,
-            "codehash and calldata active",
+            "proposer, codehash and calldata active",
         );
+        if env::attached_deposit().as_yoctonear() != 0 {
+            env::panic_str(&format!(
+                "{STORAGE_FEE}: attach zero; the proposal storage fee is paid from credit"
+            ));
+        }
         let now = env::block_timestamp();
         let expires_at_ns = s_to_ns(self.constitution.params.proposal_ttl_s)
             .and_then(|ttl| now.checked_add(ttl))
@@ -63,11 +73,13 @@ impl Gate {
             json!({"proposal_id": id, "proposal": &proposal,
             "rule_set_hash": constitution_types::Hex32(proposal.rule_set_hash)}),
         );
-        self.credit.insert(proposer.clone(), balance - reserved);
+        self.credit.insert(proposer.clone(), balance - required);
+        self.total_liabilities -= fee;
         self.active_by_account.insert(proposer, id);
         self.active_by_key.insert(key, id);
         self.proposals.insert(id, proposal);
         self.next_proposal_id = next;
+        self.assert_solvent(0);
         id
     }
 
@@ -90,6 +102,7 @@ impl Gate {
         self.release_reservation(&mut proposal);
         proposal.state = ProposalState::Expired;
         self.proposals.insert(proposal_id, proposal);
+        self.assert_solvent(0);
         emit("proposal_expired", json!({"proposal_id": proposal_id}));
     }
 }

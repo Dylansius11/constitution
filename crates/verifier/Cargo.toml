@@ -12,6 +12,7 @@ publish.workspace = true
 constitution-types.workspace = true
 borsh.workspace = true
 serde.workspace = true
+alloy-sol-types.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sha3.workspace = true

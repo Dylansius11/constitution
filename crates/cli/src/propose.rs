@@ -49,7 +49,7 @@ pub fn build_bundle(dir: &Path, contract: &str) -> Result<SourceBundle, Failure>
                         path.display()
                     )));
                 }
-                if meta.len() > MAX_BUNDLE as u64 || files.len() >= 4096 {
+                if meta.len() > MAX_BUNDLE as u64 || files.len() >= 128 {
                     return Err(bundle_error("bundle limit exceeded"));
                 }
                 let content = fs::read(&path).map_err(bundle_error)?;
@@ -115,11 +115,74 @@ pub fn seal(bytes: &[u8], public_key: [u8; 32]) -> Result<Vec<u8>, Failure> {
         })
 }
 
+/// Retry verification of an existing proposal without another on-chain write.
+/// File input is canonical Borsh SourceBundle; directories use the propose collector.
+pub fn verifier_run(
+    path: &Path,
+    contract: Option<&str>,
+    gate: &str,
+    id: u64,
+    near: &Near,
+    verifier: &Verifier,
+) -> Result<(), Failure> {
+    let bytes = if path.is_dir() {
+        let contract = contract
+            .ok_or_else(|| bundle_error("directory input requires --contract src/path.sol:Name"))?;
+        canonical_bytes(&build_bundle(path, contract)?)?
+    } else {
+        if fs::metadata(path).map_err(bundle_error)?.len() > MAX_BUNDLE as u64 {
+            return Err(bundle_error("Borsh bundle exceeds 2 MiB"));
+        }
+        let raw = fs::read(path).map_err(bundle_error)?;
+        let bundle: SourceBundle = borsh::from_slice(&raw).map_err(bundle_error)?;
+        canonical_bytes(&bundle)?
+    };
+    let proposal = crate::receipt::read_proposal(near, gate, id)?;
+    if proposal.state != constitution_types::ProposalState::Pending {
+        return Err(Failure::new(
+            format!("proposal {id} is not Pending"),
+            "inspect `constitution status <id>`; only Pending proposals can start another verifier run",
+        ));
+    }
+    if constitution_types::certificate_hash(&bytes) != proposal.source_commitment {
+        return Err(Failure::new(
+            format!(
+                "bundle differs from proposal {id} source commitment; no verifier request was sent"
+            ),
+            "use exactly the original canonical source bundle and contract selection; do not change the existing proposal",
+        ));
+    }
+    let identity = verifier.identity()?;
+    let key: Hex32 =
+        serde_json::from_value(identity["transport_pubkey"].clone()).map_err(|_| {
+            Failure::new(
+                "verifier identity has no valid transport_pubkey",
+                "check --verifier-url/VERIFIER_URL and fetch the current identity before retrying",
+            )
+        })?;
+    println!(
+        "verifier identity NOT APPRAISED by this command; use constitution verifier appraise (D5)"
+    );
+    let run_id = verifier.start(gate, id, &seal(&bytes, key.0)?)?;
+    println!("verifier run: {run_id}");
+    println!(
+        "next: constitution status {id} --run {run_id} --watch 600 (use the same --gate, --near-rpc and --verifier)"
+    );
+    Ok(())
+}
+
 pub struct Input<'a> {
     pub bytes: &'a [u8],
     pub implementation: &'a str,
     pub init: &'a str,
     pub account: &'a str,
+}
+
+/// An accepted on-chain proposal; persist these identifiers before starting a verifier run.
+pub struct Registered {
+    pub id: u64,
+    pub tx_hash: String,
+    pub sealed: Vec<u8>,
 }
 
 pub fn propose(
@@ -129,7 +192,7 @@ pub fn propose(
     near: &Near,
     evm: &Evm,
     verifier: &Verifier,
-) -> Result<(), Failure> {
+) -> Result<Registered, Failure> {
     let bytes = input.bytes;
     let address: Hex20 = serde_json::from_value(json!(input.implementation)).map_err(|e| {
         Failure::new(
@@ -196,13 +259,39 @@ pub fn propose(
             "check --verifier / VERIFIER_URL; nothing was written on chain",
         )
     })?;
+    let sealed = seal(bytes, key.0)?;
     let credit: U128Str = near
         .view(gate, "get_credit", json!({"account": input.account}))
         .map_err(read_error)?;
-    let shortfall = constitution
+    let proposal_fee: U128Str = near
+        .view(gate, "get_proposal_fee", json!({}))
+        .map_err(read_error)?;
+    let required = constitution
         .params
         .proposal_deposit
-        .saturating_sub(credit.0);
+        .checked_add(proposal_fee.0)
+        .ok_or_else(|| {
+            Failure::new(
+                "proposal reservation and storage fee exceed the credit amount range",
+                "inspect the gate parameters; no funding or proposal was submitted",
+            )
+        })?;
+    let mut shortfall = required.saturating_sub(credit.0);
+    if credit.0 == 0 {
+        // A zero balance may be a missing entry. The gate takes a one-time entry fee out of the
+        // first deposit to a missing entry; if the entry exists, the same amount is only extra
+        // refundable credit, so paying it is safe either way.
+        let entry_fee: U128Str = near
+            .view(
+                gate,
+                "get_credit_entry_fee",
+                json!({"account": input.account}),
+            )
+            .map_err(read_error)?;
+        // The gate refuses a first deposit that does not exceed the entry fee (E61), which would
+        // happen for a zero proposal_deposit; one extra yocto becomes refundable credit.
+        shortfall = shortfall.max(1).saturating_add(entry_fee.0);
+    }
     if shortfall > 0 {
         println!("depositing credit: {shortfall} yoctoNEAR");
         writer.call(
@@ -213,6 +302,10 @@ pub fn propose(
             "fund the signing account or top up credit with a full-access key, then retry",
         )?;
     }
+    println!(
+        "paying the non-refundable proposal storage fee from prepaid credit: {} yoctoNEAR",
+        proposal_fee.0
+    );
     let called = writer.call(gate, "propose", json!({"args": args}), 0, "wait for your active proposal to finish (or expire it after its deadline), then propose again; inspect with constitution status <id>")?;
     let id = called.value.as_u64().ok_or_else(|| {
         Failure::new(
@@ -225,10 +318,11 @@ pub fn propose(
     println!(
         "verifier identity NOT APPRAISED by this command; use constitution verifier appraise (D5)"
     );
-    let sealed = seal(bytes, key.0)?;
-    let run_id = verifier.start(gate, id, &sealed)?;
-    println!("verifier run: {run_id}");
-    Ok(())
+    Ok(Registered {
+        id,
+        tx_hash: called.tx_hash,
+        sealed,
+    })
 }
 
 #[cfg(test)]

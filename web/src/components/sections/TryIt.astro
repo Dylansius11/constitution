@@ -1,0 +1,108 @@
+---
+import { agentCommands, humanCommands } from "../../data/commands.ts";
+import RunConsole from "../live/RunConsole.astro";
+import CodeBlock from "../ui/CodeBlock.astro";
+
+/**
+ * Try it (DESIGN 5 row 7): two ways to check the claims. In the browser, the attack and the honest
+ * upgrade run against testnet once the gate is activated; from a checkout, the commands run today.
+ */
+---
+
+<section id="try" class="try" aria-labelledby="try-title">
+  <div class="container">
+    <div class="try__head" data-reveal>
+      <h2 id="try-title">Check it yourself.</h2>
+      <p class="lede">
+        Two ways in. In the browser, submit the attack or the honest upgrade with a public demo key
+        and watch each stage arrive from the chain. From a checkout, run the same checks in a
+        terminal today.
+      </p>
+    </div>
+
+    <div class="try__browser" data-reveal>
+      <h3 class="try__sub">In the browser</h3>
+      <RunConsole />
+    </div>
+
+    <div class="try__grid">
+      <div class="try__text" data-reveal>
+        <h3 class="try__sub">From a checkout</h3>
+        <p>
+          The gate tests, the contract tests and the page tests run today. Chain reads follow
+          activation.
+        </p>
+        <p class="muted try__agents">
+          Agents get a plain-text guide at <a href="/llms.txt">/llms.txt</a>: what the system is, its
+          honest status, its limits and the commands to verify each claim.
+        </p>
+      </div>
+      <CodeBlock
+        id="try-code"
+        label="Audience"
+        title="~/constitution"
+        class="try__code"
+        tabs={[
+          { id: "human", label: "Human", lines: humanCommands },
+          { id: "agent", label: "Agent", lines: agentCommands },
+        ]}
+      />
+    </div>
+  </div>
+</section>
+
+<style>
+  .try {
+    padding: var(--section-y) 0;
+    background: var(--paper-2);
+  }
+
+  .try__head {
+    display: grid;
+    gap: var(--space-5);
+    max-width: 50rem;
+    margin-bottom: var(--space-8);
+  }
+
+  h2 {
+    font-size: var(--text-3xl);
+  }
+
+  .try__sub {
+    margin-bottom: var(--space-4);
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .try__browser {
+    margin-bottom: var(--space-9);
+  }
+
+  .try__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+    gap: var(--space-8);
+    align-items: start;
+  }
+
+  .try__text {
+    display: grid;
+    gap: var(--space-4);
+    max-width: 34rem;
+  }
+
+  .try__agents {
+    font-size: var(--text-sm);
+  }
+
+  .try__code {
+    min-width: 0;
+  }
+
+  @media (max-width: 56rem) {
+    .try__grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-6);
+    }
+  }
+</style>

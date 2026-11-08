@@ -1,0 +1,12 @@
+# Explicit local registry, no attestation, no submitter, never register this identity.
+services:
+  verifier:
+    command: ["--insecure-dev-identity"]
+    environment:
+      LOCAL_PROPOSAL_REGISTRY: /run/constitution/local-proposals.json
+    volumes:
+      - type: bind
+        source: ${LOCAL_PROPOSAL_REGISTRY:?Set a local operator-controlled proposal registry file}
+        target: /run/constitution/local-proposals.json
+        read_only: true
+        bind: {create_host_path: false}

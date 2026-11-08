@@ -4,6 +4,42 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-05: Prepaid proposal credit must include storage for restricted NEAR keys
+
+- [V, local] A fresh review found that `propose` still required an attached storage fee although D17 exposes only a function-call key. The old prepaid-credit regression failed at the attached-fee check. After cutover, the actual CLI successfully registered a proposal in near-sandbox using a genuine method-restricted key; forbidden credit withdrawal and NEAR transfer remained refused.
+- Root cause: reservation funding and permanent storage metering were implemented separately, but the integration tests only signed proposals with full-access accounts. Paying the refundable reservation from credit did not make a separate attached storage fee compatible with the public demo key.
+- Rule: prepay both amounts in credit, permanently debit only the storage fee, reserve/refund only the proposal deposit, and attach zero to `propose`. Exercise the real restricted key through the CLI, not only a mocked predecessor. Labels and API comments must distinguish the refundable reservation view from the total funding requirement.
+
+### 2026-11-05: Gate expiry must match the executor's inclusive deadline
+
+- [V, local] New regressions failed because the gate permitted rule changes and superseded-rule retries at `now_s == deadline_s`, while `ConstitutionExecutor` still accepts execution at that second. The corrected gate blocks through equality and permits expired nonce filling only afterwards without extending the stored deadline.
+- Root cause: the gate used `deadline <= now` as expiry while the executor rejects only `timestamp > deadline`; the old model and boundary test repeated the gate comparator instead of using the execution contract as the oracle.
+- Rule: derive boundary expectations from the consumer's acceptance interval. Test D and D+1 for Signed, SignFailed, governance, retry and bump; byte-preserving nonce recovery must not create a still-executable old-rule upgrade.
+
+### 2026-11-05: Complementary Base RPC endpoints can preserve pinned-state authentication
+
+- [V, exercised on Base Sepolia] What happened: the public Base Sepolia RPC supplied account/storage proofs for recent numbered blocks while the configured Validation Cloud endpoint supplied archive state and traces. The production witness fetch, using both providers, passed at block 54,676,922 for 8 accounts and 7 storage slots in 12,189 ms. No transactions, upgrade verdict, AI call or R2/solver was involved.
+- Root cause boundary: state/trace and proof capabilities need not come from one provider. Archive access does not guarantee historical proof retention; Base documents separate historical-proof infrastructure (https://docs.base.org/base-chain/node-operators/run-a-base-node). The exact reason for Validation Cloud's restriction remains unverified.
+- Rule: explicitly configure both endpoints, independently verify their chain ids and the same pinned header, then verify every account/storage proof against that header's `stateRoot` and recheck both pinned hashes. Rate limits, proof-window expiry and provider disagreement fail closed. Local regression uses real Anvil behind complementary gateways; wrong proof chain/header, tampering, unavailability and a final-read reorg are environmental failures, never proposal rejections.
+
+### 2026-11-05: Archive state and working traces do not guarantee historical state proofs
+
+- [V, exercised on Base Sepolia] What happened: the configured B5 endpoint served historical code/storage and `debug_traceCall` with `prestateTracer`, applied `stateOverrides`, and reported an override storage write in `diffMode` at spike-proxy block 53,766,464. `eth_getProof` at that block and at tip minus 2, 128 and 1,024 failed with `-32602`, "distance to target block exceeds maximum proof window". `latest` returned a proof response only; it was not authenticated against a pinned header.
+- Root cause boundary: historical state/trace access and fixed-block proof access have different effective availability on this endpoint. [U] Whether this is backend lag, provider configuration or a plan limit is not established; do not infer that every account or tier has the same restriction.
+- Rule: qualify the exact endpoint with a fixed block and verify account/storage proofs against its `stateRoot`. Do not replace pinned evidence with `latest`, weaken proof checks or buy an upgrade without founder approval. B5 stays open until the provider resolves the proof failure or an explicitly approved replacement passes.
+
+### 2026-11-04: NVIDIA attestation JWTs fail closed when the host clock is a few seconds behind
+
+- What happened: `live-review.mjs` returned `inference_or_verification_failed` with no completion id; a direct SDK call showed `[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid`.
+- Root cause: the dev machine clock was about 3 s behind the provider (`date -u` against the HTTP `Date` header of `cloud-api.near.ai`); `w32tm` reported "Local CMOS Clock", never synced. The SDK checks the JWT not-before time without leeway. With a throwaway +6 s clock offset the same call returned `provider_tee`. The sidecar swallows the SDK error by design, so the reason code alone hid the cause.
+- Rule: sync the clock before any live provider check (Windows: Settings, Time, Sync now); the verifier CVM must run NTP-synced. A `not_yet_valid` withheld run is a clock fault, not a model fault.
+
+### 2026-11-03: Orca's WSL relay restarts the VM, so the vhdx stays locked
+
+- What happened: three attempts to compact `ext4.vhdx` with diskpart after `wsl --shutdown` failed with "being used by another process"; the founder had quit Docker Desktop and ran the script as Administrator. `wsl --shutdown` itself worked, but `vmmemWSL` and `vmwp` were back within seconds.
+- Root cause: a helper process of the Orca terminal app (`Orca.exe ... --max-old-space-size=384`) keeps launching `wsl.exe -d Ubuntu ... opencode-sqlite-reader.cjs`, which boots the distro again. The lock came from that VM, not from Docker. `docker_data.vhdx` is NTFS-sparse, which diskpart refuses for another reason.
+- Rule: before compacting, stop the Orca relay helper (and any `wsl.exe` it started), then `wsl --shutdown` and run diskpart at once. `scratch/compact-admin.ps1` does this in a retry loop; it took `ext4.vhdx` from 45.9 GB to 26.9 GB and freed 19 GB on C:. Never kill the Orca daemon host that carries the agent session.
+
 ### 2026-11-03: A trailing slash in .gitignore does not ignore symlinks
 
 - What happened: a temporary worktree linked `web/node_modules` to the main tree with a Windows junction; `git add web` committed the junction because `.gitignore` said `node_modules/`.
