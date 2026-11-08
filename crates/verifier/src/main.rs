@@ -21,6 +21,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         [flag] if flag == "--insecure-dev-identity" => true,
         _ => return Err("usage: constitution-verifier [--insecure-dev-identity]".into()),
     };
+    let listen_addr = match std::env::var("VERIFIER_LISTEN_ADDR") {
+        Ok(value) => value
+            .parse::<std::net::SocketAddr>()
+            .map_err(|_| "invalid VERIFIER_LISTEN_ADDR")?,
+        Err(std::env::VarError::NotPresent) => std::net::SocketAddr::from(([127, 0, 0, 1], 8787)),
+        Err(_) => return Err("invalid VERIFIER_LISTEN_ADDR".into()),
+    };
     let repo = std::env::current_dir()?;
     let manifest = load_manifest(repo.join("rules/manifest.json"))?;
     let origin = required("PAGE_ORIGIN")?;
@@ -94,9 +101,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Service::trust_proxy_header(&mut service, header)?;
     }
     let app = router(service, &origin)?;
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8787").await?;
+    let listener = tokio::net::TcpListener::bind(listen_addr).await?;
+    let bound_addr = listener.local_addr()?;
     eprintln!(
-        "verifier listening on 127.0.0.1:8787; {identity_label}; Pass requires provider_tee review; mode={}; admission peers keyed by {}",
+        "verifier listening on {bound_addr}; {identity_label}; Pass requires provider_tee review; mode={}; admission peers keyed by {}",
         if local {
             "local registry (no submission)"
         } else {

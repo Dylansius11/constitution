@@ -241,9 +241,22 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 - `release_hash = sha256("constitution.v1/release" || MRTD || RTMR0 || RTMR1 || RTMR2 || compose_hash)`; RTMR3 event-log replay must reproduce `compose_hash`.
 - [V] Phala deterministic `GetKey` keys are derived per **application id**, not per measured code (docs.phala.com get-a-key, 2026-10-26). Whoever controls app updates could obtain the same key under different code, so P0 does not use `GetKey` for the certificate key. Consequence: a CVM restart produces a new key that needs a timelocked `AddVerifier` (P0) or, after P1 on-chain DCAP, a permissionless key registration for an already-approved `release_hash`. Budget impact: OPEN-DECISIONS D18.
 
+[I, local packaging] The Rust service and Node sidecar share one container network
+namespace; only port 8787 is published on host loopback. The supervisor separates
+NEARAI settings from the Rust process and relay settings from the sidecar and
+stops both on a child failure. The trusted service alone accesses the host Docker
+socket (root-equivalent); tool jobs receive only staged files and use libraries
+embedded in their image. An identical absolute TMPDIR bind bridges the service
+and daemon filesystems. Both image references must be immutable in the final
+rendered deployment inputs before quote appraisal. Packaging and a candidate
+Compose file do not prove CVM execution, ingress policy or DCAP verification;
+P1.6 remains required. Operator steps and resource limits:
+[`crates/verifier/src/LOCAL.md`](../../crates/verifier/src/LOCAL.md#packaged-linux-service).
+
 ### AI review
 
 - Sidecar uses `new InferenceClient({ baseUrl: "https://cloud-api.near.ai/v1", apiKey, e2ee: true, gatewayVerification: {policy: {acceptedTcbStatuses: ["UpToDate"]}}, modelVerification: {policy: {acceptedTcbStatuses: ["UpToDate"]}} })` [V option names from the JS SDK doc]; header `x-no-aliasing: true`; model `z-ai/glm-5.3-flash`.
+- Review sends `max_tokens: 45000` and `thinking_token_budget: null` under the committed 300 s maximum; reasoning counts inside completion usage. Candidate JSON remains bounded at 64 KiB independently of this model-work ceiling. SDK setup and response verification are inside the review deadline; the Rust caller has 2 s transport grace and the enclosing verifier run retains its 20-minute deadline. No inference retries or certificate-TTL changes follow. S1 repair is separately planned at 100,000 completion tokens and a 30-minute whole-job deadline; production repair is not implemented.
 - Output contract requested from the model: JSON `{candidates: [{rule: "R2", rationale, steps: [{from: "attacker"|"victim"|"0x..", call: "<function signature>", args: [...], value: "0"}]}]}`, at most `max_candidates`.
 - After the stream completes: `receipt = await client.verifyResponse(completion.id)`; require `receipt.signatureKind === "provider_tee"`; otherwise AI review is `incomplete`.
 - The verifier replays each candidate in revm on the evidence-block fork with the new implementation. Only a reproduced R2 violation creates `Reject{2,22}`. Prompt text and model output are untrusted data: nothing from them is executed except as EVM transactions inside the sandboxed replay.
