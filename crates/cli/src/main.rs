@@ -1,6 +1,7 @@
 //! `constitution` CLI. Interface: docs/technical/ARCHITECTURE.md "CLI".
 mod appraise;
 mod audit;
+mod demo;
 mod executor_build;
 mod failure;
 mod govern;
@@ -31,6 +32,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Propose, watch, verify an attack rejection or relay an honest upgrade; retain evidence.
+    Demo(demo::DemoArgs),
     /// Register canonical source and send its sealed bundle to a verifier (identity not appraised).
     Propose {
         #[command(flatten)]
@@ -314,6 +317,7 @@ enum GovernCommand {
 
 fn run(cli: Cli) -> Result<(), Failure> {
     match cli.command {
+        Command::Demo(args) => demo::run(args),
         Command::Verifier {
             command:
                 VerifierCommand::Appraise {

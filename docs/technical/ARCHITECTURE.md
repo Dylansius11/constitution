@@ -262,8 +262,37 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 | `constitution executor-runtime-hash [--executor-artifact <Foundry JSON>]` | Offline helper: keccak256 of executor deployed runtime with compiler-declared immutable regions zeroed; writes no deployment record |
 | `constitution verifier appraise <url>` | Off-chain quote appraisal (D5) |
 | `constitution verifier run --proposal <id> --bundle <dir\|file> [--contract src/<file>.sol:<Name>] --gate <gate> [--near-rpc <url>] [--verifier-url <url>]` | [I] Read-only retry for an existing Pending proposal: validates the canonical source bundle and compares its SHA-256 to the on-chain source commitment before contacting the verifier, fetches its current transport key, re-seals and POSTs `/v1/runs`. Directory input requires `--contract`; file input is a canonical Borsh `SourceBundle`. Prints the numeric run id and a `status --run --watch` command; identity is not appraised. Admission refusals give a code-specific recovery; 429 honors `Retry-After` seconds. `propose` remains asynchronous; no automatic retry or resubmission |
+| `constitution demo attack\|upgrade --bundle <dir> --contract <path:Name> --impl <address> --account <id> --key-file <file> --gate <id> --network local\|testnet --near-rpc <url> --evm-rpc <url> --verifier <url> --output <new-directory> [--init <hex>] [--send-rpc <url>] [--watch <seconds>]` | Proposes once, watches the existing proposal, and retains recovery metadata plus an observed receipt. Attack never relays. Upgrade relays only Signed state through the existing sender/transaction checks; success additionally requires inclusion and candidate implementation-slot readback |
 
-`make attack` = propose the drain fixture with the demo key and watch; `make upgrade` = propose the honest fixture, watch, relay. Both print receipt paths.
+`make attack` and `make upgrade` invoke this runner with explicit inputs, rather than deploying implementations or manufacturing certificates. Both print the evidence directory; a successful run prints `receipt.json`. `make audit` invokes the existing read-only audit with an explicit deployment record and RPCs. `make test` runs the Rust workspace serially; it requires the documented sandbox/Foundry/Docker prerequisites and is not a lightweight health check.
+
+#### Demo runner operation
+
+[I, implementation contract] Run from Linux/WSL2 with the CLI toolchain. The gate, executor, proxy, candidate implementation and verifier must already exist. Choose an already-appraised verifier for private source: like `propose`, this runner fetches the transport key but does **not** perform DCAP appraisal. `--network local` labels evidence; it does not create a local network or prevent a user from supplying remote endpoints. No environment file is automatically sourced. Running against a funded verifier can consume inference credits; live writes and spending still require founder approval.
+
+For the existing demo sources, use `BUNDLE=contracts` with `CONTRACT=src/demo/VaultV2Drain.sol:VaultV2Drain` for attack, or `CONTRACT=src/demo/VaultV2Honest.sol:VaultV2Honest` for upgrade. The selected implementation must have been deployed with matching compiler settings. Set `IMPLEMENTATION` to that deployment and supply the intended `INIT` calldata explicitly when initialization is needed; the CLI default is empty `0x`.
+
+```sh
+# Planned operator invocation; values come from the chosen local/testnet deployment.
+# Create the parent once, but OUTPUT itself must not exist.
+mkdir -p receipts
+make attack BUNDLE=contracts CONTRACT=src/demo/VaultV2Drain.sol:VaultV2Drain \
+  IMPLEMENTATION="$DRAIN_IMPL" INIT="$DRAIN_INIT" ACCOUNT="$DEMO_ACCOUNT" \
+  GATE="$GATE_ACCOUNT" KEY_FILE="$DEMO_KEY_FILE" NETWORK=local \
+  NEAR_RPC="$LOCAL_NEAR_RPC" EVM_RPC="$LOCAL_EVM_RPC" \
+  VERIFIER="$LOCAL_VERIFIER_URL" OUTPUT=receipts/local-attack-001
+# Use make upgrade with the honest contract/address/init and a fresh OUTPUT.
+```
+
+All eleven `DEMO_REQUIRED` Makefile inputs are mandatory. `WATCH` defaults to 600 seconds **per polling stage**; HTTP and NEAR transaction waits have their own existing bounds. `SEND_RPC` optionally selects a separate broadcaster; otherwise it uses the explicitly supplied `EVM_RPC`. Make does not echo the command containing endpoint values. Do not put keys or RPC URLs into receipt filenames.
+
+The new output directory is reserved before any network write. Files are create-only and synced before proceeding: `attempt.json` labels the gate/network/scenario; `submission.json` records the accepted proposal id and observed NEAR propose transaction **before** the verifier POST; `run.json` records a returned run id. `receipt.json`, when public state is readable, uses `constitution.receipt/1` and includes the observed propose transaction. `failure.json` retains actionable failure/recovery information without URLs. Files contain no source bundle, sealed bundle, wallet secret or RPC configuration. Unix creation modes are directory `0700`, files `0600`; Windows ACL behavior is not asserted.
+
+Exit 0 requires an observed Rejected attack with no EVM signing record and unchanged proxy slot, or a Signed honest proposal whose EVM transaction is included successfully and whose observed proxy slot equals the candidate. Timeout, withheld AI, SignFailed, unexpected attack signing, reverted inclusion and divergent proxy state exit nonzero. A terminal verifier run is not gate settlement. If run/evidence retrieval fails, a gate-only receipt is retained when readable, but the overall run still fails rather than silently dropping verification.
+
+The runner shares `status`'s terminal-run policy: `done` without a certificate, `failed`, or `submit: Incomplete` cannot be bypassed by observing Signed/Rejected on the gate. A run still submitting is polled rather than treated as authorization to relay. Requested accepted-certificate evidence returning 404 is an incomplete receipt, not a successful evidence check.
+
+On failure, inspect `submission.json` first. Use the existing `status`, `receipt`, `verifier run` or `relay` commands for that proposal as appropriate; do not rerun the demo to retry a verifier POST or uncertain transaction. Existing output directories are rejected, never overwritten. An interrupted process or uncertain NEAR write may require manual chain inspection; the runner is not a crash-recovery database. An offline/unattested verifier still cannot issue Pass or submit verdicts. These runners do not implement a full-VPS signing fallback.
 
 `constitution audit` [I, local implementation; no activated-testnet claim] reads public state at NEAR `final` and EVM `latest` and prints 11 PASS/FAIL preconditions: `gate_has_no_access_keys`, `gate_code_is_committed_build`, `executor_code_is_committed_build`, `gate_binds_this_deployment` (chain, executor, proxy and MPC account match the record and RPC chain), `derived_eoa_is_executor_signer` (MPC derivation equals gate EOA and executor signer), `executor_controls_this_proxy`, `executor_owns_proxy_admin`, `proxy_admin_is_erc1967_admin`, `implementation_tracker_matches_slot`, `active_rule_set_is_committed_manifest`, `verifier_allowlist_is_committed`. The existing ownership and slot checks remain even though the executor constructor deploys the proxy/admin. An unreadable value aborts with named `FAIL read_failed`, exit 1; never a pass.
 
