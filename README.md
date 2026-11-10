@@ -8,7 +8,7 @@ The verifier runs deterministic checks inside an attested TEE. NEAR AI Cloud pri
 
 ## Current status
 
-**Testnet only; not independently audited.** The final testnet deployment has been exercised, but lockdown is not complete: as observed on 2026-11-10, `constitution-gate.testnet` still holds one full-access key. Its deletion requires fresh founder authorization. Until the on-chain key list shows zero, the intended protection against a stolen gate account key is not established.
+**Testnet only; not independently audited.** [V, exercised on testnet 2026-11-10] The final gate, `constitution-gate.testnet`, had its only access key deleted in [transaction `FugUyo9Xa8VLTm9qM5vovYUpJU5DAqNjTUriYkmKEhn8`](https://testnet.nearblocks.io/txns/FugUyo9Xa8VLTm9qM5vovYUpJU5DAqNjTUriYkmKEhn8), block 277098815, at 2026-11-10T17:35:22.910Z. The final-finality access-key list returned 0 keys.
 
 The [public page](https://constitution-gate.pages.dev) is hosted on Cloudflare Pages Free; its initially deployed build predates the final deployment, so inspect what it actually displays rather than assuming its live data has been updated. The [build plan](docs/BUILD-PLAN.md) tracks remaining work. Optional proposal repair is not implemented.
 
@@ -37,7 +37,7 @@ The single verifier instance was a Phala `tdx.small` CVM. Its appraisal passed t
 | Governance, change 0 | F11 `SetParams` scheduled with ETA **2026-11-13T16:56:01Z**; early apply refused `E53_TIMELOCK_NOT_ELAPSED`. [Schedule](https://testnet.nearblocks.io/txns/2mn9jrjBzAuBHBgc5ExWJMeYLfTdDpvMEUhVfPC5vA6P) · [early apply](https://testnet.nearblocks.io/txns/AvHkJNNzU7zQvQmncDSUhsXTWM8F5bciHVhZSRDBuHP). No matured apply is claimed. |
 | Honest upgrade, proposal 1 | R1–R5 Pass; private AI review verified `provider_tee`, four candidates, none reproduced (419 s). The signed Pass led to an MPC signature and [successful Base Sepolia transaction](https://sepolia.basescan.org/tx/0xe323d9b9c0169174e2b3895b8bdc41dc81e8e83c1e8cb62fcd51e8f708601da2), block 57042237, 105,099 gas; V1 changed to honest V2. Total run: 515.8 s. [Propose](https://testnet.nearblocks.io/txns/6XqKZ2ptbcJhBooJMdLfstmKMP1e61DxzU3UKsGRyDwo) · [verdict](https://testnet.nearblocks.io/txns/cMJQU3T4r2jHmvGc3mkYytT2Lah2hV316CNQEaPd9X1) |
 
-The pre-deletion audit observed **15 checks passing and one expected failure**, `gate_has_no_access_keys`, because the gate retains that key. It is not a clean security audit.
+[V, exercised on testnet 2026-11-10] The post-deletion audit exited 0 with 16 named check/information lines, including `gate_has_no_access_keys` PASS (0 access keys). This is not an independent security audit.
 
 **The live attack cannot be repeated on this proxy under the current rule set.** The manifest references VaultV1, but the proxy now runs honest V2: a new proposal encounters rule 0 `current source runtime mismatch` before R2. Use the recorded drain receipts, not a new run, to inspect the R2 refusal. A subsequent upgrade needs a new rule set and verifier release through governance.
 
@@ -64,7 +64,7 @@ export BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
   --near-rpc "$NEAR_RPC_URL" --evm-rpc "$BASE_SEPOLIA_RPC_URL" --network testnet
 ```
 
-For the recorded state, expect audit exit 1 with the retained-key failure above, proposal 0 Rejected without an EVM signature, and proposal 1 Signed with the included Base transaction. State can change; re-read the output. Gate-only receipts do not reconstruct verifier stages or the private AI review: include `--verifier "$VERIFIER_URL" --run "$RUN_ID"` only when you have the matching retained verifier run id and available evidence. A missing evidence manifest is incomplete, not a pass.
+For the recorded testnet state, expect audit exit 0 with 16 named check/information lines, including `gate_has_no_access_keys` PASS, proposal 0 Rejected without an EVM signature, and proposal 1 Signed with the included Base transaction. State can change; read the output. Gate-only receipts do not reconstruct verifier stages or the private AI review: include `--verifier "$VERIFIER_URL" --run "$RUN_ID"` only when you have the matching retained verifier run id and available evidence. A missing evidence manifest is incomplete, not a pass.
 
 Audit compares public state with the local deployment record, manifest and executor artifact; it does not independently establish their provenance or appraise the CVM. For independent verifier appraisal and the irreversible key-deletion procedure, see the [activation checklist](scripts/activate.md). The [demo script](docs/DEMO-SCRIPT.md) maps the recorded evidence to a three-minute presentation.
 
@@ -85,7 +85,7 @@ flowchart LR
     E -->|Deadline, code hash, current implementation and replay checks| P[ProxyAdmin and vault proxy]
 ```
 
-The governor can schedule changes, not bypass the delay. The guardian can pause signing, cancel pending changes or remove a verifier, but cannot immediately add authority. The gate has no code-upgrade method; changing the selected delay requires a new gate and the existing timelocked authority migration. Activation requires deleting every access key on its account, after E2E and audit rehearsal and fresh founder authorization.
+The governor can schedule changes, not bypass the delay. The guardian can pause signing, cancel pending changes or remove a verifier, but cannot immediately add authority. [I] Guardian liveness is a risk (F3): a compromised or hostile guardian can halt signing and prevent its own replacement by repeatedly pausing and cancelling governance actions. The gate has no code-upgrade method; changing the selected delay requires a new gate and the existing timelocked authority migration. The final gate's access key was deleted after fresh founder authorization, as recorded above.
 
 A rejection leaves the proxy unchanged. An honest upgrade still needs all committed checks, the required verified AI review, a valid certificate, MPC signing and successful EVM execution. A timeout or unavailable service is incomplete, never a pass.
 
@@ -180,7 +180,7 @@ For local networks, pass their loopback RPCs and `--network local`. The network 
 
 To include verifier stages and evidence, add `--verifier "$VERIFIER_URL" --run "$RUN_ID"` to status/receipt. A requested but unavailable or mismatched evidence manifest fails rather than silently dropping evidence. The receipt is an observation assembled from public state, not a replacement for independently checking the certificate and deployment.
 
-Audit exits nonzero on failed preconditions. Governance warnings alone can exit zero: inspect the named warnings and ETAs, not just the exit status. The deployment record must explicitly commit `governance_delay_days`; audit compares it with the observed gate config. Audit compares observed state with **trusted local build artifacts and the committed deployment record**; it does not appraise the CVM or independently establish those inputs' provenance. Retained-key staging is not keyless proof; final audit and essential live checks follow authorized key deletion.
+Audit exits nonzero on failed preconditions. Governance warnings alone can exit zero: inspect the named warnings and ETAs, not just the exit status. The deployment record must explicitly commit `governance_delay_days`; audit compares it with the observed gate config. Audit compares observed state with **trusted local build artifacts and the committed deployment record**; it does not appraise the CVM or independently establish those inputs' provenance. The post-deletion testnet audit recorded above exited 0; re-read current state rather than assuming it is unchanged.
 
 ## Run an attack or honest-upgrade demonstration
 
@@ -229,7 +229,7 @@ The full guarantee boundaries and residual risks are in [PRD](docs/PRD.md#risks-
 | `docs/technical/SMART-CONTRACT.md` | Protocol interfaces and recorded local/spike deployment evidence |
 | `docs/BUILD-PLAN.md`, `docs/OPEN-DECISIONS.md` | Acceptance evidence, remaining work and founder gates |
 
-The recorded testnet results and current limitations are above. Recording the video, publishing the X post, final key deletion, the license decision and submission require founder action; do not infer their completion from the hosted page.
+The recorded testnet results and current limitations are above. Recording the video, publishing the X post, the license decision and submission require founder action; do not infer their completion from the hosted page.
 
 **AI-tool disclosure:** AI coding assistants have been used for planning, code, documentation and scoped review. Named checks and observed receipts, not model assurances, support the recorded results. Project-side private inference is separately provided by NEAR AI Cloud as described above.
 
