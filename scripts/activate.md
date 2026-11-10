@@ -1,6 +1,6 @@
 # Activation ceremony (BUILD-PLAN P2.8)
 
-Status: **planned, not run.** Every command below is intended, not final-deployment evidence. The previous 2026-11-07T12:00Z internal activation target for seven-day maturation is stale; assess F11 against the actual selected duration, observed `eta_ns` and 2026-11-14T23:59Z cutoff.
+The final gate was activated and its last access key deleted on 2026-11-10; the observed transactions and post-deletion audit are recorded in [the README](../README.md#final-deployment-and-recorded-results) and SMART-CONTRACT "Deployment and measured costs". The commands below are a **planned checklist for a future activation**, not a transcript of the completed ceremony. The previous 2026-11-07T12:00Z internal activation target for seven-day maturation is stale; assess F11 against the actual selected duration, observed `eta_ns` and 2026-11-14T23:59Z cutoff.
 
 Deleting the gate's last access key is irreversible: after step 7 nobody can redeploy, re-initialize or fix the gate. D21 requires user-facing E2E rehearsal, audit, review and fixes before lockdown, and fresh explicit founder authorization at deletion. Retained-key staging is not keyless proof. Every check before step 7 must pass; if one fails, fix it and start again on a fresh gate account.
 

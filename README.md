@@ -102,6 +102,22 @@ Run from Linux or Ubuntu WSL2, not a native Windows shell. These commands build 
 - Docker's Linux engine, reachable by the WSL user, **only** for verifier/tool containers and reproducible gate builds. Docker socket access is privileged.
 - `cargo-near` **0.22.0** for gate wasm builds. Near-workspaces tests require the local NEAR sandbox binary and may download it on first use; `NEAR_SANDBOX_BIN_PATH` can select an existing binary.
 
+On Ubuntu, install the system prerequisites with an administrator account, then
+install the user-scoped toolchains as the user who will build the project:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config libssl-dev ca-certificates git curl make python3
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+export PATH="$HOME/.cargo/bin:$HOME/.foundry/bin:$PATH"
+curl -L https://foundry.paradigm.xyz | bash
+foundryup --install 1.8.6
+```
+
+Rustup installs the pinned Rust toolchain automatically when Cargo is first run
+inside this checkout. The first CLI build and recursive submodule checkout need
+network access and can take considerable time and disk space.
+
 The CLI-only checks below do not need Docker, a Phala account, an AI API key or a wallet. Their dependency compilation can still exceed a small VPS's available memory. A 500 MB free-RAM host has not been qualified for building or running the full verifier.
 
 ```sh
@@ -134,6 +150,9 @@ The executor helper prints a **masked local runtime hash**, not an instance addr
 cargo test -p constitution-gate --lib --locked -j 1 -- --test-threads=1
 forge test --root contracts --offline --match-contract ExecutorTest
 ```
+
+The shared-type encoding and independent Python-oracle tests can also be run
+with `cargo test -p constitution-types`; they require `python3`.
 
 For the actual local CLI audit integration, first build the gate:
 
