@@ -159,9 +159,21 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             mpc_account: "v1.signer-prod.testnet".parse().unwrap(),
             mpc_path: "constitution/base-sepolia/v1".into(),
             mpc_domain_id: 0,
+            governance_delay_days: constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS,
         };
         let init = if honest {
-            let actor = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+            // The committed corpus actor is the project-owned Base Sepolia account; the local
+            // chain gets the same state by impersonating it with a funded balance.
+            let actor = "0x289541ff1cd4882653a02b049ebb5d6a06374826";
+            for (method, params) in [
+                ("anvil_setBalance", vec![actor, "0x56bc75e2d63100000"]),
+                ("anvil_impersonateAccount", vec![actor]),
+            ] {
+                let mut command_args = vec!["rpc", method];
+                command_args.extend(params);
+                command_args.extend(["--rpc-url", &rpc_deploy]);
+                command("cast", &command_args);
+            }
             let token = json!(Hex20(logged_address(&logs, "token")));
             let token = token.as_str().unwrap();
             let proxy = json!(Hex20(config.proxy));

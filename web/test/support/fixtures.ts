@@ -54,6 +54,9 @@ export function proposal(over: Partial<Proposal> = {}): Proposal {
 
 export function run(over: Partial<VerifierRun> = {}): VerifierRun {
   return {
+    gate_account: "gate.testnet",
+    proposal_id: 7,
+    boot_id: "ab".repeat(32),
     stage: "queued",
     started_at: 1_793_700_005,
     stages: [],

@@ -199,7 +199,9 @@ pub fn collect(
     run: Option<(&Verifier, &str)>,
 ) -> Result<Value, Failure> {
     let proposal = read_proposal(near, gate, id)?;
-    let run_value = run.map(|(client, id)| client.run(id)).transpose()?;
+    let run_value = run
+        .map(|(client, run_id)| client.run(run_id, gate, id))
+        .transpose()?;
     let mut value = observe(near, gate, &proposal, evm, network, run_value.as_ref())?;
     if let Some((client, id)) = run.filter(|_| value.get("evidence_root").is_some()) {
         add_evidence(&mut value, client.evidence(id)?)?;

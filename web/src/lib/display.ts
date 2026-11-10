@@ -55,3 +55,19 @@ export function remaining(ms: number): string {
   const minutes = total % 60;
   return `${days} d ${hours} h ${minutes} m`;
 }
+
+export interface AccessKeyState {
+  tone: "pass" | "warning";
+  text: string;
+}
+
+/** Plain-language reading of the gate's live access key count; never claims keyless unless it is 0. */
+export function accessKeyState(count: number): AccessKeyState {
+  if (count === 0) {
+    return { tone: "pass", text: "No access keys: nobody can redeploy this gate or add a key to it" };
+  }
+  return {
+    tone: "warning",
+    text: `${count} access key(s) present: this gate can be redeployed. Not keyless.`,
+  };
+}

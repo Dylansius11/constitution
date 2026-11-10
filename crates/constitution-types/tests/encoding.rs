@@ -240,7 +240,28 @@ fn time_conversion_floors_and_checks_overflow() {
     assert_eq!(s_to_ns(18_446_744_073), Some(18_446_744_073_000_000_000));
     assert_eq!(s_to_ns(18_446_744_074), None);
     assert_eq!(s_to_ns(u64::MAX), None);
-    assert_eq!(TIMELOCK_NS, 604_800_000_000_000);
+}
+
+#[test]
+fn configuration_defaults_to_three_days_and_preserves_selected_days() {
+    let base = json!({
+        "chain_id": 84532,
+        "executor": format!("0x{}", "01".repeat(20)),
+        "proxy": format!("0x{}", "02".repeat(20)),
+        "proxy_admin": format!("0x{}", "03".repeat(20)),
+        "derived_eoa": format!("0x{}", "04".repeat(20)),
+        "mpc_account": "v1.signer-prod.testnet",
+        "mpc_path": "constitution/base-sepolia/v1",
+        "mpc_domain_id": 0
+    });
+    let default: Config = from_value(base.clone()).unwrap();
+    assert_eq!(to_value(&default).unwrap()["governance_delay_days"], 3);
+    for days in [1, 3, 30] {
+        let mut selected = base.clone();
+        selected["governance_delay_days"] = json!(days);
+        let config: Config = from_value(selected).unwrap();
+        assert_eq!(to_value(&config).unwrap()["governance_delay_days"], days);
+    }
 }
 
 #[test]

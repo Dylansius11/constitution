@@ -45,11 +45,67 @@ pub enum IncompleteKind {
     /// deterministic replay) that the proposal cannot satisfy.
     Contradiction,
 }
+
+/// Closed, non-secret categories for operator-visible environmental failures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IncompleteReason {
+    RpcTransport,
+    Timeout,
+    RpcRateLimited,
+    RpcHttp4xx,
+    RpcHttp5xx,
+    RpcHttpOther,
+    RpcMethodUnsupported,
+    ProofWindowExceeded,
+    RpcError,
+    MalformedResponse,
+    HeaderMismatch,
+    StateProofMismatch,
+    CodeMismatch,
+    InsufficientConfirmations,
+    SenderCodeUnexpected,
+    SenderNonceUnexpected,
+    SenderInsufficientBalance,
+    EvmTransactionInvalid,
+    EvmHeaderInvalid,
+    PreconditionUnmet,
+    ExpectedOutcomeMismatch,
+    ReplayIncomplete,
+}
+impl IncompleteReason {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::RpcTransport => "rpc_transport",
+            Self::Timeout => "timeout",
+            Self::RpcRateLimited => "rpc_rate_limited",
+            Self::RpcHttp4xx => "rpc_http_4xx",
+            Self::RpcHttp5xx => "rpc_http_5xx",
+            Self::RpcHttpOther => "rpc_http_other",
+            Self::RpcMethodUnsupported => "rpc_method_unsupported",
+            Self::ProofWindowExceeded => "proof_window_exceeded",
+            Self::RpcError => "rpc_error",
+            Self::MalformedResponse => "malformed_response",
+            Self::HeaderMismatch => "header_mismatch",
+            Self::StateProofMismatch => "state_proof_mismatch",
+            Self::CodeMismatch => "code_mismatch",
+            Self::InsufficientConfirmations => "insufficient_confirmations",
+            Self::SenderCodeUnexpected => "sender_code_unexpected",
+            Self::SenderNonceUnexpected => "sender_nonce_unexpected",
+            Self::SenderInsufficientBalance => "sender_insufficient_balance",
+            Self::EvmTransactionInvalid => "evm_transaction_invalid",
+            Self::EvmHeaderInvalid => "evm_header_invalid",
+            Self::PreconditionUnmet => "precondition_unmet",
+            Self::ExpectedOutcomeMismatch => "expected_outcome_mismatch",
+            Self::ReplayIncomplete => "replay_incomplete",
+        }
+    }
+}
 /// A diagnostic never includes an RPC URL or response body (URLs may contain keys).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Incomplete {
     pub message: String,
     pub kind: IncompleteKind,
+    pub reason: IncompleteReason,
     pub rpc_transport: bool,
 }
 impl fmt::Display for Incomplete {
@@ -64,6 +120,26 @@ fn incomplete(message: &str) -> Incomplete {
     Incomplete {
         message: message.into(),
         kind: IncompleteKind::Environment,
+        reason: match message {
+            "run deadline exceeded" => IncompleteReason::Timeout,
+            "evidence block mismatch"
+            | "execution header hash mismatch"
+            | "evidence block reorged during fetch"
+            | "proof evidence block reorged during fetch" => IncompleteReason::HeaderMismatch,
+            "account does not match state-root proof"
+            | "storage value does not match proof"
+            | "absent account has nonempty state"
+            | "absent storage is nonzero" => IncompleteReason::StateProofMismatch,
+            "proof code hash mismatch"
+            | "candidate code changed during witness fetch"
+            | "candidate runtime does not match proposal code hash" => {
+                IncompleteReason::CodeMismatch
+            }
+            "insufficient confirmations" => IncompleteReason::InsufficientConfirmations,
+            "corpus precondition unmet" => IncompleteReason::PreconditionUnmet,
+            "old call contradicts expected outcome" => IncompleteReason::ExpectedOutcomeMismatch,
+            _ => IncompleteReason::ReplayIncomplete,
+        },
         rpc_transport: false,
     }
 }
@@ -71,6 +147,7 @@ fn contradiction(message: &str) -> Incomplete {
     Incomplete {
         message: message.into(),
         kind: IncompleteKind::Contradiction,
+        reason: IncompleteReason::ReplayIncomplete,
         rpc_transport: false,
     }
 }
@@ -89,6 +166,30 @@ fn require_contradiction(condition: bool, message: &str) -> Result<(), Incomplet
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Expect {
+    Success,
+    Revert,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Preconditions {
+    pub actor: Address,
+    pub min_token_balance: String,
+    pub min_allowance: String,
+    pub min_vault_balance: String,
+    pub max_vault_balance: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CorpusFile {
+    preconditions: Preconditions,
+    calls: Vec<Call>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Call {
@@ -97,10 +198,12 @@ pub struct Call {
     /// Decimal wei; constrained to u128 at the input boundary.
     pub value: String,
     pub data: Bytes,
+    pub expect: Expect,
     pub label: String,
 }
 #[derive(Clone, Debug)]
 pub struct Corpus {
+    pub preconditions: Preconditions,
     pub calls: Vec<Call>,
     pub max_txs: u32,
     pub confirmations: u32,
@@ -109,9 +212,11 @@ pub struct Corpus {
 impl Corpus {
     pub fn from_json(bytes: &[u8], max_txs: u32, confirmations: u32) -> Result<Self, Incomplete> {
         require(bytes.len() <= 128 * 1024, "corpus exceeds byte bound")?;
-        let calls = serde_json::from_slice(bytes).map_err(|_| incomplete("invalid corpus JSON"))?;
+        let file: CorpusFile =
+            serde_json::from_slice(bytes).map_err(|_| incomplete("invalid corpus JSON"))?;
         let corpus = Self {
-            calls,
+            preconditions: file.preconditions,
+            calls: file.calls,
             max_txs,
             confirmations,
             sha256: sha256(bytes),
@@ -127,6 +232,12 @@ impl Corpus {
                 && self.calls.len() <= self.max_txs as usize,
             "corpus exceeds transaction bound or is empty",
         )?;
+        let p = &self.preconditions;
+        let min_vault = decimal_amount(&p.min_vault_balance)?;
+        let max_vault = decimal_amount(&p.max_vault_balance)?;
+        decimal_amount(&p.min_token_balance)?;
+        decimal_amount(&p.min_allowance)?;
+        require(min_vault <= max_vault, "invalid vault balance bounds")?;
         for call in &self.calls {
             require(
                 call.to == "proxy"
@@ -141,6 +252,14 @@ impl Corpus {
         }
         Ok(())
     }
+}
+
+fn decimal_amount(value: &str) -> Result<U256, Incomplete> {
+    require(
+        !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()),
+        "invalid precondition amount",
+    )?;
+    U256::from_str_radix(value, 10).map_err(|_| incomplete("invalid precondition amount"))
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct EvidenceBlock {
@@ -165,6 +284,10 @@ pub struct Witness {
     pub state_root: B256,
     pub environment: BlockEnv,
     pub proxy: Address,
+    pub new_impl: Address,
+    pub proxy_admin: Address,
+    pub executor: Address,
+    pub signer: Address,
     pub accounts: BTreeMap<Address, AccountWitness>,
 }
 
@@ -296,6 +419,8 @@ struct Rpc {
 }
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const RPC_RETRY_PAUSE: Duration = Duration::from_millis(250);
+const RPC_RATE_LIMIT_ATTEMPTS: u32 = 7;
+const RPC_RATE_LIMIT_MAX_PAUSE: Duration = Duration::from_secs(8);
 impl Rpc {
     fn new(url: &str, deadline: Instant) -> Result<Self, Incomplete> {
         Ok(Self {
@@ -308,16 +433,28 @@ impl Rpc {
         })
     }
     /// Every read is attempted twice: a lagging or load-balanced provider often serves a
-    /// null/error for a fresh block and the correct value moments later. A second failure is
-    /// reported as the provider's fault, never as a fact about the proposal.
+    /// null/error for a fresh block and the correct value moments later. A rate-limited read
+    /// backs off exponentially (bounded by the run deadline) because free proof providers
+    /// throttle bursts and a proof read is idempotent. A final failure is reported as the
+    /// provider's fault, never as a fact about the proposal.
     fn call(&self, method: &str, params: Value) -> Result<Value, Incomplete> {
-        match self.call_once(method, &params) {
-            Ok(value) => Ok(value),
-            Err(_) if Instant::now() + RPC_RETRY_PAUSE < self.deadline => {
-                std::thread::sleep(RPC_RETRY_PAUSE);
-                self.call_once(method, &params)
+        let mut pause = RPC_RETRY_PAUSE;
+        let mut attempt = 1;
+        loop {
+            let error = match self.call_once(method, &params) {
+                Ok(value) => return Ok(value),
+                Err(error) => error,
+            };
+            let limited = matches!(error.reason, IncompleteReason::RpcRateLimited);
+            let attempts = if limited { RPC_RATE_LIMIT_ATTEMPTS } else { 2 };
+            if attempt >= attempts || Instant::now() + pause >= self.deadline {
+                return Err(error);
             }
-            Err(error) => Err(error),
+            std::thread::sleep(pause);
+            if limited {
+                pause = (pause * 2).min(RPC_RATE_LIMIT_MAX_PAUSE);
+            }
+            attempt += 1;
         }
     }
     fn call_once(&self, method: &str, params: &Value) -> Result<Value, Incomplete> {
@@ -332,15 +469,31 @@ impl Rpc {
             .timeout(remaining.min(RPC_TIMEOUT))
             .json(&json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}))
             .send()
-            .map_err(|_| Incomplete {
+            .map_err(|error| Incomplete {
                 message: format!("{method}: transport failure"),
                 kind: IncompleteKind::Environment,
+                reason: if error.is_timeout() {
+                    IncompleteReason::Timeout
+                } else {
+                    IncompleteReason::RpcTransport
+                },
                 rpc_transport: true,
             })?;
-        require(
-            response.status().is_success(),
-            &format!("{method}: HTTP failure"),
-        )?;
+        let status = response.status();
+        if !status.is_success() {
+            let reason = if status.as_u16() == 429 {
+                IncompleteReason::RpcRateLimited
+            } else if status.is_client_error() {
+                IncompleteReason::RpcHttp4xx
+            } else if status.is_server_error() {
+                IncompleteReason::RpcHttp5xx
+            } else {
+                IncompleteReason::RpcHttpOther
+            };
+            let mut error = incomplete(&format!("{method}: HTTP {}", status.as_u16()));
+            error.reason = reason;
+            return Err(error);
+        }
         // Bound hostile provider output before JSON allocation; no silent truncation.
         use std::io::Read;
         let mut buffer = Vec::new();
@@ -352,12 +505,34 @@ impl Rpc {
             buffer.len() <= 16 * 1024 * 1024,
             "RPC response exceeds bound",
         )?;
-        let value: Value = serde_json::from_slice(&buffer)
-            .map_err(|_| incomplete(&format!("{method}: invalid JSON")))?;
-        require(
-            value.get("error").is_none(),
-            &format!("{method}: RPC error"),
-        )?;
+        let value: Value = serde_json::from_slice(&buffer).map_err(|_| {
+            let mut error = incomplete(&format!("{method}: invalid JSON"));
+            error.reason = IncompleteReason::MalformedResponse;
+            error
+        })?;
+        if let Some(rpc_error) = value.get("error") {
+            let code = rpc_error["code"].as_i64();
+            let message = rpc_error["message"]
+                .as_str()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let mut error = incomplete(&format!("{method}: RPC error"));
+            error.reason = if code == Some(-32005)
+                || code == Some(-32011)
+                || message.contains("rate limit")
+                || message.contains("request limit")
+                || message.contains("too many requests")
+            {
+                IncompleteReason::RpcRateLimited
+            } else if method == "eth_getProof" && message.contains("proof window") {
+                IncompleteReason::ProofWindowExceeded
+            } else if code == Some(-32601) {
+                IncompleteReason::RpcMethodUnsupported
+            } else {
+                IncompleteReason::RpcError
+            };
+            return Err(error);
+        }
         value
             .get("result")
             .filter(|v| !v.is_null())
@@ -520,7 +695,28 @@ pub(crate) mod vault_abi {
     alloy_sol_types::sol! {
         function totalDeposits() external view returns (uint256);
         function balanceOf(address account) external view returns (uint256);
+        function allowance(address owner, address spender) external view returns (uint256);
     }
+}
+
+mod executor_abi {
+    alloy_sol_types::sol! {
+        function execute(bytes32 certId, address newImpl, bytes32 newImplCodehash, address expectedCurrentImpl, uint64 deadline, bytes initCalldata) external;
+    }
+}
+
+fn upgrade_data(candidate: Address, code: &[u8], current: Address, init: &[u8]) -> Bytes {
+    use alloy_sol_types::SolCall;
+    executor_abi::executeCall {
+        certId: B256::ZERO,
+        newImpl: candidate,
+        newImplCodehash: hash(code),
+        expectedCurrentImpl: current,
+        deadline: u64::MAX,
+        initCalldata: Bytes::copy_from_slice(init),
+    }
+    .abi_encode()
+    .into()
 }
 pub(crate) fn vault_token_slot() -> U256 {
     use alloy_sol_types::SolValue;
@@ -565,7 +761,10 @@ fn fetch_witness_inner(
     )?;
     // Different providers are allowed, different evidence blocks are not.
     let proof_header = proof_rpc.call("eth_getBlockByNumber", json!([tag, false]))?;
-    verified_header(&proof_header, block)?;
+    verified_header(&proof_header, block).map_err(|mut error| {
+        error.message = format!("proof provider: {}", error.message);
+        error
+    })?;
     // A second provider node may be a block behind the one that served the header; read the
     // tip once more before concluding it is too shallow. Either outcome is environmental.
     let mut deep_enough = false;
@@ -597,25 +796,47 @@ fn fetch_witness_inner(
         "invalid current implementation address",
     )?;
     let implementation = Address::from_slice(&implementation_word.to_be_bytes::<32>()[12..]);
+    // OZ transparent proxies create their ProxyAdmin at CREATE nonce one. These
+    // RPC reads are discovery hints; the corresponding slots are proof-checked below.
+    let mut create = vec![0xd6, 0x94];
+    create.extend_from_slice(proxy.as_slice());
+    create.push(1);
+    let proxy_admin = Address::from_slice(&keccak(&create)[12..]);
+    let owner_word = quantity(&rpc.call("eth_getStorageAt", json!([proxy_admin, "0x0", tag]))?)?;
+    require(
+        owner_word != U256::ZERO && owner_word >> 160 == U256::ZERO,
+        "invalid proxy admin owner",
+    )?;
+    let executor = Address::from_slice(&owner_word.to_be_bytes::<32>()[12..]);
+    let signer_word = quantity(&rpc.call("eth_getStorageAt", json!([executor, "0x0", tag]))?)?;
+    require(
+        signer_word != U256::ZERO && signer_word >> 160 == U256::ZERO,
+        "invalid executor signer",
+    )?;
+    let signer = Address::from_slice(&signer_word.to_be_bytes::<32>()[12..]);
     let mut needed = Accesses::new();
     needed.entry(environment.beneficiary).or_default();
     needed.entry(new_impl).or_default();
     needed.entry(implementation).or_default();
+    needed.entry(proxy_admin).or_default().insert(U256::ZERO);
+    needed.entry(executor).or_default().insert(U256::ZERO);
+    needed.entry(signer).or_default();
     if let Some(actor) = ai_actor {
         needed.entry(actor).or_default();
     }
-    let mut overrides =
-        json!({(implementation.to_string()): {"code": format!("0x{}", hex::encode(&new_runtime))}});
-    if !new_init_calldata.is_empty() {
-        let request = json!({"from":ai_actor.unwrap_or(corpus.calls[0].from), "to":proxy, "value":"0x0", "data":format!("0x{}", hex::encode(new_init_calldata)), "gas":format!("0x{GAS_LIMIT:x}")});
-        let trace = rpc.call(
-            "debug_traceCall",
-            json!([request, tag, {"tracer":"prestateTracer", "stateOverrides":overrides}]),
-        )?;
-        collect_accesses(&mut needed, &trace)?;
-        let diff = rpc.call("debug_traceCall", json!([request, tag, {"tracer":"prestateTracer", "tracerConfig":{"diffMode":true}, "stateOverrides":overrides}]))?;
-        initializer_overrides(&mut overrides, &diff, &mut needed)?;
-    }
+    let mut overrides = json!({});
+    let data = upgrade_data(new_impl, &new_runtime, implementation, new_init_calldata);
+    let request = json!({"from":signer, "to":executor, "value":"0x0", "data":data, "gas":format!("0x{GAS_LIMIT:x}")});
+    let trace = rpc.call(
+        "debug_traceCall",
+        json!([request, tag, {"tracer":"prestateTracer"}]),
+    )?;
+    collect_accesses(&mut needed, &trace)?;
+    let diff = rpc.call(
+        "debug_traceCall",
+        json!([request, tag, {"tracer":"prestateTracer", "tracerConfig":{"diffMode":true}}]),
+    )?;
+    initializer_overrides(&mut overrides, &diff, &mut needed)?;
     for call in &corpus.calls {
         needed.entry(call.from).or_default();
         let request = json!({"from":call.from, "to":proxy, "value":format!("0x{:x}", call.value.parse::<u128>().map_err(|_| incomplete("invalid value"))?), "data":call.data, "gas":format!("0x{GAS_LIMIT:x}")});
@@ -629,6 +850,47 @@ fn fetch_witness_inner(
                     .as_object()
                     .is_some_and(|accounts| !accounts.is_empty()),
                 "prestateTracer returned no accounts",
+            )?;
+            collect_accesses(&mut needed, &trace)?;
+        }
+    }
+    if ai_actor.is_none() {
+        use alloy_sol_types::SolCall;
+        let actor = corpus.preconditions.actor;
+        let token_slot = vault_token_slot();
+        let token_word = quantity(&rpc.call(
+            "eth_getStorageAt",
+            json!([proxy, format!("0x{token_slot:064x}"), tag]),
+        )?)?;
+        require(
+            token_word != U256::ZERO && token_word >> 160 == U256::ZERO,
+            "invalid vault token discovery",
+        )?;
+        let token = Address::from_slice(&token_word.to_be_bytes::<32>()[12..]);
+        needed.entry(proxy).or_default().insert(token_slot);
+        needed.entry(actor).or_default();
+        for (to, data) in [
+            (
+                token,
+                vault_abi::balanceOfCall { account: actor }.abi_encode(),
+            ),
+            (
+                token,
+                vault_abi::allowanceCall {
+                    owner: actor,
+                    spender: proxy,
+                }
+                .abi_encode(),
+            ),
+            (
+                proxy,
+                vault_abi::balanceOfCall { account: actor }.abi_encode(),
+            ),
+        ] {
+            let request = json!({"from":actor, "to":to, "value":"0x0", "data":format!("0x{}", hex::encode(data)), "gas":format!("0x{GAS_LIMIT:x}")});
+            let trace = rpc.call(
+                "debug_traceCall",
+                json!([request, tag, {"tracer":"prestateTracer"}]),
             )?;
             collect_accesses(&mut needed, &trace)?;
         }
@@ -680,6 +942,10 @@ fn fetch_witness_inner(
         state_root,
         environment,
         proxy,
+        new_impl,
+        proxy_admin,
+        executor,
+        signer,
         accounts: BTreeMap::new(),
     };
     for (a, slots) in needed {
@@ -966,6 +1232,29 @@ struct Observation {
     output: Bytes,
     logs: Vec<Log>,
 }
+fn evm_incomplete(error: revm::context_interface::result::EVMError<Incomplete>) -> Incomplete {
+    use revm::context_interface::result::{EVMError, InvalidTransaction};
+    let reason = match error {
+        EVMError::Database(error) => return error,
+        EVMError::Transaction(InvalidTransaction::RejectCallerWithCode) => {
+            IncompleteReason::SenderCodeUnexpected
+        }
+        EVMError::Transaction(
+            InvalidTransaction::NonceOverflowInTransaction
+            | InvalidTransaction::NonceTooHigh { .. }
+            | InvalidTransaction::NonceTooLow { .. },
+        ) => IncompleteReason::SenderNonceUnexpected,
+        EVMError::Transaction(InvalidTransaction::LackOfFundForMaxFee { .. }) => {
+            IncompleteReason::SenderInsufficientBalance
+        }
+        EVMError::Transaction(_) => IncompleteReason::EvmTransactionInvalid,
+        EVMError::Header(_) => IncompleteReason::EvmHeaderInvalid,
+        EVMError::Custom(_) | EVMError::CustomAny(_) => IncompleteReason::ReplayIncomplete,
+    };
+    let mut error = incomplete("EVM execution incomplete");
+    error.reason = reason;
+    error
+}
 fn execute(
     db: &mut StrictDb,
     environment: &BlockEnv,
@@ -1001,7 +1290,7 @@ fn execute(
         })
         .build_mainnet()
         .transact(tx)
-        .map_err(|_| incomplete("EVM execution incomplete"))?;
+        .map_err(evm_incomplete)?;
     require_contradiction(
         !matches!(result.result, ExecutionResult::Halt { .. }),
         "EVM halted",
@@ -1070,6 +1359,76 @@ fn candidate_fault(mut error: Incomplete) -> Incomplete {
     error.kind = IncompleteKind::Contradiction;
     error
 }
+fn check_preconditions(old: &StrictDb, w: &Witness, corpus: &Corpus) -> Result<(), Incomplete> {
+    let p = &corpus.preconditions;
+    let token_word = old
+        .accounts
+        .get(&w.proxy)
+        .and_then(|account| account.storage.get(&vault_token_slot()))
+        .copied()
+        .ok_or_else(|| incomplete("missing vault token slot"))?;
+    require(
+        token_word >> 160 == U256::ZERO,
+        "invalid token address word",
+    )?;
+    let token = Address::from_slice(&token_word.to_be_bytes::<32>()[12..]);
+    let view = |target: Address, signature: &[u8], args: &[Address]| -> Result<U256, Incomplete> {
+        let mut data = keccak(signature)[..4].to_vec();
+        for address in args {
+            data.extend_from_slice(&[0; 12]);
+            data.extend_from_slice(address.as_slice());
+        }
+        let mut db = old.clone();
+        let result = execute(
+            &mut db,
+            &w.environment,
+            p.actor,
+            target,
+            U256::ZERO,
+            data.into(),
+        )
+        .map_err(environmental)?;
+        require(
+            result.success && result.output.len() == 32,
+            "corpus precondition view failed",
+        )?;
+        Ok(U256::from_be_slice(&result.output))
+    };
+    let balance = view(token, b"balanceOf(address)", &[p.actor])?;
+    let allowance = view(token, b"allowance(address,address)", &[p.actor, w.proxy])?;
+    let vault = view(w.proxy, b"balanceOf(address)", &[p.actor])?;
+    require(
+        balance >= decimal_amount(&p.min_token_balance)?
+            && allowance >= decimal_amount(&p.min_allowance)?
+            && vault >= decimal_amount(&p.min_vault_balance)?
+            && vault <= decimal_amount(&p.max_vault_balance)?,
+        "corpus precondition unmet",
+    )?;
+    // Establish every reference outcome before any candidate fault can become a rejection.
+    let mut reference = old.clone();
+    for call in &corpus.calls {
+        let value = U256::from(
+            call.value
+                .parse::<u128>()
+                .map_err(|_| incomplete("invalid call value"))?,
+        );
+        let observation = execute(
+            &mut reference,
+            &w.environment,
+            call.from,
+            w.proxy,
+            value,
+            call.data.clone(),
+        )
+        .map_err(environmental)?;
+        require(
+            observation.success == (call.expect == Expect::Success),
+            "old call contradicts expected outcome",
+        )?;
+    }
+    Ok(())
+}
+
 fn replay_inner(
     w: &Witness,
     corpus: &Corpus,
@@ -1084,6 +1443,7 @@ fn replay_inner(
         new,
         init,
         corpus.calls.first().map(|c| c.from),
+        true,
     )?
     else {
         return Ok(false);
@@ -1107,6 +1467,10 @@ fn replay_inner(
             call.data.clone(),
         )
         .map_err(environmental)?;
+        require(
+            original.success == (call.expect == Expect::Success),
+            "old call contradicts expected outcome",
+        )?;
         let changed = execute(
             &mut upgraded,
             &w.environment,
@@ -1127,7 +1491,7 @@ fn replay_inner(
             db.reads
                 .iter()
                 .copied()
-                .filter(|(a, k)| *a != w.proxy || (*k != IMPL && *k != CAP))
+                .filter(|(a, k)| *a != w.proxy || *k != CAP)
                 .collect::<BTreeSet<_>>()
         };
         if filtered_reads(&old) != filtered_reads(&upgraded) {
@@ -1146,7 +1510,13 @@ fn replay_inner(
                 return Ok(false);
             }
             for (key, value) in &state.storage {
-                if *a == w.proxy && (*key == IMPL || *key == CAP || *key == INITIALIZABLE) {
+                if *a == w.proxy && *key == IMPL {
+                    if other.storage.get(key) != Some(&U256::from_be_slice(w.new_impl.as_slice())) {
+                        return Ok(false);
+                    }
+                    continue;
+                }
+                if *a == w.proxy && (*key == CAP || *key == INITIALIZABLE) {
                     continue;
                 }
                 if other.storage.get(key) != Some(value) {
@@ -1164,7 +1534,8 @@ fn prepared_states(
     current: &[u8],
     new: &[u8],
     init: &[u8],
-    initializer_sender: Option<Address>,
+    _initializer_sender: Option<Address>,
+    check_corpus: bool,
 ) -> Result<Option<(StrictDb, StrictDb)>, Incomplete> {
     corpus.validate()?;
     let (root, environment) = verified_header(&w.header, w.block)?;
@@ -1224,82 +1595,105 @@ fn prepared_states(
             .is_some_and(|a| a.code.original_byte_slice() == current),
         "current runtime differs from witness",
     )?;
-    let candidate = Address::from_slice(&keccak(new)[12..]);
+    if check_corpus {
+        check_preconditions(&old, w, corpus)?;
+    }
     require(
-        candidate != w.proxy
-            && candidate != implementation
-            && !old.accounts.contains_key(&candidate)
-            && !corpus.calls.iter().any(|c| c.from == candidate),
-        "virtual candidate address collision",
+        old.accounts
+            .get(&w.new_impl)
+            .is_some_and(|a| a.exists && a.nonce == 1 && a.code.original_byte_slice() == new),
+        "candidate runtime differs from authenticated account",
     )?;
-    let mut upgraded = old.clone();
-    upgraded.accounts.insert(
-        candidate,
-        AccountState {
-            exists: true,
-            balance: U256::ZERO,
-            nonce: 1,
-            code: Bytecode::new_raw(Bytes::copy_from_slice(new)),
-            storage: BTreeMap::new(),
-        },
-    );
-    upgraded
-        .accounts
-        .get_mut(&w.proxy)
-        .expect("checked proxy")
-        .storage
-        .insert(IMPL, U256::from_be_slice(candidate.as_slice()));
+    require(
+        old.accounts
+            .get(&w.proxy_admin)
+            .and_then(|a| a.storage.get(&U256::ZERO))
+            == Some(&U256::from_be_slice(w.executor.as_slice()))
+            && old
+                .accounts
+                .get(&w.executor)
+                .and_then(|a| a.storage.get(&U256::ZERO))
+                == Some(&U256::from_be_slice(w.signer.as_slice())),
+        "upgrade authority differs from authenticated prestate",
+    )?;
     if !init.is_empty() {
         require(
-            upgraded.accounts[&w.proxy].storage.contains_key(&CAP)
-                && upgraded.accounts[&w.proxy]
-                    .storage
-                    .contains_key(&INITIALIZABLE),
+            proxy.storage.contains_key(&CAP) && proxy.storage.contains_key(&INITIALIZABLE),
             "missing declared initializer prestate",
         )?;
-        if upgraded.accounts[&w.proxy].storage[&CAP] != U256::ZERO
-            || upgraded.accounts[&w.proxy].storage[&INITIALIZABLE] != U256::ONE
+        if proxy.storage[&CAP] != U256::ZERO || proxy.storage[&INITIALIZABLE] != U256::ONE {
+            return Ok(None);
+        }
+    }
+    let mut upgraded = old.clone();
+    let outcome = execute(
+        &mut upgraded,
+        &w.environment,
+        w.signer,
+        w.executor,
+        U256::ZERO,
+        upgrade_data(w.new_impl, new, implementation, init),
+    )
+    .map_err(candidate_fault)?;
+    if !outcome.success {
+        return Ok(None);
+    }
+    if upgraded.accounts[&w.proxy].storage.get(&IMPL)
+        != Some(&U256::from_be_slice(w.new_impl.as_slice()))
+        || (!init.is_empty()
+            && upgraded.accounts[&w.proxy].storage.get(&INITIALIZABLE) != Some(&U256::from(2)))
+    {
+        return Ok(None);
+    }
+    // The executor's documented writes and the transaction sender's nonce are
+    // the only non-proxy differences allowed by the upgrade itself.
+    let mut mapping_key = [0u8; 64];
+    mapping_key[63] = 2;
+    let used_slot = U256::from_be_slice(&keccak(&mapping_key));
+    let executor_before = old
+        .accounts
+        .get(&w.executor)
+        .ok_or_else(|| incomplete("missing executor"))?;
+    let executor_after = upgraded
+        .accounts
+        .get_mut(&w.executor)
+        .ok_or_else(|| incomplete("missing executor"))?;
+    if executor_before.storage.get(&U256::ONE) != Some(&impl_word)
+        || executor_after.storage.get(&U256::ONE)
+            != Some(&U256::from_be_slice(w.new_impl.as_slice()))
+        || executor_before.storage.get(&used_slot) != Some(&U256::ZERO)
+        || executor_after.storage.get(&used_slot) != Some(&U256::ONE)
+    {
+        return Ok(None);
+    }
+    executor_after.storage.insert(U256::ONE, impl_word);
+    executor_after.storage.insert(used_slot, U256::ZERO);
+    upgraded
+        .accounts
+        .get_mut(&w.signer)
+        .ok_or_else(|| incomplete("missing signer"))?
+        .nonce = old
+        .accounts
+        .get(&w.signer)
+        .ok_or_else(|| incomplete("missing signer"))?
+        .nonce;
+    for (a, state) in &upgraded.accounts {
+        let original = &old.accounts[a];
+        if state.balance != original.balance
+            || state.exists != original.exists
+            || state.nonce != original.nonce
+            || state.code != original.code
         {
             return Ok(None);
         }
-        let before = upgraded.clone();
-        let sender = initializer_sender.ok_or_else(|| incomplete("initializer sender absent"))?;
-        let outcome = execute(
-            &mut upgraded,
-            &w.environment,
-            sender,
-            w.proxy,
-            U256::ZERO,
-            Bytes::copy_from_slice(init),
-        )
-        .map_err(candidate_fault)?;
-        if !outcome.success {
-            return Ok(None);
-        }
-        if upgraded.accounts[&w.proxy].storage[&INITIALIZABLE] != U256::from(2) {
-            return Ok(None);
-        }
-        upgraded
-            .accounts
-            .get_mut(&sender)
-            .ok_or_else(|| incomplete("initializer sender absent"))?
-            .nonce = before.accounts[&sender].nonce;
-        for (a, state) in &upgraded.accounts {
-            let original = &before.accounts[a];
-            if state.balance != original.balance
-                || state.exists != original.exists
-                || state.nonce != original.nonce
-                || state.code != original.code
+        for (key, value) in &state.storage {
+            if *a == w.proxy
+                && (*key == IMPL || (!init.is_empty() && (*key == CAP || *key == INITIALIZABLE)))
             {
-                return Ok(None);
+                continue;
             }
-            for (key, value) in &state.storage {
-                if *a == w.proxy && (*key == CAP || *key == INITIALIZABLE) {
-                    continue;
-                }
-                if original.storage.get(key) != Some(value) {
-                    return Ok(None);
-                }
+            if original.storage.get(key) != Some(value) {
+                return Ok(None);
             }
         }
     }
@@ -1321,8 +1715,16 @@ impl CandidateReplay {
         init: &[u8],
         initializer_sender: Address,
     ) -> Result<Self, Incomplete> {
-        let (_, db) = prepared_states(w, corpus, current, new, init, Some(initializer_sender))?
-            .ok_or_else(|| incomplete("candidate initializer failed replay policy"))?;
+        let (_, db) = prepared_states(
+            w,
+            corpus,
+            current,
+            new,
+            init,
+            Some(initializer_sender),
+            false,
+        )?
+        .ok_or_else(|| incomplete("candidate initializer failed replay policy"))?;
         Ok(Self {
             db,
             environment: w.environment.clone(),
@@ -1370,6 +1772,152 @@ impl CandidateReplay {
 #[cfg(test)]
 mod attribution_tests {
     use super::*;
+
+    #[test]
+    fn evm_errors_keep_safe_witness_and_sender_validation_reasons() {
+        use revm::context_interface::result::{EVMError, InvalidTransaction};
+        let missing = evm_incomplete(EVMError::Database(incomplete("unwitnessed account read")));
+        assert_eq!(missing.message, "unwitnessed account read");
+        let code = evm_incomplete(EVMError::Transaction(
+            InvalidTransaction::RejectCallerWithCode,
+        ));
+        assert_eq!(code.reason.code(), "sender_code_unexpected");
+        let nonce = evm_incomplete(EVMError::Transaction(
+            InvalidTransaction::NonceOverflowInTransaction,
+        ));
+        assert_eq!(nonce.reason.code(), "sender_nonce_unexpected");
+    }
+
+    #[test]
+    fn rpc_failures_are_classified_without_response_secrets() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        for (status, body, expected) in [
+            ("429 Too Many Requests", "secret", "rpc_rate_limited"),
+            ("403 Forbidden", "secret", "rpc_http_4xx"),
+            ("503 Service Unavailable", "secret", "rpc_http_5xx"),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32601,"message":"secret"}}"#,
+                "rpc_method_unsupported",
+            ),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32602,"message":"distance to target block exceeds maximum proof window secret"}}"#,
+                "proof_window_exceeded",
+            ),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32005,"message":"secret"}}"#,
+                "rpc_rate_limited",
+            ),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32000,"message":"secret"}}"#,
+                "rpc_error",
+            ),
+            ("200 OK", "secret", "malformed_response"),
+            ("200 OK", r#"{"result":"0x14a34"}"#, "success"),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!(
+                "http://{}/secret?token=secret",
+                listener.local_addr().unwrap()
+            );
+            let body = body.to_owned();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            });
+            let rpc = Rpc::new(&url, Instant::now() + Duration::from_secs(5)).unwrap();
+            let result = rpc.call_once("eth_getProof", &json!([]));
+            if expected == "success" {
+                assert_eq!(result.unwrap(), json!("0x14a34"));
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.reason.code(), expected);
+                assert!(!format!("{error}").contains("secret"));
+            }
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn rate_limited_reads_back_off_then_succeed_and_respect_the_deadline() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let serve = |responses: Vec<(&'static str, &'static str)>| {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let handle = std::thread::spawn(move || {
+                for (status, body) in responses {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut buf = [0u8; 4096];
+                    let _ = stream.read(&mut buf);
+                    write!(
+                        stream,
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .unwrap();
+                }
+            });
+            (url, handle)
+        };
+        // Two throttled answers, one provider-style JSON-RPC limit, then success.
+        let (url, handle) = serve(vec![
+            ("429 Too Many Requests", "slow down"),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32011,"message":"request limit reached"}}"#,
+            ),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32000,"message":"Rate limit exceeded"}}"#,
+            ),
+            ("200 OK", r#"{"result":"0x14a34"}"#),
+        ]);
+        let rpc = Rpc::new(&url, Instant::now() + Duration::from_secs(30)).unwrap();
+        assert_eq!(
+            rpc.call("eth_chainId", json!([])).unwrap(),
+            json!("0x14a34")
+        );
+        handle.join().unwrap();
+        // A non-throttle failure still gets exactly two attempts, not the long backoff.
+        let (url, handle) = serve(vec![
+            ("200 OK", r#"{"error":{"code":-32000,"message":"boom"}}"#),
+            ("200 OK", r#"{"error":{"code":-32000,"message":"boom"}}"#),
+        ]);
+        let rpc = Rpc::new(&url, Instant::now() + Duration::from_secs(30)).unwrap();
+        assert_eq!(
+            rpc.call("eth_chainId", json!([]))
+                .unwrap_err()
+                .reason
+                .code(),
+            "rpc_error"
+        );
+        handle.join().unwrap();
+        // A throttled provider cannot hold the run past its deadline.
+        let (url, handle) = serve(vec![("429 Too Many Requests", "x"); 3]);
+        let started = Instant::now();
+        let rpc = Rpc::new(&url, started + Duration::from_millis(900)).unwrap();
+        assert_eq!(
+            rpc.call("eth_chainId", json!([]))
+                .unwrap_err()
+                .reason
+                .code(),
+            "rpc_rate_limited"
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        handle.join().unwrap();
+    }
 
     #[test]
     fn candidate_incomplete_and_discovery_bounds_are_contradictions() {

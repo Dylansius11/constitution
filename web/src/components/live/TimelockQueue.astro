@@ -17,10 +17,10 @@ const { id = "timelock-queue" } = Astro.props;
   data-gate={site.gateAccount}
   data-near-rpc={site.nearRpc}
 >
-  <p class="live-intro">Delay: 7 days. No role can shorten it.</p>
+  <p class="live-intro">The initialization-selected delay is immutable. No role can shorten it.</p>
   {
     site.gateAccount === null ? (
-      <StatusBadge tone="awaiting">Awaiting activation</StatusBadge>
+      <StatusBadge tone="awaiting">No gate configured</StatusBadge>
     ) : (
       <>
         <output aria-live="polite" data-queue-status>

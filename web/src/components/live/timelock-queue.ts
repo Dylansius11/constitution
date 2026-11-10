@@ -103,7 +103,7 @@ async function initializeQueue(root: HTMLElement, account: string, nearRpc: stri
         source.status === "unavailable"
           ? `${stale ? "Not live. " : ""}Cannot read NEAR testnet list_changes. ${last ? "Showing the last observed queue. " : ""}Nothing here is live until the connection returns.`
           : last?.value.value.length === 0
-            ? "No change queued. Rules, the verifier allowlist and authority change only after a public 7-day delay."
+            ? "No change queued. Rules, the verifier allowlist and authority change only after the public governance delay."
             : wasStale
               ? "Connection restored. Live queue data resumed."
               : "Timelock queue observed on NEAR testnet.";

@@ -1,7 +1,7 @@
 ---
 import TimelockQueue from "../live/TimelockQueue.astro";
 
-/** The 7-day public timelock (DESIGN 5 row 5; SMART-CONTRACT governance table). */
+/** Public governance timelock; observed configuration enhances the default illustration. */
 const roles = [
   {
     name: "Governor",
@@ -15,13 +15,13 @@ const roles = [
   },
   {
     name: "Anyone",
-    can: "Applies a change once its 7 days have passed.",
+    can: "Applies a change once its delay has passed.",
     cannot: "Nobody, under any role, can apply it before then.",
   },
 ];
 
-// Seven day segments around the dial; each spans 360/7 degrees with a small gap.
-const DAYS = 7;
+// Three segments illustrate the default delay; each spans 360/3 degrees with a small gap.
+const DAYS = 3;
 const R = 120;
 const C = 2 * Math.PI * R;
 const seg = C / DAYS;
@@ -41,49 +41,55 @@ const segments = Array.from({ length: DAYS }, (_, i) => ({
   <div class="container timelock__grid">
     <div class="timelock__dial">
       <svg viewBox="-160 -160 320 320" aria-hidden="true" focusable="false">
-        {
-          segments.map((s) => (
-            <circle
-              r={R}
-              data-day={s.day}
-              class="dial__seg"
-              stroke-dasharray={`${seg - gap} ${C - seg + gap}`}
-              stroke-dashoffset={s.offset}
-              transform="rotate(-90)"
-            />
-          ))
-        }
-        {
-          segments.map((s) => (
-            <text
-              class="dial__day"
-              x={Math.cos(s.angle) * (R + 24)}
-              y={Math.sin(s.angle) * (R + 24)}
-              text-anchor="middle"
-              dominant-baseline="central"
-            >
-              {s.day}
-            </text>
-          ))
-        }
+        <g class="dial__segments">
+          {
+            segments.map((s) => (
+              <circle
+                r={R}
+                data-day={s.day}
+                class="dial__seg"
+                stroke-dasharray={`${seg - gap} ${C - seg + gap}`}
+                stroke-dashoffset={s.offset}
+                transform="rotate(-90)"
+              />
+            ))
+          }
+        </g>
+        <g class="dial__days">
+          {
+            segments.map((s) => (
+              <text
+                class="dial__day"
+                x={Math.cos(s.angle) * (R + 24)}
+                y={Math.sin(s.angle) * (R + 24)}
+                text-anchor="middle"
+                dominant-baseline="central"
+              >
+                {s.day}
+              </text>
+            ))
+          }
+        </g>
         <g class="dial__hand">
           <circle cx="0" cy={-R} r="9" />
         </g>
         <text class="dial__count" y="-58" text-anchor="middle"></text>
-        <text class="dial__big" y="-6" text-anchor="middle">7 days</text>
-        <text class="dial__small" y="26" text-anchor="middle">604,800 seconds</text>
+        <text class="dial__big" y="-6" text-anchor="middle">3 days</text>
+        <text class="dial__small" y="26" text-anchor="middle">default illustration</text>
       </svg>
-      <p class="visually-hidden">
-        Diagram: a dial divided into seven day segments. A scheduled change becomes applicable only
-        after all seven have passed.
+      <p class="visually-hidden dial__description">
+        Illustration: a dial divided into three day segments shows the default delay, not a live
+        countdown or the delay of an observed gate.
       </p>
     </div>
 
     <div class="timelock__body">
-      <h2 id="timelock-title" data-reveal>Even the governor waits seven days.</h2>
+      <h2 id="timelock-title" data-reveal>Even the governor waits.</h2>
       <p class="lede" data-reveal style="--i:1">
         The rules, the verifier list, the gate's parameters and its authority change only through a
-        public queue. Every change waits a fixed 7 days, in the open, where anyone can see it coming.
+        public queue. The delay is selected at initialization: 1 to 30 whole days, defaulting to 3.
+        It is immutable after initialization. The dial is an illustration, not a live countdown;
+        it shows the observed gate's delay when available and the default otherwise.
       </p>
       <p class="timelock__note" data-reveal style="--i:2">
         <strong>Ordinary upgrades do not wait.</strong> A proposal that passes the committed rules is

@@ -40,8 +40,9 @@ impl Gate {
             env::promise_result_checked(0, 4096)
                 .map_err(|_| "MPC promise failed or oversized")
                 .and_then(|bytes| {
-                    self.target_transaction(&target)
-                        .and_then(|tx| crate::evm::assemble_signed(&tx, &bytes))
+                    self.target_transaction(&target).and_then(|tx| {
+                        crate::evm::assemble_signed(&tx, &bytes, self.config.derived_eoa)
+                    })
                 })
                 .and_then(|raw| {
                     // A signed transaction adds bytes to an existing record. Fail

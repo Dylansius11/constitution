@@ -1,20 +1,24 @@
 ---
+import { finalRuns } from "../../data/final-evidence.ts";
+import { site } from "../../data/site.ts";
 import { readFlowConfig } from "../../lib/run-flow.ts";
 import { surfaceView } from "../../lib/surface-view.ts";
 import StageLadder from "../ui/StageLadder.astro";
 import StatusBadge from "../ui/StatusBadge.astro";
 
 /**
- * Run it in the browser (PRD F10, DESIGN 5 row 7). Two flows submit the committed fixtures with the
- * public demo key and follow them through the real stages. Before activation both cards render in
- * an honest locked state: the button is disabled, says why, and the ladder lists the stages a run
- * will report. Nothing on a locked card is presented as having happened.
+ * Run it in the browser (PRD F10, DESIGN 5 row 7). With a complete run configuration two flows
+ * submit the committed fixtures with the public demo key and follow them through the real stages.
+ * Without one (the state of the final gate) the cards are not runnable and say why: the proxy was
+ * already upgraded, so a new proposal is refused at rule 0. They point at the recorded receipts
+ * and at what a reader can still do. Nothing on a locked card is presented as a live run.
  */
 const env = Object.fromEntries(
   Object.entries(import.meta.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
 );
 const config = readFlowConfig(env);
 const idle = surfaceView({ kind: "idle" });
+const { drain, honest } = finalRuns;
 
 const flows = [
   {
@@ -24,6 +28,10 @@ const flows = [
     pitch:
       "A drain dressed as a fee update. Submit it with the public demo key and watch the committed rules handle it.",
     expect: "Expected: refused by R2 Solvency. No signature is requested and the vault keeps its implementation.",
+    recordedTitle: "The attack, as recorded",
+    recordedPitch: "A drain dressed as a fee update, submitted to this gate as proposal 0.",
+    recorded: `Recorded: refused under ${drain.ruleId} ${drain.ruleName}, reason ${drain.reasonCode}. No signature was requested and the proxy kept VaultV1.`,
+    receiptHref: "#receipt-drain",
   },
   {
     kind: "honest",
@@ -32,9 +40,48 @@ const flows = [
     pitch:
       "An append-only feature upgrade. Submit it and follow it from NEAR, through the verifier, to Base Sepolia.",
     expect: "Expected: certified, signed by the NEAR MPC network and executed on Base Sepolia.",
+    recordedTitle: "The honest upgrade, as recorded",
+    recordedPitch: "An append-only feature upgrade, submitted to this gate as proposal 1.",
+    recorded: `Recorded: certified, signed by the NEAR MPC network and executed on Base Sepolia, block ${honest.block.toLocaleString("en-US")}.`,
+    receiptHref: "#receipt-honest",
   },
 ] as const;
 ---
+
+{
+  !config && (
+    <section class="console__notice" aria-labelledby="console-closed-title">
+      <h4 id="console-closed-title">Live runs are closed on this gate</h4>
+      <p>
+        The proxy was already upgraded to VaultV2Honest, and the committed manifest's reference
+        source is VaultV1. A new proposal is now refused at rule 0, <span class="mono">current source runtime mismatch</span>,
+        before R2 can run, so the attack cannot be replayed here. The recorded receipts are the
+        evidence. There is no public demo key on this page.
+      </p>
+      <p class="console__can">What you can still do:</p>
+      <ul>
+        <li>
+          Read the <a href="#receipt-final">recorded receipts</a>, each with its NEAR and Base Sepolia
+          transactions.
+        </li>
+        <li>
+          Read the gate's state live in <a href="#gate-ledger">the ledger</a> and the{" "}
+          <a href="#timelock">timelock queue</a>.
+        </li>
+        {
+          site.gateAccount !== null && (
+            <li>
+              Watch proposal ids <span class="mono">{drain.proposalId}</span> and <span class="mono">{honest.proposalId}</span> with the <a href="#proposal-watch">proposal watcher</a>.
+            </li>
+          )
+        }
+        <li>
+          Run <span class="mono">constitution audit</span> and <span class="mono">constitution receipt &lt;id&gt;</span> from a checkout, with the commands below.
+        </li>
+      </ul>
+    </section>
+  )
+}
 
 <div class="console" data-run-console data-enabled={config ? "true" : "false"}>
   {
@@ -50,45 +97,42 @@ const flows = [
           {config ? (
             <StatusBadge tone="observed">Testnet</StatusBadge>
           ) : (
-            <StatusBadge tone="awaiting">Awaiting activation</StatusBadge>
+            <StatusBadge tone="recorded">Recorded, not runnable</StatusBadge>
           )}
         </div>
-        <h3 id={`run-${flow.kind}-title`} class="console__title">
-          {flow.title}
-        </h3>
-        <p class="console__pitch">{flow.pitch}</p>
-        <p class="console__expect">{flow.expect}</p>
+        <h4 id={`run-${flow.kind}-title`} class="console__title">
+          {config ? flow.title : flow.recordedTitle}
+        </h4>
+        <p class="console__pitch">{config ? flow.pitch : flow.recordedPitch}</p>
+        <p class="console__expect">{config ? flow.expect : flow.recorded}</p>
 
         {config ? (
-          <button type="button" class="console__go" data-run>
-            Run on testnet
-          </button>
+          <>
+            <p class="console__expect">Public fixture source only. This page seals to an unappraised verifier key; do not use it for private source.</p>
+            <button type="button" class="console__go" data-run>
+              Run on testnet
+            </button>
+            <div class="console__status" aria-live="polite" data-run-status>
+              <p class="console__state" data-run-title>
+                Ready
+              </p>
+              <p class="console__detail" data-run-body>
+                One run submits one proposal with the demo key. Every stage below is read from NEAR, the verifier or Base Sepolia.
+              </p>
+              <a class="console__link" data-run-near hidden rel="noopener">
+                View the proposal transaction on NEAR testnet
+              </a>
+            </div>
+            <details class="console__stages" open>
+              <summary class="console__ladder-label mono">Stages</summary>
+              <StageLadder stages={idle.stages} label={`${flow.title}: stages`} compact />
+            </details>
+          </>
         ) : (
-          <button type="button" class="console__go" disabled>
-            Opens at activation
-          </button>
-        )}
-
-        <div class="console__status" aria-live="polite" data-run-status>
-          <p class="console__state" data-run-title>
-            {config ? "Ready" : "Not running yet"}
-          </p>
-          <p class="console__detail" data-run-body>
-            {config
-              ? "One run submits one proposal with the demo key. Every stage below is read from NEAR, the verifier or Base Sepolia."
-              : "The production gate, the attested verifier and the demo key are not live. Until then, the commands below run the same checks from a checkout."}
-          </p>
-          <a class="console__link" data-run-near hidden rel="noopener">
-            View the proposal transaction on NEAR testnet
+          <a class="console__go console__go--link" href={flow.receiptHref}>
+            Read the recorded receipt
           </a>
-        </div>
-
-        <details class="console__stages" open={config ? true : undefined}>
-          <summary class="console__ladder-label mono">
-            {config ? "Stages" : `The ${idle.stages.length} stages a run will report`}
-          </summary>
-          <StageLadder stages={idle.stages} label={`${flow.title}: stages`} compact />
-        </details>
+        )}
       </article>
     ))
   }
@@ -99,6 +143,44 @@ const flows = [
 </script>
 
 <style>
+  .console__notice {
+    display: grid;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+    padding: var(--space-5) var(--space-6);
+    border-left: 3px solid var(--lav);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .console__notice h4 {
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .console__notice p,
+  .console__notice ul {
+    max-width: 62ch;
+  }
+
+  .console__notice ul {
+    display: grid;
+    gap: var(--space-2);
+    padding-left: var(--space-5);
+    font-size: var(--text-sm);
+  }
+
+  .console__can {
+    font-weight: 600;
+    font-size: var(--text-sm);
+  }
+
+  .console__go--link {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+  }
+
   .console {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

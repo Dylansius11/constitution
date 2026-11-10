@@ -14,11 +14,17 @@ describe("judge command guide", () => {
     }
   });
 
-  it("keeps the dated activation status and checkout verification in the agent guide", () => {
+  it("states the recorded final deployment and its limits in the agent guide", () => {
     const text = buildLlmsText({ repoUrl: null });
-    expect(text).toContain("## Status as of 2026-11-07");
-    expect(text).toContain("Production gate: not deployed.");
-    expect(text).toContain("CVM verifier: not running");
+    expect(text).toContain("## Status as of 2026-11-10");
+    expect(text).toContain("constitution-gate.testnet");
+    expect(text).toContain("0xe323d9b9c0169174e2b3895b8bdc41dc81e8e83c1e8cb62fcd51e8f708601da2");
+    expect(text).toContain("E53_TIMELOCK_NOT_ELAPSED");
+    expect(text).toContain("the final gate's only access key was deleted");
+    expect(text).toContain("refused at rule 0 (current source runtime mismatch)");
+    expect(text).toContain("appraisal passed");
+    expect(text).not.toMatch(/not deployed|does not exist yet|awaiting activation|after activation/i);
+    expect(text).not.toMatch(/PUBLIC_DEMO|ed25519:/);
     expect(text).toContain("## How to verify");
     for (const line of humanCommands) {
       if (line.cmd) expect(text).toContain(line.cmd);

@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 pub fn sample() -> Value {
     json!({"chain_id":84532,"gate":"constitution-gate.testnet",
+        "governance_delay_days":3,
         "gate_code_hash":"11111111111111111111111111111111","mpc_account":"v1.signer-prod.testnet",
         "executor":"0xe0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0",
         "proxy":"0x7070707070707070707070707070707070707070",
@@ -115,6 +116,9 @@ fn cli_sample_record_matches_schema_and_rejects_record_mistakes() {
     let schema = schema();
     for (field, bad) in [
         ("chain_id", json!(-1)),
+        ("governance_delay_days", json!(0)),
+        ("governance_delay_days", json!(31)),
+        ("governance_delay_days", json!(1.5)),
         ("gate", json!("Invalid")),
         ("gate_code_hash", json!("not a NEAR code hash")),
         ("executor", json!("0xABCDEF")),
@@ -138,6 +142,7 @@ fn cli_sample_record_matches_schema_and_rejects_record_mistakes() {
     }
     for field in [
         "chain_id",
+        "governance_delay_days",
         "gate",
         "gate_code_hash",
         "mpc_account",

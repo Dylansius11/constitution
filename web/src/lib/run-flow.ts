@@ -117,6 +117,7 @@ interface SavedRun {
   attempted: true;
   proposalId: number | null;
   runId: number | null;
+  bootId?: string | null;
   nearTxHash: string | null;
   before?: ProxyRead;
   beforeObservedAtMs?: number;
@@ -163,6 +164,7 @@ export function createRunFlow(
     attempted: true,
     proposalId: null,
     runId: null,
+    bootId: null,
     nearTxHash: null,
   };
   const storageKey = `constitution:run:${config.gateAccount}:${kind}`;
@@ -241,6 +243,15 @@ export function createRunFlow(
       try {
         const run = await deps.verifier.getRun(saved.runId);
         if (disposed) return;
+        if (run !== null && (run.gate_account !== config.gateAccount ||
+            run.proposal_id !== saved.proposalId || run.boot_id !== saved.bootId)) {
+          saved.runId = null;
+          saved.bootId = null;
+          persist();
+          input.run = { status: "idle" };
+          fail("verifier_unreachable", "The saved verifier run belongs to a different proposal or verifier boot. Inspect the proposal with the CLI.");
+          return;
+        }
         input.run = { status: "ok", value: run, observedAtMs: deps.now() };
       } catch {
         input.run = unavailable(input.run, "Verifier is unreachable");
@@ -376,6 +387,11 @@ export function createRunFlow(
         )
           throw new Error("Invalid saved run");
         saved = value;
+        if (saved.runId !== null && (typeof saved.bootId !== "string" || !/^[0-9a-f]{64}$/.test(saved.bootId))) {
+          saved.runId = null;
+          saved.bootId = null;
+          persist();
+        }
         if (saved.proposalId === null) {
           fail(
             "other",
@@ -443,6 +459,9 @@ export function createRunFlow(
             proposalId: accepted.proposalId,
             sealedBundle: sealed,
           });
+          if (run.gateAccount !== config.gateAccount || run.proposalId !== accepted.proposalId ||
+              !/^[0-9a-f]{64}$/.test(run.bootId)) throw new Error("Verifier run binding mismatch");
+          saved.bootId = run.bootId;
           saved.runId = run.runId;
           persist();
         } catch (error) {

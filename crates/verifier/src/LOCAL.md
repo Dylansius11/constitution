@@ -140,7 +140,7 @@ unattested VPS signing support follows from this smoke.
 | Tool sandbox | `sha256:b4d4afc801f93a55dbb0f3acc45caa5ea4cb7fac54e5ff507e32c5994bc4d9ca` | 319070300 |
 | Verifier service | `sha256:0e528a8567df25613e219d57f941e74559cb42ad672d987442271225f8d2c171` | 130922644 |
 
-- The rebuilt service advertised the current rule-set commitment
+- The rebuilt service advertised the then-current rule-set commitment
   `0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`.
   A sealed invalid-Solidity bundle passed source-commitment validation, ran
   the honest compilation canary, and returned `Reject { rule_id: 0, reason_code: 2 }`.
@@ -290,7 +290,7 @@ Canary checks add `canary` stages to run JSON.
 | R5 provider lag, transport/HTTP/protocol failure, malformed replies, unauthenticated code mismatch or committed data unavailable | `failed`: `rpc_unavailable`, `replay_unavailable`, or `committed_data_unavailable` | None; Pending and retryable |
 | Sandbox/Docker unavailable, disk/tempdir failure, missing verifier tools | `failed`: `sandbox_unavailable`, `storage_error`, `tool_unavailable` | None; Pending and retryable |
 | Tool wall timeout/OOM (exit 124/137), malformed/inconsistent tool artifacts, unavailable committed harness | `failed`: `infrastructure_timeout`, `tool_output_invalid`; counts toward the cool-down and canary rule | None, or signed Reject once the canary attributes it to the proposal |
-| Run exceeds `RUN_DEADLINE` (20 minutes: sandbox stages, replay RPCs, AI candidates) | `failed`, `infrastructure_timeout` | None; Pending and retryable |
+| Run exceeds `RUN_DEADLINE` (30 minutes: sandbox stages, replay RPCs, AI candidates) | `failed`, `infrastructure_timeout` | None; Pending and retryable |
 | Incomplete required AI review | Withheld, no Pass | None; Pending and retryable |
 
 Replay `Incomplete` distinguishes Environment and Contradiction. Candidate execution
@@ -317,7 +317,7 @@ seconds. Successful `GET /v1/runs/{id}` returns the following flattened object
 | `stages` | Array of `{name: string, status: "Pass" \| "Fail" \| "Incomplete" \| "NotRun" \| "Skipped", detail: string, elapsed_ms: u64}`; submission result uses stage name `submit` |
 | `outcome` | Human-readable string, not a machine discriminator |
 | `elapsed_ms` | u64 elapsed milliseconds |
-| `error_code` | Optional string, present on `failed`; stable codes from the classification table, including `tool_output_invalid` for malformed verifier-tool artifacts, `infrastructure_timeout` (also for the 20-minute run deadline), `worker_panic`; defensive pipeline-only unseal failures use `bad_bundle` |
+| `error_code` | Optional string, present on `failed`; stable codes from the classification table, including `tool_output_invalid` for malformed verifier-tool artifacts, `infrastructure_timeout` (also for the 30-minute run deadline), `worker_panic`; defensive pipeline-only unseal failures use `bad_bundle` |
 | `verdict` | Optional `"Pass"` or `{"Reject":{"rule_id":u8,"reason_code":u16}}`; present only after signing |
 | `certificate_b64`, `signature_b64` | Optional base64 strings, canonical certificate bytes and Ed25519 signature |
 | `evidence_root` | Optional `0x`-prefixed 32-byte lowercase hex string |
@@ -411,8 +411,10 @@ candidate list. A reproduced R2 violation produces
 [I] The committed two-successor-block lag is a minimal demo evidence policy,
 not a Base finality claim. The corpus actor is a public anvil account; testnet
 activation requires a deliberately seeded testnet actor and a new corpus commitment.
-Rule-set hash (CLI observed locally, 2026-11-06, after the AI deadline update to 300 s):
+[V, local CLI, 2026-11-06] The previous 300 s rule-set hash was
 `0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`.
+[I] Recompute the changed 600 s manifest with
+`cargo run -p constitution-cli -- rules hash rules/manifest.json`.
 
 Library witness policy and limits:
 [`rules/r5/README.md`](../../../rules/r5/README.md).
@@ -437,11 +439,13 @@ The SDK Node entry point enforces E2EE, gateway/model TCB `UpToDate`, and
 `x-no-aliasing: true`. It calls `verifyResponse(completion.id)` before releasing
 validated candidates; only `provider_tee` is complete. A missing key, error,
 truncated/malformed JSON, timeout or non-provider signature returns structured
-Incomplete with no candidates. The committed timeout is 300 s and covers SDK setup,
+Incomplete with no candidates and an allowlisted reason in stage detail, committed
+by the preflight digest. The committed timeout is 600 s and covers SDK setup,
 completion and verification; the Rust HTTP caller adds 2 s transport grace.
-The request uses `max_tokens: 45000` and `thinking_token_budget: null`: reasoning
-has no separate cap but remains inside the total completion budget. The 64 KiB
-candidate JSON and 96 KiB sidecar-envelope limits remain independent safeguards.
+The request uses `max_tokens: 100000` and `thinking_token_budget: null`: [U] the
+provider's model output maximum is unverified. Reasoning has no separate cap but
+remains inside the total completion budget. The 64 KiB candidate JSON and 96 KiB
+sidecar-envelope limits remain independent safeguards.
 No inference retry is automatic, and timeout does not prove upstream billing stopped.
 
 Source comments and model text remain untrusted data. Requests are capped at
@@ -492,7 +496,7 @@ only allowlisted hex/bounded-text receipt fields. It does not equate the local
 content digest with a provider-signed wire hash.
 
 [I] Remaining operational limits: each archive RPC request has a 30-second timeout
-(shortened to the remaining run time). The pipeline checks the 20-minute
+(shortened to the remaining run time). The pipeline checks the 30-minute
 `RUN_DEADLINE` at stage boundaries and before signing, but blocking sandbox and
 sidecar calls can overrun it until their own timeouts. There is no per-proposal AI
 spending quota. The one-active-run queue is not account-level

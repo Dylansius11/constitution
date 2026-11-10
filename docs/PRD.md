@@ -2,10 +2,10 @@
 
 ## TL;DR
 
-- [I] One-liner: **"Steal every admin key. You still cannot violate the upgrade constitution."** Scoped claim: for the one protected proxy, no key we control (admin, governor, deployer, verifier operator, relayer) can make the proxy run an implementation that has not passed the owner-committed rules, or change those rules faster than a public 7-day timelock. The residual trust (MPC network, TEE vendors, declared rule coverage) is stated in [Risks and guarantees](#risks-and-guarantees).
+- [I] One-liner: **"Steal every admin key. You still cannot violate the upgrade constitution."** Scoped claim: for the one protected proxy, no key we control (admin, governor, deployer, verifier operator, relayer) can make the proxy run an implementation that has not passed the owner-committed rules, or change those rules faster than the deployment-selected public timelock. The residual trust (MPC network, TEE vendors, declared rule coverage) is stated in [Risks and guarantees](#risks-and-guarantees).
 - [I] Mechanism: an EVM proxy's upgrade authority belongs to an address derived through NEAR Chain Signatures for a NEAR **gate** contract whose account has no full-access keys. The gate asks the MPC network to sign one exact upgrade transaction only after an attested deterministic verifier certifies the proposal against a committed rule set. A private red-team AI can only veto, and only with a counterexample that the deterministic verifier reproduces.
-- [V] Status 2026-10-26: scope locked by the founder in brief 15 (source below). Planning docs only. No application code exists before 2026-11-01T00:00:00Z. Nothing is deployed, nothing is audited.
-- [I] Primary success condition: on the final submission, a judge can (1) watch or run a hidden-drain V2 being rejected with a receipt while the Base Sepolia proxy stays unchanged, (2) watch or run an honest V2 being certified, MPC-signed and executed through `upgradeAndCall` with real explorer links, and (3) see a governance rule change refused before its 7-day delay ends, with every claim traceable to a receipt.
+- [V, exercised on testnet 2026-11-10] The gate, verifier and Base Sepolia executor/proxy were deployed; the final gate became keyless at NEAR block 277098815. A post-deletion audit exited 0; the deployment and receipts are in SMART-CONTRACT. Security reviews are recorded in BUILD-PLAN P4.1; they are not an independent audit.
+- [I] Primary success condition: a judge can inspect receipts for (1) rejection of hidden-drain V2 with the proxy unchanged, (2) certification, MPC signing and execution of honest V2 through `upgradeAndCall`, and (3) refusal of an early governance rule change. The recorded testnet evidence and the limits on repeating the flows are below.
 - [V] Tracks: AI Security & Defense (`security`, primary), Privacy & Private AI (`privacy`, only for the genuinely private analysis path), Open Innovation (`open`, backup). Multiple track ids per entry are allowed; award stacking is UNVERIFIED (EVENT.md).
 
 ## Problem, users and buyer
@@ -46,7 +46,7 @@ Why each unusual primitive is load-bearing:
 | Attested verifier (TEE) | Runs deterministic checks on private source and signs a certificate with a key that only exists in measured code | Certificates come from an operator who could lie or be hacked |
 | Private red-team AI (NEAR AI Cloud Confidential TEE tier) | Searches for exploit sequences in unreleased code without disclosing it; can only veto | Either no adversarial search, or unreleased patch code leaves the trust boundary |
 | EVM `ConstitutionExecutor` | On-chain last line: certificate id single use, deadline, new implementation code hash, expected current implementation | A signed but withheld transaction could land after expiry or against a changed state |
-| 7-day public timelock | Rules, verifier allowlist and authority migration change only after public delay | The governor key becomes an instant bypass |
+| Deployment-selected public timelock | Rules, verifier allowlist and authority migration change only after the immutable selected delay | The governor key becomes an instant bypass |
 
 [I] When a simpler solution wins: a protocol that is immutable, or whose upgrades are rare and fully reviewed by an independent auditor plus a well-run multisig, may not need this. CONSTITUTION is for teams that upgrade often, ship emergency patches, or cannot rule out signer compromise. It complements, not replaces, audits.
 
@@ -58,8 +58,10 @@ Editorial target: about 3 minutes [I]. [U] No official video duration limit was 
 2. **The attack.** The judge, using that key, proposes `VaultV2Drain`: it looks like a routine fee update but contains a hidden path that lets one address withdraw the whole vault. (F1, F9, F10)
 3. **Rejection.** The private red-team AI proposes a counterexample; the deterministic verifier reproduces it ("address X withdrew 100% of the vault"); the gate records a rejection receipt; the MPC signer is never called; the Base Sepolia explorer shows the proxy implementation unchanged. (F5, F6, F8)
 4. **Honest upgrade.** `VaultV2Honest` passes every rule; the gate requests the Chain Signature; the relayed transaction executes `ProxyAdmin.upgradeAndCall` via `ConstitutionExecutor` on Base Sepolia; explorer link and receipt shown. (F3, F4, F8)
-5. **Even governance waits.** The governor key schedules a rule change and immediately tries to apply it: the gate refuses (`E53_TIMELOCK_NOT_ELAPSED`) with a real testnet receipt. A rule change scheduled at activation and matured after 7 real days is shown only if it actually matured (F11, P1). A local time-travel test is labeled "local test", never presented as testnet evidence.
+5. **Even governance waits.** The governor key schedules a rule change and immediately tries to apply it: the gate refuses (`E53_TIMELOCK_NOT_ELAPSED`) with a real testnet receipt. A change is shown as matured only after the deployment's selected delay has actually elapsed (F11, P1). A local time-travel test is labeled "local test", never presented as testnet evidence.
 6. **Business.** Buyer, pricing hypothesis, next 90 days, without invented customers or revenue.
+
+[V, exercised on testnet 2026-11-10] The shipped evidence is recorded receipts for the drain rejection, honest upgrade and early governance refusal, not a live judge attack. The D17 function-call key was created, exercised and deleted without publishing its secret or a QR: the final proxy now runs V2, and the fixed V1 reference permits only one upgrade per rule set. A matured apply of change 0 remains pending, with ETA 2026-11-13T16:56:01Z. The steps above remain the original design, not a claim that public try-it shipped; the founder approved removing P3.3 (public key and QR) from scope on 2026-11-10 (chat).
 
 Fallback order if live inference fails during recording: show the real rejection receipt from the rehearsal run with its timestamp and say so on screen. Never replay a fixture as live.
 
@@ -76,13 +78,13 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 - Acceptance: every transition and every rejection reachable by a test; no path to `SignRequested` without a valid certificate (see F3); expired proposals cannot be certified.
 - Proof surface: gate events, CLI `status`, receipt.
 
-### F2. Constitution governance and timelock (P0, real 7-day maturation proof P1)
+### F2. Constitution governance and timelock (P0, real maturation proof P1)
 
-- Outcome: the rule set, verifier allowlist, gate parameters and any authority migration change only through a public queue with a fixed 7-day minimum delay that no role can shorten.
+- Outcome: the rule set, verifier allowlist, gate parameters and any authority migration change only through a public queue with a deployment-selected delay of 1–30 whole days, default 3; the chosen duration is immutable after initialization. Ordinary certified vault upgrades do not wait for this governance delay.
 - Roles: `governor` may only schedule; `guardian` may only cancel pending changes, pause signing or remove a verifier immediately; nobody may apply before `eta`; anyone may apply after `eta` (D17).
 - Change kinds: `SetRuleSet(rule_set_hash, manifest_uri, ai_required)`, `AddVerifier(pubkey, release_hash, attestation_uri)`, `RemoveVerifier(pubkey)`, `SetParams(params)`, `SetGovernor`, `SetGuardian`, `MigrateAuthority(new_signer)`, `Unpause`.
 - Exceptions: `RemoveVerifier` and a global `pause_signing` may take effect immediately when invoked by guardian, because they can only reduce what the gate signs (fail closed). Unpause is timelocked.
-- Rejections: apply before `eta` (`E53_TIMELOCK_NOT_ELAPSED`), unknown change (`E52`), not pending (`E54`), scheduler is not governor (`E50`), canceller is not guardian (`E56`), rule-set change while signatures are outstanding (`E55`, D13). The 7-day delay is a constant; no change kind alters it.
+- Rejections: apply before `eta` (`E53_TIMELOCK_NOT_ELAPSED`), unknown change (`E52`), not pending (`E54`), scheduler is not governor (`E50`), canceller is not guardian (`E56`), rule-set change while signatures are outstanding (`E55`, D13). Initialization rejects explicit 0 or 31 days with `E51_INVALID_CHANGE`; no change kind, including `SetParams`, alters the delay. A future duration change requires a new gate and the existing timelocked authority migration.
 - Acceptance: unit tests for each rejection; local time-travel test applies after `eta` (labeled local); testnet receipt of an early-apply refusal; P1 testnet receipt of a matured apply.
 
 ### F3. Exact upgrade transaction and Chain Signature (P0)
@@ -109,7 +111,7 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
   - R2 solvency property: bounded symbolic checks and seeded fuzzing of two fixed actors' deposit/withdraw handlers enforce aggregate solvency, not per-depositor withdrawability. The verifier supplies the token/reference definitions and checks the tested candidate runtime hash and implementation-slot preservation. Bounds and measured limits are committed in the manifest and ARCHITECTURE.
   - R3 opcode and slot filter: reject `SELFDESTRUCT`, `CALLCODE`, `DELEGATECALL`, literal ERC-1967 implementation/admin slots and their ±1 neighbors, embedded ERC-1967 ASCII labels, and literal Foundry/Halmos cheatcode addresses. Filters are filters, not proofs: runtime-computed storage slots or cheatcode addresses can evade them.
   - R4 initializer allowlist: `init_calldata` empty or matching a committed selector and argument schema.
-  - R5 bounded differential replay: a committed corpus of demo transactions replayed against current and new implementation from a pinned prestate; outputs and state must match except declared changes.
+  - R5 bounded differential replay: a committed corpus with declared preconditions and outcomes is replayed against current and new implementation from a pinned prestate; outputs and state must match except declared changes. Upgrade replay uses the proposed implementation and authority path, subject to the executor certificate-ID limitation in ARCHITECTURE.
 - Outputs: signed certificate or signed rejection with `reason_code`, `rule_id` and an evidence hash pointing to a reproducible trace.
 - Acceptance: each rule has a passing and failing fixture; tampered source bundle (hash mismatch) is rejected before rules run; certificate signature verifies in the gate test.
 
@@ -123,8 +125,8 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 
 ### F7. Authority lockdown and bypass audit (P0)
 
-- Outcome: a read-only `constitution audit` check that anyone can run proves the claim's preconditions from public state: gate account has zero full-access keys and no self-upgrade path outside F2; derived EOA equals the executor's authorized caller; executor owns ProxyAdmin; ProxyAdmin is the proxy's admin (ERC-1967 admin slot); active rule-set hash and verifier allowlist match the committed manifest.
-- Acceptance: audit fails loudly on each violated precondition in local tests; testnet audit output recorded after the activation ceremony.
+- Outcome: a read-only `constitution audit` check that anyone can run checks the claim's preconditions from public state: gate account has zero full-access keys and no self-upgrade path outside F2; derived EOA equals the executor's authorized caller; executor owns ProxyAdmin; ProxyAdmin is the proxy's admin (ERC-1967 admin slot); active rule-set hash and verifier allowlist match the committed manifest. The deployment record must explicitly commit `governance_delay_days`; audit compares it with observed gate configuration.
+- Acceptance: audit fails loudly on each violated precondition in local tests; rehearse user-facing E2E and audit before lockdown, then record final testnet audit output and essential live checks after key deletion (D21). Retained-key staging is not keyless proof; deletion requires fresh founder authorization.
 
 ### F8. Receipts (P0)
 
@@ -134,20 +136,20 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 
 ### F9. CLI and judge commands (P0)
 
-- Planned interface (does not exist yet): `constitution propose`, `status <id>`, `relay [<id>]`, `receipt <id>`, `audit`, `govern schedule|apply|cancel`, `rules hash <manifest>`, `verifier appraise <url>` (full table in ARCHITECTURE); `make attack` and `make upgrade` wrap the two demo flows.
-- Judge mode: works with the disposable demo governor key and a public read-only path that needs no key (reads receipts and audit).
+- [V] Implemented CLI commands include `constitution demo attack|upgrade`, `propose`, `status <id>`, `relay <id>`, `receipt <id>`, `audit`, `govern schedule|apply|cancel`, `rules hash <manifest>`, `verifier appraise <url>`, `verifier run` and `executor-runtime-hash` (full table in ARCHITECTURE). `make attack` and `make upgrade` wrap the demo runner; the recorded testnet runs used the CLI directly.
+- [V] Public read-only receipt and audit paths need no demo key. The restricted governor key was exercised on testnet but deleted unpublished; public judge-key mode was not delivered.
 - Acceptance: README "do X, see Y" steps run in a fresh environment with documented prerequisites; every error prints the cause and the next step.
 
 ### F10. Public web page (P0)
 
-- Outcome: one page with three surfaces: Attack (submit `VaultV2Drain`), Honest upgrade (submit `VaultV2Honest`), Receipts (live status and history), plus the audit panel and the QR "take it" key.
+- Outcome: one page designed for Attack, Honest upgrade, Receipts and an audit panel. [V] A static page has been published; the QR key and public live try-it were not delivered. The original interactive design remains subject to P3.3 and P3.5 acceptance.
 - States: idle, submitting, verifying (real verifier stage reported), AI review, certified, signing, relaying, executed, rejected, expired, error with next step. No fake progress.
 - Accessibility: keyboard operable, visible focus, readable contrast, works at 390 px and 1280 px, honors `prefers-reduced-motion`.
 - Acceptance: browser test walks both flows against testnet; visual check at both widths.
 
 ### F11. Real timelock maturation on testnet (P1)
 
-- Outcome: a harmless rule-set change scheduled at the activation ceremony is applied after 7 real days with a receipt, before the submission cutoff. Requires activation by 2026-11-07T12:00:00Z (BUILD-PLAN).
+- Outcome: a harmless governance change scheduled at activation is applied after the selected number of real days with a receipt, before the submission cutoff, if feasible. The old 2026-11-07T12:00:00Z activation milestone was for seven days and is stale; calculate feasibility from the actual schedule and observed `eta_ns`, never assume maturation.
 
 ### S1. Act 2 semi-autonomous proposal repair (stretch, D4 approved 2026-11-05)
 
@@ -206,7 +208,7 @@ What the product guarantees, if the stated trust assumptions hold [I]:
 
 - G1. Against implementations that cannot write arbitrary proxy storage, the proxy changes implementation only through `ConstitutionExecutor`, which only accepts transactions signed for the gate's derived EOA. This is conditional: an implementation capable of computed-slot `SSTORE` can bypass that upgrade path; the executor's tracker is not an on-chain storage-write guard.
 - G2. The gate requests a signature only for the exact executor call bound to a certificate from an allowlisted verifier over the active rule-set hash.
-- G3. Rules, verifier allowlist and authority migration change only after a public 7-day delay; guardian actions can only reduce authority. Liveness limit: EVM nonces are assigned at certification, so a certified transaction that nobody ever mines delays later ones until someone relays it (permissionless; a reverted transaction still consumes the nonce). Delay only; no signature is ever created without a certificate.
+- G3. Rules, verifier allowlist and authority migration change only after the public deployment-selected immutable delay; guardian actions can only reduce authority. Liveness limit: EVM nonces are assigned at certification, so a certified transaction that nobody ever mines delays later ones until someone relays it (permissionless; a reverted transaction still consumes the nonce). Delay only; no signature is ever created without a certificate.
 - G4. AI output can only cause rejection, never certification.
 
 Trust assumptions and limits:
@@ -218,6 +220,12 @@ Trust assumptions and limits:
 - Environment-dependent behavior (review N7): R2 runs under one fixed block environment (only the chain id is pinned), R3 does not forbid block-environment opcodes (`TIMESTAMP`, `NUMBER`, `BASEFEE`, `BLOCKHASH`, `ORIGIN`, ...) because a byte-scan false-positives on Solidity's trailing metadata (the honest `VaultV2Honest` contains `0x48` after `INVALID`), and R5 replays only the committed corpus at the real header. A candidate whose drain depends on a later time or block value can therefore pass; this is a stated limit, not covered by the guarantee.
 - AI review is nondeterministic; its find rate is reported from rehearsal runs, not promised. A Clean result means the provider answered with a well-formed receipt and nothing was reproduced locally; the receipt is shape-checked in the verifier, not cryptographically verified in Rust (review N8). The AI replay uses the SHA-256 precompile address as the victim account, so it can find attacker-side counterexamples only (N13). The sidecar and verifier share one network namespace by deployment assumption that the tree does not enforce, and a simulator-backed attestation key must never be registered (N12).
 - Liveness: MPC, verifier or inference outages delay upgrades; they never cause a signature without certification.
+- [V, founder acceptance 2026-11-10; F3] A compromised or hostile guardian can permanently halt signing and prevent its own replacement by repeatedly pausing and cancelling governance actions; custody and monitoring remain founder decisions (OPEN-DECISIONS).
+- [I, pre-freeze audit 2026-11-10; residual limits accepted unless the founder changes them] (a) One upgrade per rule set: the committed reference is V1 and the R2 harness is V1-specific, so after the first V1 to V2 upgrade a V2 to V3 proposal needs a new rule set and verifier release through the immutable delay. (b) R5 replays the real signer, executor, ProxyAdmin and proxy upgrade path with a placeholder certificate id, so an initializer that reads executor `usedCertificate` could tell the replay from the real call. (c) Verifier admission is permissionless: anyone holding a valid sealed bundle for a Pending proposal can start its run, use review credit and occupy the single worker. (d) The verifier signs a rule-0 Reject for a changed current implementation from archive RPC data that is not proof-authenticated, so a faulty provider can cost a proposer a new proposal; it never creates a Pass. (e) A restart or image/env update changes the ephemeral verifier key and a replacement waits for the immutable delay, so the CVM must not be touched during judging. (f) The AI sidecar runs in the verifier container under the same OS user, so a sidecar compromise would reach the mounted sockets; the sidecar holds no signing key. (g) Remote private-source uploads require appraisal of the exact identity; a loopback development verifier is the only unappraised exception.
+- [I, pre-freeze gate review F4, F5, F9, F10; founder accepted 2026-11-10] These gate-code limits cannot be patched after key deletion. F4: the unbounded outstanding-signature scan can exhaust gas or be kept blocked by new signatures; guardian pause can open a window against continued signatures, but does not bound accumulated scan cost. F5: weak parameter floors permit unmineable transactions and zero fees cannot be bumped; carefully review parameters, and recover with a new timelocked `SetParams` if governance remains available. F9: a nearly expired Pass can yield an unusable signed transaction; submit promptly or repropose, paying a new fee. F10: unknown config fields can hide a misspelled delay behind the immutable default; compare the observed configuration with the committed deployment record using the audit.
+- [I, pre-freeze gate review F6–F8] The initial EVM nonce has no setter: compare it with the derived EOA transaction count at initialization; a wrong low nonce requires a new gate. A migration's first deadline cannot be extended by retrying identical bytes; relay promptly or schedule a new timelocked migration. The first still-valid verdict wins even if a later run differs (`attempt` is not enforced); avoid signing environmental Rejects and recognize the certificate TTL window.
+- [I, pre-freeze EVM review E6–E7] R2 uses fixed initializer and actor state, not the proposal's exact initializer; a permitted value can activate behavior outside the bounded checks. Candidates with constructor arguments, immutables or unresolved library links may fail runtime matching or harness deployment; they are not generally supported without a compatible verifier and rule set.
+- [I, pre-freeze verifier review V9–V10] Digest pins and attestation do not prove reproducible source-to-image builds or reviewed pre-launch provenance; review the expected measurements and deployment inputs independently. An endpoint's self-reported stage or attestation label is not independent DCAP appraisal against an owner-approved measurement and gate allowlist.
 - Demo token boundary: `MockToken` is a permissionlessly mintable testnet token using OpenZeppelin ERC20 allowance semantics. Static conformance checks do not remove the standard nonzero-to-nonzero `approve` race; allowance replacement needs ordinary client-side precautions. The vault is not qualified for arbitrary fee-on-transfer, rebasing or callback-capable tokens.
 
 Owner-tagged risks are tracked in `docs/OPEN-DECISIONS.md` (decisions and BLOCKERS).

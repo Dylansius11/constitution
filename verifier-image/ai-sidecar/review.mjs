@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createServer as httpServer } from 'node:http';
 
 export const MODEL = 'z-ai/glm-5.3-flash';
+export const MAX_COMPLETION_TOKENS = 100000;
 const MAX_RESPONSE = 64 * 1024;
 const MAX_REQUEST = 4 * 1024 * 1024;
 const digest = text => createHash('sha256').update(text).digest('hex');
@@ -29,7 +30,7 @@ export function validateCandidates(text, maxCandidates) {
 }
 function validateRequest(input) {
   keys(input, ['files', 'rules', 'nonce', 'max_candidates', 'timeout_s']);
-  if (!Array.isArray(input.files) || input.files.length < 1 || input.files.length > 128 || !Array.isArray(input.rules) || input.rules.length < 1 || input.rules.length > 16 || input.rules.some(r => !boundedText(r, 4096)) || typeof input.nonce !== 'string' || !/^[0-9a-f]{64}$/.test(input.nonce) || !Number.isInteger(input.max_candidates) || input.max_candidates < 1 || input.max_candidates > 16 || !Number.isInteger(input.timeout_s) || input.timeout_s < 1 || input.timeout_s > 300) throw new Error('request_schema');
+  if (!Array.isArray(input.files) || input.files.length < 1 || input.files.length > 128 || !Array.isArray(input.rules) || input.rules.length < 1 || input.rules.length > 16 || input.rules.some(r => !boundedText(r, 4096)) || typeof input.nonce !== 'string' || !/^[0-9a-f]{64}$/.test(input.nonce) || !Number.isInteger(input.max_candidates) || input.max_candidates < 1 || input.max_candidates > 16 || !Number.isInteger(input.timeout_s) || input.timeout_s < 1 || input.timeout_s > 600) throw new Error('request_schema');
   let size = 0;
   for (const file of input.files) {
     keys(file, ['path', 'content']);
@@ -63,29 +64,42 @@ export async function review(input, { env = process.env, clientFactory = sdkFact
   try { validateRequest(input); config = configuration(env); }
   catch (error) { return empty(['missing_api_key', 'unsupported_model', 'request_schema'].includes(error.message) ? error.message : 'invalid_configuration'); }
   const messages = buildPrompt(input);
-  const result = empty('inference_or_verification_failed');
+  const result = empty('client_error');
   result.requestSha256 = digest(JSON.stringify(messages));
   const controller = new AbortController();
   let timer;
   try {
     const work = async () => {
       const client = await clientFactory(config);
-      const completion = await client.chat.completions.create({ model: MODEL, messages, stream: false, max_tokens: 45000, thinking_token_budget: null, response_format: { type: 'json_object' } }, { headers: { 'x-no-aliasing': 'true' }, signal: controller.signal, maxRetries: 0 });
-      if (!boundedText(completion.id, 256) || !/^[a-zA-Z0-9_-]+$/.test(completion.id) || completion.id.includes(config.apiKey)) throw new Error('invalid_completion');
-      result.completionId = completion.id;
-      const content = completion.choices?.[0]?.message?.content;
-      if (completion.choices?.length !== 1 || completion.choices[0].finish_reason !== 'stop' || typeof content !== 'string' || Buffer.byteLength(content) > MAX_RESPONSE || content.includes(config.apiKey)) throw new Error('invalid_completion');
-      result.responseSha256 = digest(content);
-      const candidates = validateCandidates(content, input.max_candidates);
-      const receipt = await client.verifyResponse(completion.id);
-      // Never return SDK error bodies, receipt objects or arbitrary completion fields.
-      result.signatureKind = ['provider_tee', 'gateway', 'gateway_tee'].includes(receipt?.signatureKind) ? receipt.signatureKind : 'unknown';
-      const usage = completion.usage;
+      let completion;
+      try {
+        completion = await client.chat.completions.create({ model: MODEL, messages, stream: false, max_tokens: MAX_COMPLETION_TOKENS, thinking_token_budget: null, response_format: { type: 'json_object' } }, { headers: { 'x-no-aliasing': 'true' }, signal: controller.signal, maxRetries: 0 });
+      } catch (error) {
+        const status = error?.status;
+        result.reason = Number.isInteger(status) && status >= 400 && status < 500 ? 'upstream_http_4xx' : Number.isInteger(status) && status >= 500 && status < 600 ? 'upstream_http_5xx' : 'client_error';
+        return result;
+      }
+      const usage = completion?.usage;
       if (usage && ['prompt_tokens', 'completion_tokens', 'total_tokens'].every(k => Number.isSafeInteger(usage[k]) && usage[k] >= 0)) {
         result.usage = { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens, total_tokens: usage.total_tokens };
       }
+      if (!boundedText(completion?.id, 256) || !/^[a-zA-Z0-9_-]+$/.test(completion.id) || completion.id.includes(config.apiKey)) return { ...result, reason: 'schema_invalid' };
+      result.completionId = completion.id;
+      if (!Array.isArray(completion.choices) || completion.choices.length === 0) return { ...result, reason: 'empty_choices' };
+      if (completion.choices[0]?.finish_reason === 'length') return { ...result, reason: 'finish_reason_length' };
+      const content = completion.choices[0]?.message?.content;
+      if (completion.choices.length !== 1 || completion.choices[0]?.finish_reason !== 'stop' || typeof content !== 'string' || Buffer.byteLength(content) > MAX_RESPONSE || content.includes(config.apiKey)) return { ...result, reason: 'schema_invalid' };
+      result.responseSha256 = digest(content);
+      let candidates;
+      try { candidates = validateCandidates(content, input.max_candidates); }
+      catch (error) { return { ...result, reason: error instanceof SyntaxError ? 'invalid_json' : 'schema_invalid' }; }
+      result.reason = 'receipt_verification_failed';
+      const receipt = await client.verifyResponse(completion.id);
+      // Never return SDK error bodies, receipt objects or arbitrary completion fields.
+      result.signatureKind = ['provider_tee', 'gateway', 'gateway_tee'].includes(receipt?.signatureKind) ? receipt.signatureKind : 'unknown';
+      // Usage is safe integer metadata and is retained even when verification fails.
       // No observed billed cost field is documented by this SDK; do not invent one.
-      if (result.signatureKind !== 'provider_tee') return { ...result, reason: 'non_provider_signature' };
+      if (result.signatureKind !== 'provider_tee') return result;
       const signature = receipt.signature;
       const hexBytes = (value, count) => typeof value === 'string' && new RegExp(`^(0x)?[0-9a-fA-F]{${count * 2}}$`).test(value);
       const signedParts = signature?.signedText?.split(':');
@@ -95,7 +109,7 @@ export async function review(input, { env = process.env, clientFactory = sdkFact
       result.receipt = normalized;
       return { ...result, status: 'complete', reason: 'verified_provider_response', candidates };
     };
-    return await Promise.race([work(), new Promise(resolve => { timer = setTimeout(() => { controller.abort(); resolve({ ...result, status: 'incomplete', reason: 'timeout', candidates: [] }); }, input.timeout_s * 1000); })]);
+    return await Promise.race([work(), new Promise(resolve => { timer = setTimeout(() => { resolve({ ...result, status: 'incomplete', reason: 'timeout', candidates: [] }); controller.abort(); }, input.timeout_s * 1000); })]);
   } catch { return { ...result, status: 'incomplete', candidates: [] }; }
   finally { clearTimeout(timer); }
 }

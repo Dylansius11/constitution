@@ -78,6 +78,10 @@ Agent steps: confirm exact subcommands with `near account --help` on 0.30.1 befo
 
 Verification: account summary shows a non-zero balance. Expected error: faucet exhausted; stop and tell the founder.
 
+For gate initialization, select `Config.governance_delay_days` as 1–30 whole days (omission defaults to 3); 0 and 31 are invalid. The duration is immutable, including through `SetParams`; a later change needs a new gate and the existing timelocked authority migration. The deployment record must explicitly commit the expected duration for audit comparison against `get_config`. Ordinary certified vault upgrades do not wait for this governance delay.
+
+The D21 ceremony requires a labeled user-facing E2E rehearsal and audit before irreversible deletion, then fresh founder authorization, followed by final audit and essential live checks. Retained-key staging is not keyless proof. See [`scripts/activate.md`](../../scripts/activate.md); the old 2026-11-07 internal milestone for seven-day maturation is stale, not evidence of a matured change.
+
 ### 2. Chain Signatures and the derived EOA (P1.2)
 
 Docs: https://docs.near.org/chain-abstraction/chain-signatures/implementation ; near/mpc `crates/contract` (checked 2026-10-26).
@@ -113,6 +117,8 @@ Agent verification (P1.7): both endpoints return chain id `0x14a34` and the same
 
 Initial observation (2026-11-05, exercised on Base Sepolia): the supplied Validation Cloud endpoint passes chain id, historical code/storage and `prestateTracer` with verified override/diff behavior, but fixed/recent numeric-block proofs fail with `-32602` maximum proof window; `latest` only returns a proof response. Resolution under refined D10: the production split-provider witness fetch passed at fixed block 54,676,922 with 8 accounts and 7 slots fully proof-authenticated (BUILD-PLAN P1.7). The public endpoint is rate-limited and proof-history availability is bounded; this is a hackathon liveness tradeoff, not a production uptime guarantee. Revalidate the deployed CVM configuration and final corpus during activation. No credential-bearing URL is recorded here.
 
+[V, probed 2026-11-10 from the dev machine and on the CVM] Pointing the CVM's proof endpoint at the keyed Validation Cloud URL made every R5 fail `proof_window_exceeded` (it only proves the current head, so a pinned block two confirmations back is always outside its window). Public Base serves proofs for older blocks but throttles bursts (`429` or `-32011 request limit reached`). `https://84532.rpc.thirdweb.com` served `eth_getProof` at head-2, -12 and -64 with the same header and state root as Validation Cloud, and throttled after about nine back-to-back requests (`Rate limit exceeded`); `publicnode`, `drpc` and `onfinality` refuse small distances, Ankr, Blast and BlockPI need a key or are gone. Decision: the proof endpoint is a public provider separate from the keyed archive endpoint (provider independence of the header cross-check is kept), and the verifier backs off exponentially on rate limits (up to 7 attempts, bounded by the run deadline). Never reuse the archive URL as the proof URL.
+
 ### 5. Phala Cloud dstack CVM (B3, D2, D18)
 
 Docs: https://docs.phala.com/phala-cloud/getting-started/sign-up-for-cloud-account ; https://docs.phala.com/dstack/getting-started.md ; https://phala.com/pricing ; https://cloud.phala.com/about/pricing ; https://docs.phala.com/phala-cloud/key-management/get-a-key.md (checked 2026-10-26).
@@ -124,7 +130,7 @@ Human steps (founder):
 
 Agent steps (P1.6, with approval): build `verifier-image/` with digest-pinned base image and tool binaries; deploy the compose; read `GET /v1/identity`; run `constitution verifier appraise <url>`; record `release_hash`, compose hash, image digest, instance size, observed hourly cost. The certificate key is ephemeral (D18); do not use `GetKey` for it.
 
-Verification: appraisal passes DCAP chain, TCB `UpToDate`, RTMR3 replay equals compose hash, `report_data` matches published keys. Errors: credit missing (escalate D2 fallback decision), tier too small (escalate D18).
+Verification: appraisal passes the Intel production DCAP chain and strict TCB `UpToDate`; independently recomputed runtime-event digests replay to the quote's RTMR3; the unique measured compose hash matches the expected deployment; `report_data` binds the published keys and boot nonce. dstack may leave runtime-event `digest` empty or absent: compute it from canonical content, still reject any supplied mismatching digest, and never skip the signed-register comparison. Official format: [pinned `TdxEvent::digest`](https://github.com/Dstack-TEE/dstack/blob/dad8326f89a76e60e5d4b61c424a3329c92f60e9/dstack/cc-eventlog/src/tdx.rs). Errors: credit missing (escalate D2 fallback decision), tier too small (escalate D18).
 
 Fallback (only after a new founder decision): OutLayer, docs https://app.outlayer.ai/docs/getting-started ; live `outlayer.testnet.get_max_limits` returned `[500000000000,180,300]` on 2026-10-26.
 
@@ -136,7 +142,7 @@ Human steps: credits already requested (2026-10-26). When granted, create an API
 
 Agent steps (P2.6): sidecar with `@nearai/inference-sdk` 0.1.0 on Node 24.22.1 (`import { InferenceClient } from '@nearai/inference-sdk/node'`), `e2ee: true`, strict TCB policy, `x-no-aliasing: true`, model `z-ai/glm-5.3-flash`; after each completion `verifyResponse(completion.id)` and require `signatureKind === 'provider_tee'`.
 
-[I, founder-approved policy 2026-11-06] Review sends documented `max_tokens: 45000` and explicit `thinking_token_budget: null`, with the manifest committing a 300 s review deadline (SDK setup, inference and response verification included). The Rust loopback caller allows 2 s additional HTTP transport grace; this does not extend inference work. Preserve the 64 KiB candidate JSON and 96 KiB sidecar-envelope bounds: the token budget includes reasoning and does not authorize larger executable candidate output. Truncation, timeout, schema failure or non-provider verification remains Incomplete. These controls do not change certificate validity windows or guarantee upstream cancellation/billing. Future S1 repair has a 100,000-token generation ceiling and a 1,800 s whole-job deadline including checks and review again; it is not implemented by changing the review policy.
+[I] Review sends `max_tokens: 100000` and explicit `thinking_token_budget: null`, with the manifest committing a 600 s review deadline (SDK setup, inference and response verification included). [U] The provider's maximum output for this model is unverified. The Rust loopback caller allows 2 s additional HTTP transport grace; the 30-minute run deadline can expire before review completes. Preserve the 64 KiB candidate JSON and 96 KiB sidecar-envelope bounds. Truncation, timeout, schema failure or non-provider verification remains Incomplete. These controls do not change certificate validity windows or guarantee upstream cancellation/billing. Future S1 repair remains unimplemented.
 
 Verification: authenticated `GET /v1/attestation/report?model=z-ai/glm-5.3-flash&provider=near&nonce=<fresh>` succeeds (documented non-billable); one test completion verifies as `provider_tee`. Cost per review measured and recorded. Errors: gateway-only signature means review incomplete, never pass.
 

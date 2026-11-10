@@ -6,6 +6,7 @@ import GateLedger from "../live/GateLedger.astro";
 import ProposalWatch from "../live/ProposalWatch.astro";
 import SpikeReceipt from "../live/SpikeReceipt.astro";
 import StatusBadge, { type EvidenceTone } from "../ui/StatusBadge.astro";
+import FinalEvidence from "./FinalEvidence.astro";
 
 /**
  * Evidence (DESIGN 5 row 6): what has actually run, each line with its source label.
@@ -51,30 +52,30 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
   {
     part: "Gate contract",
     state:
-      "Implemented. 83 local tests passed: 58 unit, 18 property, 7 sandbox and integration. Not deployed to production yet.",
-    tone: "local",
-    badge: "Local test, 2026-11-05",
+      "Deployed on NEAR testnet as constitution-gate.testnet and exercised by the three recorded runs below. Local suite: 83 tests passed on 2026-11-05 (58 unit, 18 property, 7 sandbox and integration).",
+    tone: "recorded",
+    badge: "Testnet, recorded 2026-11-10",
   },
   {
     part: "Attested verifier, R1 to R5",
     state:
-      "Implemented and tested locally. R2 refuses VaultV2Drain with a concrete counterexample and passes VaultV2Honest. The enclave deployment is pending.",
-    tone: "local",
-    badge: "Local test",
+      "Runs in a Phala TDX confidential VM, and its appraisal passed on 2026-11-10. On testnet, R2 refused VaultV2Drain and R1 to R5 passed VaultV2Honest. The same checks ran locally first.",
+    tone: "recorded",
+    badge: "Testnet, recorded 2026-11-10",
   },
   {
     part: "Private red-team AI",
     state:
-      "Real TEE-verified completions in a rehearsal. A returned candidate, replayed locally, reproduced the drain on VaultV2Drain only. No find rate is claimed.",
+      "On testnet the honest upgrade's review used NEAR AI Cloud, verified as provider_tee, and reproduced none of 4 candidates. In a 2026-11-06 rehearsal a returned candidate, replayed locally, reproduced the drain on VaultV2Drain only. No find rate is claimed.",
     tone: "recorded",
-    badge: "Rehearsal, 2026-11-06",
+    badge: "Testnet, recorded 2026-11-10",
   },
   {
-    part: "Production deployment",
+    part: "Gate access keys",
     state:
-      "The activated gate, the attested verifier and the demo key do not exist yet. Live attack and upgrade runs start after activation.",
-    tone: "awaiting",
-    badge: "Awaiting activation",
+      "On 2026-11-10 the gate's only access key was deleted, and the recorded audit then reported zero access keys. The Gate access keys row below reads the chain now; zero keys means keyless.",
+    tone: "recorded",
+    badge: "Testnet, recorded 2026-11-10",
   },
 ];
 ---
@@ -85,7 +86,8 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
       <h2 id="evidence-title">What has actually run.</h2>
       <p class="lede">
         Every fact on this page carries its source. Local tests are labeled local, the spike is
-        labeled spike, and nothing is shown as live until this page has read it from the chain.
+        labeled spike, saved testnet receipts are labeled recorded, and nothing is shown as
+        observed until this page has read it from the chain.
       </p>
     </div>
 
@@ -107,7 +109,7 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
       </ol>
       <p class="verify__foot">
         <a class="verify__go" href="#receipt-spike">Go to the re-check <span aria-hidden="true">↓</span></a>
-        <span class="muted">This covers the recorded spike only. The production gate appears below once it is activated.</span>
+        <span class="muted">This re-check covers the recorded spike. The final gate's receipts are recorded below, and its state is read live in the ledger.</span>
       </p>
     </aside>
 
@@ -137,13 +139,17 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
       }
     </ol>
 
+    <div class="evidence__block evidence__final" data-reveal>
+      <FinalEvidence />
+    </div>
+
     <div class="evidence__pair">
       <div class="evidence__block" data-reveal>
         <h3 class="evidence__title">The recorded spike run</h3>
         <SpikeReceipt />
       </div>
       <div class="evidence__block" data-reveal style="--i:1">
-        <h3 class="evidence__title">The production gate</h3>
+        <h3 class="evidence__title">The final gate, read live</h3>
         <GateLedger />
         {site.gateAccount && <ProposalWatch />}
       </div>
@@ -256,6 +262,10 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
 
   .ledger__badge {
     justify-self: end;
+  }
+
+  .evidence__final {
+    margin-top: var(--space-9);
   }
 
   .evidence__pair {

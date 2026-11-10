@@ -5,8 +5,9 @@
 - [V] Founder chose stack **Option C (Phala TDX CVM verifier + Rust-first operations + Astro static page)** on 2026-10-26 in this planning session (D1). ARCHITECTURE is written against it.
 - [V] Founder resolved on 2026-10-26: attestation appraisal off-chain first, on-chain DCAP as P1 (D5); spam control by refundable deposit plus one active proposal per account (D3); verifier host Phala with the USD 20 verified-account credit, OutLayer only as a separately decided fallback (D2); archive RPC Validation Cloud free tier (D10); public repo on GitHub `Dylansius11`, X post from the founder's own account (D9).
 - [V] Founder answers on 2026-11-02 (UTC): the founder creates the GitHub repo personally and the lead commits locally only until told to push (D9); the lead creates NEAR testnet accounts via the faucet with keys in the repo-local gitignored `.secrets/` (B1, done); D7 waits for the founder's logo and references; D8 deferred between Cloudflare Pages and Vercel.
-- Open founder rows: D8 hosting, D14 funding amounts, D18 verifier uptime budget (after spike P1.6). D7 visual direction resolved 2026-11-07. Open organizer questions: D16. D4 repair scope is approved (2026-11-05); implementation remains gated on core completion.
-- Build opened 2026-11-01T00:00:00Z; build work started 2026-11-02. Remaining BLOCKERS below are founder-owned manual prerequisites.
+- Open founder decisions include guardian custody and monitoring, hosting deploy access, license, funding and verifier uptime budget. D8 selected Cloudflare Pages; the deploy path remains open. D7 is resolved. Open organizer questions: D16. D4 repair scope is approved; implementation remains gated on core completion.
+- [V, 2026-11-10] D20 selected an immutable governance delay of 1–30 whole days, default three. D21's fresh authorization was given and the final gate key was deleted; the keyless audit followed.
+- Build opened 2026-11-01T00:00:00Z; build work started 2026-11-02. Remaining BLOCKERS below identify owners and manual prerequisites.
 
 Founder-owned rows are never silently decided by agents. Status: open, blocked or resolved. Lead-owned rows record the reasoning so the founder can overrule. Each row has its explanation below.
 
@@ -18,21 +19,29 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D2 | Verifier host | founder | resolved 2026-10-26, confirm in spike P1.6 | P1.6 | Phala Cloud CVM on USD 20 credit; OutLayer fallback needs a new decision |
 | D3 | Proposal spam control | founder | resolved 2026-10-26 | P2.2 | Refundable credit reservation + one active proposal per account |
 | D4 | Ship Act 2 self-repair | founder | resolved scope 2026-11-05; not implemented | after core gate | Opt-in, semi-autonomous repair of rejected upgrade proposals; developer approval before deployment/resubmission; S1.1 to S1.4 |
-| D5 | Verifier key registration appraisal | founder | resolved 2026-10-26 | P2.4 | Off-chain appraisal + 7-day timelock; on-chain DCAP is P1 |
+| D5 | Verifier key registration appraisal | founder | resolved 2026-10-26; delay revised by D20 | P2.4 | Off-chain appraisal plus deployment-selected timelock; on-chain DCAP is P1 |
 | D6 | Gate code mutability | lead | resolved 2026-10-26 | P2.1 | Immutable gate; authority migration only via timelocked change |
 | D7 | Visual direction for the public page | founder | resolved 2026-11-07 | P3.4 | Founder brand (`asset/` logos) and reference video, elevated; recorded in `docs/DESIGN.md` sections 2 to 4 |
-| D8 | Hosting for the public page | founder | open, Cloudflare Pages or Vercel (2026-11-02) | P3.6 | Deferred by founder |
+| D8 | Hosting for the public page | founder | resolved 2026-11-10 | P3.6 | Cloudflare Pages Free; static page only, no paid Workers or domain purchase |
 | D9 | Public repo and X accounts | founder | resolved 2026-10-26, refined 2026-11-02 | P4 | GitHub `Dylansius11`, founder creates the repo; lead commits locally until asked to push; founder's X |
 | D10 | Archive / debug and proof RPC for replay | founder | resolved 2026-10-26, refined 2026-11-05 | P1.7 | Validation Cloud free tier for archive/trace; Base public RPC for recent-block proofs; no QuickNode purchase |
-| D11 | NEAR AI Cloud inference access | founder | in progress | P2.6 | Founder applied for hackathon credits |
+| D11 | NEAR AI Cloud inference access | founder | credential prerequisite resolved; real review exercised 2026-11-10 | P2.6 | Provider-TEE review exercised on final testnet deployment; remaining credit is not established here |
 | D12 | EVM authority shape | lead | resolved 2026-10-26 | P1.3 | `ConstitutionExecutor` owns ProxyAdmin |
 | D13 | Effect of rule changes on already-signed transactions | lead | resolved 2026-10-26 | P2.3 | Valid only until their short deadline; disclosed |
 | D14 | Gas, fee caps and funding amounts | founder (funding), lead (caps) | open | P1.4 | Set from observed Base Sepolia fees in spike |
 | D15 | Rust toolchain pin | lead | resolved 2026-10-26, confirm in spike | P1.1 | Host 1.99.1; gate via cargo-near reproducible image |
 | D16 | Organizer questions | founder | open | before submission | Draft below, not sent |
-| D17 | Demo key exposure model | lead | resolved 2026-10-26 | P3.3 | QR key = governor (schedule-only) function-call key |
-| D18 | Verifier key lifetime vs CVM budget | founder (budget), lead (design) | open | P1.6 | Ephemeral key; CVM runs continuously from activation to 2026-11-18T23:59:00Z |
+| D17 | Demo key exposure model | lead | design resolved; public try-it removed from scope by the founder 2026-11-10 | P3.3 | Restricted governor function-call key created and exercised on testnet, then deleted unpublished; no QR |
+| D18 | Verifier key lifetime vs CVM budget | founder (budget), lead (design) | final CVM deployed; budget open | P4.7 | Ephemeral key; final CVM must remain up through 2026-11-18T23:59:00Z |
 | D19 | EVM target for contracts and the rule-set manifest | lead | resolved 2026-11-02 | P1.3, P2.5 | `prague` everywhere; Halmos 0.3.3 cannot execute Osaka CLZ |
+| D20 | Deployment-selected governance delay | founder | resolved and deployed 2026-11-10 | P2.1, P2.4, P2.7, P2.8, P3.5, F11 | 1–30 whole days at initialization, default 3, immutable; final gate uses 3 days |
+| D21 | Pre-lockdown acceptance and final ceremony permission | founder | resolved and exercised 2026-11-10 | P1.6, P2.8, P3.2, P3.5, P4.1 | Fresh approval preceded key deletion; keyless audit followed |
+| D22 | KMS encryption-key freshness during disposable validation | founder (risk acceptance), lead (verification) | resolved for bounded validation 2026-11-10; final deployment policy open | P1.6, P2.8 | Official legacy signature with independently pinned root and app binding; local receipt time is not signed KMS freshness |
+| D23 | Guardian liveness risk (F3) | founder | accepted 2026-11-10 | P2.8 | Hostile or compromised guardian can permanently halt signing and block replacement; custody remains open |
+| D24 | Guardian key custody and monitoring | founder | open | P4.7 | Key file is on the lead's machine; founder decides custody and who watches through 2026-11-18 |
+| D25 | Public hosting deploy access | founder | resolved 2026-11-11 | P3.6 | Project `constitution-gate` lives in the founder's student Cloudflare account (not the wrangler login); the founder enabled the relay for that Chrome profile and the lead uploaded the build through the dashboard's direct-upload page |
+| D26 | License | founder | resolved 2026-11-10: Apache-2.0 | P4.3 | `LICENSE` and the workspace `license` field added; the gate wasm already on testnet predates the declaration |
+| D27 | Standby verifier CVM | founder | open; none added | P4.7 | Lead leans no; replacing a verifier requires a three-day `AddVerifier` |
 
 ### D1. Technology stack
 
@@ -60,6 +69,8 @@ Founder response, 2026-10-26: "Phala credit, OutLayer cadangan". Resolution: Pha
 
 [V, founder screenshot and primary-source recheck 2026-11-05] The founder's card-onboarding offer displays **USD 5**, not USD 20; receipt of either amount is not yet confirmed. https://phala.com/pricing still advertises USD 20 for verified accounts, but https://cloud.phala.com/about/billing says welcome-credit eligibility and amount are workspace-specific and shown before claim. Do not assume a further USD 15 will arrive. The screenshot also shows auto-topup enabled for USD 20; switching it off is not a hard spending cap because card-backed post-paid usage can continue after the balance is exhausted. No card, top-up, deploy or new spending authorization is implied.
 
+[V, dashboard observation 2026-11-10] The authenticated workspace shows Balance USD 20, Gifted credits USD 0, no payment method and auto-topup disabled; Compute shows no deployment. The draft Small (`tdx.small`, 1 vCPU / 2 GB) plus 20 GB disk estimate is USD 0.06074/hour. Published storage arithmetic gives USD 0.06078/hour, used conservatively for planning; neither is an observed bill. The founder restricts deployment to Small, with no automatic resize, top-up or spending beyond approved bounds.
+
 ### D3. Proposal spam control
 
 Options presented: refundable deposit; per-account rate limit; deposit plus one active proposal per account. Founder response, 2026-10-26: deposit plus one active proposal per account.
@@ -78,15 +89,19 @@ Tracking: S1.1 to S1.4 in BUILD-PLAN; PRD S1 defines the product contract. Produ
 
 [V, founder policy approval 2026-11-06] Review has a 300 s maximum and 45,000 total completion tokens; repair generation has a 100,000 total-completion-token ceiling and the complete repair job has a 1,800 s deadline including validation and review again. Use `thinking_token_budget: null` to remove only the separate reasoning cap; reasoning remains part of completion usage. No automatic retries, new paid rehearsal, model switch or gate bypass is authorized. These are initial operational ceilings, not measured requirements, a safety guarantee or a provider USD spending cap. Repair settings remain planned until S1 is implemented.
 
+[V, founder clarification 2026-11-10] Review/repair operational settings may be reconsidered during testing; this does not approve a particular new value, additional paid inference or weaker verification. Distinguish sidecar token/reasoning settings from manifest-committed AI model, required policy, signature kind, candidate count and timeout: manifest changes alter `rule_set_hash`. Before final initialization, tune and freeze together; after activation, a new rule-set commitment requires governance, and an image/restart can independently require verifier re-registration. Repair remains unimplemented and subject to the existing core dependency.
+
+[V, founder revision 2026-11-10 later] Review ceiling is revised to 100,000 total completion tokens and 600 s (`rules/manifest.json` `ai.timeout_s` 600; the 100,000 token ceiling lives in the sidecar), because the first real review ended Incomplete with no visible cause. Repair generation ceiling is revised to 200,000 total completion tokens; its whole-job deadline stays an open choice (lead recommends 20 to 30 minutes instead of 3,600 s, to be settled with measured numbers when S1 starts). [I] The new manifest value changes `rule_set_hash` to `0x45db4a27ca6f4212aca5813fb947bc377c1afa6991dd4a4c9b9b2ae16a36fe80`; the image, release hash and attestation must be rebuilt before use. A 100,000-token completion is expected to cost cents given the earlier measured USD 0.00274184 request [U]; the model's maximum output on NEAR AI is unverified [U] (a third-party aggregator lists about 943.7K for the same model id via OpenRouter, which is not NEAR AI).
+
 ### D5. Verifier key registration appraisal
 
 Options presented: off-chain appraisal plus timelock; on-chain DCAP via the `tee-verifier` contract in near/mpc; off-chain first with on-chain as P1. Founder response, 2026-10-26: off-chain first, on-chain as P1.
 
-Meaning [I]: the verifier's Ed25519 key, its release hash and the full TDX quote, collateral and event log are published; `constitution verifier appraise` checks them off-chain; the initial key enters the gate at initialization, later keys only through `AddVerifier` with the 7-day delay. The gate does not cryptographically verify Intel evidence in P0, and every doc must say so. P1: call the near/mpc `tee-verifier` `verify_quote_with_collateral_dates` at registration if a deployed immutable verifier account and measured gas exist (research note: source exists, deployment and gas [U]).
+Meaning [I]: the verifier's Ed25519 key, release hash and TDX quote, collateral and event log are appraised off-chain. The initial key enters the gate at initialization; later `AddVerifier` changes wait the deployment-selected delay, three days on the final gate. The gate does not cryptographically verify Intel evidence in P0. P1 on-chain DCAP remains unverified.
 
 ### D6. Gate code mutability (lead)
 
-[V] MPC derivation depends on the gate **account id** and path, not on its code (near/mpc `kdf.rs`, `common.rs`, read 2026-10-26). Anyone who can redeploy code or add a key on the gate account inherits the EVM authority. Resolution [I]: the gate exposes no code-upgrade, add-key, delete-account or arbitrary self-call method, and after activation the account holds zero access keys. Escaping a buggy gate uses `MigrateAuthority`, which after the 7-day delay signs `ConstitutionExecutor.rotateSigner(newSigner, ...)` toward a new gate's derived address. Rejected alternative: timelocked self-upgrade of gate code (research option "C" in the chain note), because a delayed arbitrary code swap does not support the headline claim. Founder may overrule; the claim must then name the code-upgrade path.
+[V] MPC derivation depends on the gate account id and path, not its code (near/mpc `kdf.rs`, `common.rs`, read 2026-10-26). Anyone who can redeploy code or add a key on the gate account inherits EVM authority. [I] The gate exposes no code-upgrade, add-key, delete-account or arbitrary self-call method; `MigrateAuthority` signs a signer rotation after the selected governance delay. [V, testnet 2026-11-10] The final account's sole access key was deleted; its selected delay is three days.
 
 ### D7. Visual direction
 
@@ -97,6 +112,10 @@ Resolved 2026-11-07: the founder supplied the brand (mark and wordmark, lavender
 ### D8. Hosting
 
 Options presented: GitHub Pages, Cloudflare Pages, Vercel Hobby (non-commercial terms). Founder response, 2026-10-26: decide later. Needed by P3.6. [I] The page is static and reads public endpoints only, so any of the three works without server secrets.
+
+[V, founder constraint 2026-11-10] Cloudflare usage must remain on the free tier. Static Astro hosting on Pages is the proposed purpose, not running verification or AI in Workers. The founder requests an explanation before execution; no Cloudflare project, Worker, paid feature, domain purchase or deployment is authorized by this clarification alone. The founder supplied a screenshot of the signed-in Cloudflare dashboard; this is not a new agent-verified session check.
+
+[V, founder execution authorization 2026-11-10] Proceed with Cloudflare Pages Free static hosting. The initial build is publicly served at `https://constitution-gate.pages.dev`; activation-dependent write cards remain locked. No Worker, paid resource, custom domain or backend credential is part of this deployment. Later page changes require a new static build/upload and verification.
 
 ### D9. Public repo and X
 
@@ -146,11 +165,11 @@ Official channel per EVENT.md: https://discord.com/invite/nearprotocol. Founder 
 
 ### D17. Demo key exposure model (lead)
 
-Resolution [I]: the QR "take it" key is a NEAR **function-call access key** on a throwaway testnet account that holds the gate's `governor` role, restricted to receiver = gate and methods `propose`, `schedule_change` and `apply_change` (`apply_change` is permissionless anyway and only succeeds after `eta`; it is included so a judge can watch the early attempt fail). Governor can only schedule changes; it cannot cancel, apply early or sign. The guardian (founder-held, never shown) can cancel any pending change. A function-call key cannot transfer NEAR, delete the account or add keys (NEAR access-key docs, read 2026-10-26). The finite allowance bounds how many changes a holder of the public key can schedule; the founder tops it up deliberately. Constraint: one active proposal per account (D3) means simultaneous judges share one in-flight proposal; the page shows it live.
+Original design [I]: the QR "take it" key would be a restricted governor function-call key for `propose`, `schedule_change` and `apply_change`; it could not cancel guardian actions or transfer NEAR. [V, exercised on testnet 2026-11-10] The key was created, its restrictions exercised and then deleted without publishing its secret; no QR or public live try-it shipped. The final proxy's V2 state and V1-specific rule set prevent repeating the upgrade under the same rules. Founder decision [V, chat 2026-11-10]: remove P3.3 (public key, QR, live try-it) from scope; recorded receipts are the demo evidence.
 
 ### D18. Verifier key lifetime vs CVM budget
 
-[V, 2026-10-26] Phala deterministic `GetKey` keys are derived per application id, "the same path always generates the same key" (https://docs.phala.com/phala-cloud/key-management/get-a-key.md). They are not bound to the measured compose, so whoever controls app updates could obtain the certificate key under different code. Lead design [I]: the certificate key is ephemeral, generated in memory at boot and bound by the TDX quote (ARCHITECTURE "Verifier identity"). Consequence: a CVM restart yields a key the gate rejects until a 7-day `AddVerifier`, so the activated CVM must run without interruption from activation until judging ends (2026-11-18T23:59:00Z).
+[V, 2026-10-26] Phala `GetKey` keys are application-id-bound rather than measured-code-bound. [I] The certificate key instead is ephemeral and bound to the quote. A restart yields a new key that the final gate rejects until an `AddVerifier` matures after three days; final CVM `cvm_2eakrQwn` must remain up through 2026-11-18T23:59:00Z.
 
 Budget arithmetic [I]: activation on 2026-11-07T12:00:00Z gives about 276 hours of runtime. At USD 0.232/h (`tdx.large`) that is about USD 64, above the USD 20 credit; at the advertised USD 0.06/h entry tier about USD 17, inside it, if that tier can run solc, Halmos and revm for the demo (unknown until P1.6).
 
@@ -158,9 +177,37 @@ Budget arithmetic [I]: activation on 2026-11-07T12:00:00Z gives about 276 hours 
 
 Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve a top-up for a larger tier; (c) activate later and drop F11 (real 7-day maturation proof); (d) after P1 on-chain DCAP lands, permit restarts because a new key for an approved `release_hash` can be registered without the delay. Lead recommendation will follow the P1.6 measurements.
 
+[V, founder execution authorization 2026-11-10] Proceed with private GHCR publication and disposable Small validation: 1 vCPU / 2 GB, 20 GB disk, maximum two hours and USD 0.25 allocation across this validation, no resize, card or top-up. The allocation is not a provider-enforced spending cap. Delete the disposable CVM after collecting evidence; continuous post-activation uptime remains separately unapproved. D20 replaces fixed seven-day re-registration waits with the initialized duration on new gates.
+
 ### D19. EVM target (lead)
 
 [V, 2026-11-02] Base Sepolia runs Osaka: Azul (Osaka CLZ, EIP-7939) activated 2026-04-20 and Denim 2026-10-21 (https://docs.base.org/upgrades/overview). [V, local 2026-11-02] Halmos 0.3.3 in the verifier image fails on solc 0.8.38 Osaka output that contains CLZ: `Unsupported opcode 0x1e`, exit code 3, which the runner maps to Incomplete (fails closed); ordinary vault bytecode passes on both targets (`spikes/verifier-min` osaka probe). Resolution [I]: compile the demo contracts and pin the rule-set manifest to `evm_version = "prague"`. Prague bytecode runs unchanged on Osaka, every opcode it can contain is supported by Halmos, and the pre-check that recompiles a proposal must use the same target as its deployment. Cost: no CLZ gas savings. A proposal compiled for Osaka fails the runtime-hash pre-check (`rule_id 0`, reason 2), never passes.
+
+### D20. Deployment-selected governance delay
+
+[V, founder choice 2026-11-10] Select Option A, not a governable delay: the owner selects the duration when initializing its gate, default three days. The chosen value cannot be changed afterwards by any role or `SetParams`. This is a governance/authority-change delay, not a wait on ordinary certified vault upgrades, and does not add a gate code-upgrade method.
+
+[V, founder range approval and local implementation 2026-11-10] The allowed range is **1–30 whole days**, default 3 only when omitted at initialization; explicit 0 or 31 rejects. Canonical configuration, gate validation/scheduling, callers, audit commitments, deployment schema and page copy are migrated together. The audit requires an explicitly observed field rather than inheriting the initializer default. This changes Borsh state and is for a fresh gate, not migration of an initialized old gate. A future duration change requires a new gate and delayed authority migration. Affected: P2.1, P2.4, P2.7, P2.8, P3.5 and F11; local implementation is not final testnet deployment or maturation evidence.
+
+[V, exercised on testnet 2026-11-10] The final gate was initialized with three days. Change 0 was scheduled with ETA 2026-11-13T16:56:01Z; its matured apply has not occurred.
+
+### D21. E2E and audit before final lockdown
+
+[V, founder requirement 2026-11-10] Exercise the product as a user, audit/review and fix issues before the final ceremony. The founder must explicitly authorize irreversible gate key deletion at that time; validation permission is not lockdown permission. The founder reports Docker engine re-enabled; no new runtime check is implied.
+
+[I, proposed execution order] First run a labeled staging testnet rehearsal with disposable authority and the real CVM path, including rejection, honest upgrade, early governance refusal and recovery. A staging gate retaining an access key is not keyless-security evidence. Then prepare the final deployment, verify hashes/roles/attestation/ownership and obtain founder approval for lockdown. Re-run the final audit and essential live checks after deletion; staging evidence never substitutes for final keyless evidence. Real maturation requires the actual chosen delay; local time travel is labeled local. Registry visibility and publication credentials, paid inference batch limits, hosting deployment and continuous CVM uptime still require their relevant approvals.
+
+[V, founder execution authorization 2026-11-10] Coherent checked local commits are authorized. One additional real NEAR AI review request is authorized, with no retries; it is not repair-generation permission and does not waive the core dependency. The existing provider-TEE, E2EE, no-aliasing and manifest limits remain mandatory.
+
+[V, exercised on testnet 2026-11-10] The founder gave fresh approval, then the gate's only key was deleted at block 277098815; final-finality access-key listing returned zero and the post-deletion audit exited 0. The three demo receipts were recorded on the final gate before deletion (BUILD-PLAN P2.8, P3.2).
+
+### D22. KMS freshness for disposable validation
+
+[V, official source and public API inspection 2026-11-10] The advertised dstack KMS revision implements `timestamp` and `signature_v1`, but the reachable Cloud encryption-key API returns only `public_key` and legacy `signature`. Direct advertised KMS HTTPS failed before HTTP from the tested clients. Official Cloud tooling supports the legacy flow. Sources: [advertised KMS protocol](https://github.com/Dstack-TEE/dstack/blob/dad8326f89a76e60e5d4b61c424a3329c92f60e9/dstack/kms/rpc/proto/kms_rpc.proto#L22-L32), [Cloud SDK key schema](https://github.com/Phala-Network/phala-cloud/blob/5db1ae2dde9cf0616a5bef0b008c4e00be39e90e/js/src/actions/kms/get_app_env_encrypt_pubkey.ts), [independently published KMS root](https://cloud.phala.com/verification/kms/phala).
+
+[V, founder go and lead ruling 2026-11-10] Continue the disposable bounded validation with the official legacy signature, verifying the expected application ID and independently pinned KMS root before local encryption. A backend-generated `received_at` records when we received the response; it does not authenticate when KMS signed it and cannot prevent replay of an old signed key. Do not relabel it as `timestamp`, fabricate `signature_v1`, disable TLS verification or weaken DCAP/TCB appraisal. This exception is not a final-activation freshness guarantee.
+
+[V, initial runtime preparation 2026-11-10] Auto-selection unexpectedly chose a development OS, so that short-lived instance was deleted. Subsequent preparation explicitly pins production `dstack-0.5.12` and its published non-dev hash. The scheduled-delete PATCH is accepted, but the current info/list response does not expose its timestamp for independent readback; a separately armed local deletion watchdog is an additional guard, not proof of a provider spending cap. Final runtime results and confirmed deletion belong in P1.6 evidence.
 
 ## BLOCKERS
 
@@ -168,13 +215,16 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | --- | --- | --- | --- | --- | --- |
 | B1 | NEAR testnet accounts (spike, gate, guardian, demo governor, verifier relay) funded from faucet | lead (founder-authorized 2026-11-02) | resolved 2026-11-02 | P1.2, P1.5, P2.x | Accounts and creation txs below; keys only in gitignored `.secrets/` |
 | B2 | Base Sepolia ETH for the derived EOA and a deployer EOA | founder | resolved 2026-11-03 | P1.3, P1.4, P2.8 | A friend of the founder sent 0.05 ETH to the deployer on Ethereum Sepolia; with founder approval the lead bridged 0.049 ETH through the Base L1StandardBridge `0xfd0Bf71F60660E2f608ed56e1659C450eB113120` (address from docs.base.org "Contract Addresses", `otherBridge()` = `0x4200…0010` checked on chain): Sepolia tx `0xa3b4c26bc922789c6abec82b446605ffe275983fbedf8f1b6edd7d5bebc4f2cd`; deployer balance on Base Sepolia read as 0.049 ETH at block 53763980 (2026-11-03T02:57Z). The derived EOAs are funded from the deployer when needed |
-| B3 | Phala Cloud access, actual credited balance, and approved CVM uptime budget | founder | open; founder screenshot 2026-11-05 offers USD 5 on card addition despite marketing's USD 20; neither credited balance nor deploy approval confirmed | P1.6, P2.8 | Confirm workspace credit and resolve D18 before deployment; local non-design work proceeds meanwhile. No auto-topup/post-paid overage authorized |
-| B4 | NEAR AI Cloud credits and API key in local `.env` | founder | credential prerequisite resolved; 2026-11-06 key/credit eligibility HTTP 200, `valid: true`. After the five-attempt diagnosis campaign, founder explicitly authorized one extra untimed 5,000-reasoning-budget measurement: verified `provider_tee`, 98.6 s completion phase, 149.5 s including cold setup | P2.6 prerequisite resolved; P3.1 evidence incomplete | Lead: use measured startup versus remote latency to propose bounded production policy; no production change made. Extra measurement billed USD 0.00274184; prior timeout cost unknown. Evidence: `crates/verifier/evidence/ai/reasoning-5000-2026-11-06.json`. No further inference/retries |
-| B5 | Base Sepolia state/trace and fixed-block proof endpoints | founder (provider access), lead (probe) | resolved 2026-11-05 under refined D10: production witness fetch from Validation Cloud + public Base RPC verified 8 accounts/7 slots at fixed block 54,676,922 | P1.7, P2.5 live R5 integration | No new account or payment required. Keep both endpoints configured in the CVM; public RPC rate limits/window expiry remain liveness risks. Final deployment/corpus proof remains P2.8 |
+| B3 | Phala Cloud access, runtime fit and uptime budget | founder (budget), lead (runtime) | final Small CVM deployed and appraised 2026-11-10; ongoing budget open | P4.7 | Keep `cvm_2eakrQwn` up through judging; no standby is registered. Do not infer additional spending approval |
+| B4 | NEAR AI Cloud credits and API key | founder | credential prerequisite resolved; final provider-TEE review exercised 2026-11-10 | P3.1 evidence incomplete | Preserve provider-TEE/E2EE/no-aliasing; remaining credit and additional spending approval are not established |
+| B5 | Base Sepolia state/trace and fixed-block proof endpoints | founder (provider access), lead (probe) | resolved 2026-11-05; final R5 passed on testnet 2026-11-10 | P1.7, P2.5 | Endpoint availability and rate limits remain liveness risks; see BUILD-PLAN P2.8 |
 | B6 | GitHub repo `Dylansius11/constitution` | founder | resolved 2026-11-03: repo exists (private, empty at start); `main` and `dev` pushed; default branch `dev`; work via branch then PR into `dev`, `dev` into `main` by PR. Open: the repo is PRIVATE, so make it public before submission (founder) | P4 | `git ls-remote origin` lists `main` and `dev` |
-| B7 | Hosting choice | founder | open | P3.6 | Resolve D8 |
+| B7 | Hosting choice | founder | resolved 2026-11-10: Cloudflare Pages Free | P3.6 | Public static URL `https://constitution-gate.pages.dev`; no paid Workers or backend secrets |
 | B8 | Visual direction | founder | resolved 2026-11-07 (D7) | P3.4 | Brand and reference supplied in `asset/` |
 | B9 | Local Docker Desktop Linux engine and Ubuntu WSL integration for the compiler regression | founder (Desktop/WSL settings), lead (focused rerun) | resolved 2026-11-05: Docker server 28.5.1 available from Ubuntu; focused `proposal_compilation_error_remains_a_signed_reject` rerun passed (1 passed, 0 failed) after the founder enabled integration | Split-RPC PR merge verification, P4.1 | Merge blocker cleared; no code/test changes, R2/solver, image build or full-suite rerun |
+| B10 | Guardian key custody and judging monitoring (D24) | founder | open | P4.7 | Key file is on lead's machine; founder decides custody and who watches through 2026-11-18 |
+| B11 | Cloudflare Pages deploy path (D25) | founder | resolved 2026-11-11 | P3.6, P4.6 | Dashboard direct upload via the student-account relay profile; redo it for any later page change |
+| B12 | License (D26) | founder | resolved 2026-11-10: Apache-2.0 | P4.3, P4.6 | Done |
 
 ### B1. NEAR testnet accounts
 
@@ -183,22 +233,22 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | Account | Role | Creation tx |
 | --- | --- | --- |
 | `constitution-spike.testnet` | spikes only; never the activated gate | `EBDxdUCQTVmX7WCrzhLjmBo3gLCk5WDnHKDJQUcTpQW1` |
-| `constitution-gate.testnet` | production gate; untouched until activation, keys deleted at activation | `Ehjsjb6HGLcWmg5v2ehGHUgMcSK27LTfN5FFR3G4eErf` |
-| `constitution-guardian.testnet` | guardian; key moves to the founder before activation | `GEz3zughGNZEzk1hLeaLfrgQqowyS5TkmzDBKyQV7ZsD` |
+| `constitution-gate.testnet` | final gate; sole key deleted 2026-11-10 | `Ehjsjb6HGLcWmg5v2ehGHUgMcSK27LTfN5FFR3G4eErf` |
+| `constitution-guardian.testnet` | guardian; custody decision open (D24) | `GEz3zughGNZEzk1hLeaLfrgQqowyS5TkmzDBKyQV7ZsD` |
 | `constitution-governor.testnet` | demo governor (D17) | `7WbiBThCadD5A1zm7fDRdxYpwGukZ4uehpBXWZtpEqww` |
 | `constitution-relay.testnet` | verifier relay for `submit_verdict` | `7dZJwbTi5afhmRTcRVS68n6ZeoJr4kwPjseQg3Sqgbhc` |
 
 ### B2. Base Sepolia ETH
 
-The derived EOA address is unknown until P1.2 computes it from the gate account id and path. Unblock evidence: `eth_getBalance` of that address non-zero on Base Sepolia.
+[V, testnet 2026-11-10] The derived EOA was funded with 0.0005 ETH; the deployment and funding transaction are recorded in SMART-CONTRACT.
 
 ### B3. Phala Cloud
 
-Unblock evidence: workspace shows the credit; CVM creation is a later agent step with founder approval for each deploy.
+[V, testnet 2026-11-10] The final Small CVM was deployed and appraised; judging uptime and budget remain operational concerns (D18, B3).
 
 ### B4. NEAR AI Cloud
 
-Unblock evidence: an authenticated `GET /v1/attestation/report?model=z-ai/glm-5.3-flash` succeeds from the founder's machine (planned check, non-billable per docs, not run).
+[V, testnet 2026-11-10] The final honest run completed a provider-TEE review. P3.1's separate rehearsal evidence remains incomplete.
 
 ### B5. Split Base Sepolia archive / proof RPC
 

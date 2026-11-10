@@ -36,7 +36,7 @@ async fn rpc(State(s): State<Stub>, Json(q): Json<Value>) -> Json<Value> {
             assert_eq!(q["params"]["account_id"], "gate.testnet");
             let v = match q["params"]["method_name"].as_str().unwrap() {
                 "get_config" => {
-                    json!({"chain_id":84532,"executor":Hex20([2;20]),"proxy":Hex20([1;20]),"proxy_admin":Hex20([8;20]),"derived_eoa":Hex20([9;20]),"mpc_account":"mpc.testnet","mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0})
+                    json!({"chain_id":84532,"executor":Hex20([2;20]),"proxy":Hex20([1;20]),"proxy_admin":Hex20([8;20]),"derived_eoa":Hex20([9;20]),"mpc_account":"mpc.testnet","mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0,"governance_delay_days":3})
                 }
                 "get_proposal" => {
                     use base64::Engine;

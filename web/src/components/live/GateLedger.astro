@@ -10,6 +10,7 @@ interface Props {
 const { id = "gate-ledger" } = Astro.props;
 const rows = [
   ["gate", "Gate account"],
+  ["accessKeys", "Gate access keys"],
   ["rules", "Active rule set"],
   ["verifiers", "Verifier allowlist"],
   ["changes", "Timelock queue"],
@@ -32,7 +33,7 @@ const rows = [
           <dt>{label}</dt>
           <dd>
             {site.gateAccount === null ? (
-              <StatusBadge tone="awaiting">Awaiting activation</StatusBadge>
+              <StatusBadge tone="awaiting">No gate configured</StatusBadge>
             ) : (
               <>
                 <span data-value>Not read</span>
@@ -48,12 +49,12 @@ const rows = [
   {
     site.gateAccount === null ? (
       <p class="live-intro">
-        No production gate is deployed yet. These rows read the chain once the activation record exists.
+        This build has no gate account configured, so these rows read no chain. Set PUBLIC_GATE_ACCOUNT at build time to read a gate.
       </p>
     ) : (
       <>
         <output aria-live="polite" data-ledger-status>
-          Reading the activated gate from NEAR testnet and Base Sepolia.
+          Reading the gate from NEAR testnet and Base Sepolia.
         </output>
         <button type="button" class="live-action" data-ledger-retry>
           Retry now

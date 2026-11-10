@@ -19,12 +19,118 @@ pub fn infrastructure_error(error: &str) -> Option<&'static str> {
         "storage_error" => Some("storage_error"),
         "tool_unavailable" => Some("tool_unavailable"),
         "tool_output_invalid" => Some("tool_output_invalid"),
+        "tool_output_overflow" => Some("tool_output_overflow"),
+        "workspace_overflow" => Some("workspace_overflow"),
         _ => None,
     }
 }
 
 fn storage_error(_: std::io::Error) -> String {
     "infrastructure:storage_error".into()
+}
+const MAX_TOOL_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_WORKSPACE_BYTES: u64 = 512 * 1024 * 1024;
+
+fn bounded_output(command: &mut Command) -> Result<Output, String> {
+    use std::io::Read;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
+    let mut child = command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|_| "infrastructure:sandbox_unavailable".to_owned())?;
+    let total = Arc::new(AtomicUsize::new(0));
+    let overflow = Arc::new(AtomicBool::new(false));
+    let reader =
+        |mut pipe: Box<dyn Read + Send>, total: Arc<AtomicUsize>, overflow: Arc<AtomicBool>| {
+            std::thread::spawn(move || {
+                let mut result = Vec::new();
+                let mut buffer = [0u8; 8192];
+                loop {
+                    let n = pipe.read(&mut buffer)?;
+                    if n == 0 {
+                        break;
+                    }
+                    let previous = total.fetch_add(n, Ordering::Relaxed);
+                    if previous.saturating_add(n) > MAX_TOOL_OUTPUT_BYTES {
+                        overflow.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                    result.extend_from_slice(&buffer[..n]);
+                }
+                Ok::<_, std::io::Error>(result)
+            })
+        };
+    let stdout = reader(
+        Box::new(child.stdout.take().unwrap()),
+        total.clone(),
+        overflow.clone(),
+    );
+    let stderr = reader(
+        Box::new(child.stderr.take().unwrap()),
+        total,
+        overflow.clone(),
+    );
+    let status = loop {
+        if overflow.load(Ordering::Relaxed) {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
+    let stdout = stdout
+        .join()
+        .map_err(|_| "infrastructure:sandbox_unavailable".to_owned())?
+        .map_err(|_| "infrastructure:sandbox_unavailable".to_owned())?;
+    let stderr = stderr
+        .join()
+        .map_err(|_| "infrastructure:sandbox_unavailable".to_owned())?
+        .map_err(|_| "infrastructure:sandbox_unavailable".to_owned())?;
+    if overflow.load(Ordering::Relaxed) {
+        return Err("infrastructure:tool_output_overflow".into());
+    }
+    Ok(Output {
+        status: status.ok_or("infrastructure:sandbox_unavailable")?,
+        stdout,
+        stderr,
+    })
+}
+
+fn check_workspace(root: &Path) -> Result<(), String> {
+    fn size(path: &Path, total: &mut u64) -> std::io::Result<()> {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let metadata = entry.file_type()?;
+            if metadata.is_dir() {
+                size(&entry.path(), total)?;
+            } else if metadata.is_file() {
+                *total = total.saturating_add(entry.metadata()?.len());
+            }
+            if *total > MAX_WORKSPACE_BYTES {
+                break;
+            }
+        }
+        Ok(())
+    }
+    let mut total = 0;
+    size(root, &mut total).map_err(storage_error)?;
+    if total > MAX_WORKSPACE_BYTES {
+        std::fs::remove_dir_all(root).map_err(storage_error)?;
+        return Err("infrastructure:workspace_overflow".into());
+    }
+    Ok(())
 }
 
 pub struct Sandbox {
@@ -81,7 +187,8 @@ impl Sandbox {
             "10001:10001".to_owned(),
             "/work/home:rw,noexec,nosuid,uid=10001,gid=10001,size=16m".to_owned(),
         );
-        let output = Command::new("timeout")
+        let mut command = Command::new("timeout");
+        command
             .args([
                 "--kill-after=5s",
                 "180s",
@@ -123,9 +230,10 @@ impl Sandbox {
                 script,
                 "runner",
             ])
-            .args(args)
-            .output()
-            .map_err(|_| "infrastructure:sandbox_unavailable".to_owned())?;
+            .args(args);
+        let output = bounded_output(&mut command);
+        check_workspace(self.root.path())?;
+        let output = output?;
         match output.status.code() {
             Some(124 | 137) => return Err("infrastructure:infrastructure_timeout".into()),
             Some(125) | None => return Err("infrastructure:sandbox_unavailable".into()),
@@ -409,6 +517,29 @@ mod tests {
 
     fn repo() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn oversized_output_is_stopped_and_reported_as_infrastructure() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "while :; do printf '0123456789abcdef'; done"]);
+        let error = bounded_output(&mut command).unwrap_err();
+        assert_eq!(infrastructure_error(&error), Some("tool_output_overflow"));
+    }
+
+    #[test]
+    fn workspace_overflow_is_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("work");
+        std::fs::create_dir(&root).unwrap();
+        let file = std::fs::File::create(root.join("large")).unwrap();
+        file.set_len(MAX_WORKSPACE_BYTES + 1).unwrap();
+        assert_eq!(
+            check_workspace(&root).unwrap_err(),
+            "infrastructure:workspace_overflow"
+        );
+        assert!(!root.exists());
     }
 
     #[test]

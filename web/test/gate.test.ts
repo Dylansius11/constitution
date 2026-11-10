@@ -7,6 +7,7 @@ import {
   WireError,
 } from "../src/lib/errors.ts";
 import { createGateClient } from "../src/lib/gate.ts";
+import { parseConfig } from "../src/lib/gate-types.ts";
 import { hex } from "./support/fixtures.ts";
 
 const GATE = "gate.constitution.testnet";
@@ -70,6 +71,34 @@ const PROPOSAL_JSON = `{
 
 const PARAMS_JSON = `{"proposal_deposit":"1000000000000000000000000","proposal_ttl_s":1800,"max_cert_ttl_s":3600,"sign_validity_s":1800,"gas_limit":300000,"max_fee_per_gas":"2000000000","max_priority_fee_per_gas":"1000000","fee_cap":"4000000000","sign_gas_tgas":50,"callback_gas_tgas":30}`;
 
+describe("governance delay config decoding", () => {
+  const config = {
+    chain_id: 84532,
+    executor: hex(0xee, 20),
+    proxy: hex(0x11, 20),
+    proxy_admin: hex(0xad, 20),
+    derived_eoa: hex(0xe0, 20),
+    mpc_account: "v1.signer-prod.testnet",
+    mpc_path: "constitution/base-sepolia/v1",
+    mpc_domain_id: 0,
+  };
+
+  it("accepts whole-day durations from 1 through 30", () => {
+    for (const days of [1, 3, 30]) {
+      expect(parseConfig({ ...config, governance_delay_days: days })).toMatchObject({
+        governance_delay_days: days,
+      });
+    }
+  });
+
+  it("rejects missing, fractional and out-of-range durations", () => {
+    for (const value of [0, 31, 1.5]) {
+      expect(() => parseConfig({ ...config, governance_delay_days: value })).toThrow(WireError);
+    }
+    expect(() => parseConfig(config)).toThrow(WireError);
+  });
+});
+
 describe("gate view client", () => {
   it("get_proposal: sends the documented call and parses u64 nanoseconds exactly", async () => {
     const fake = rpc(PROPOSAL_JSON);
@@ -123,12 +152,13 @@ describe("gate view client", () => {
   });
 
   it("get_config and get_constitution", async () => {
-    const config = `{"chain_id":84532,"executor":"${hex(0xee, 20)}","proxy":"${hex(0x11, 20)}","proxy_admin":"${hex(0xad, 20)}","derived_eoa":"${hex(0xe0, 20)}","mpc_account":"v1.signer-prod.testnet","mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0}`;
+    const config = `{"chain_id":84532,"executor":"${hex(0xee, 20)}","proxy":"${hex(0x11, 20)}","proxy_admin":"${hex(0xad, 20)}","derived_eoa":"${hex(0xe0, 20)}","mpc_account":"v1.signer-prod.testnet","mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0,"governance_delay_days":3}`;
     const c = await client(rpc(config).fetch).getConfig();
     expect(c.value).toMatchObject({
       chain_id: 84532,
       mpc_account: "v1.signer-prod.testnet",
       mpc_domain_id: 0,
+      governance_delay_days: 3,
     });
     const constitution = `{"rule_set_hash":"${hex(0xa1, 32)}","manifest_uri":"https://example/manifest.json","ai_required":true,"params":${PARAMS_JSON}}`;
     const k = await client(rpc(constitution).fetch).getConstitution();

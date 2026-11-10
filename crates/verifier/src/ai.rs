@@ -131,11 +131,36 @@ impl Transport for LocalSidecar {
         Ok(bytes)
     }
 }
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum Reason {
+    VerifiedProviderResponse,
+    Timeout,
+    FinishReasonLength,
+    ReceiptVerificationFailed,
+    InvalidJson,
+    SchemaInvalid,
+    EmptyChoices,
+    #[serde(rename = "upstream_http_4xx")]
+    UpstreamHttp4xx,
+    #[serde(rename = "upstream_http_5xx")]
+    UpstreamHttp5xx,
+    ClientError,
+    MissingApiKey,
+    UnsupportedModel,
+    RequestSchema,
+    InvalidConfiguration,
+    NotFound,
+    OriginForbidden,
+    RequestTooLarge,
+    InvalidRequest,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct Response {
     status: String,
-    reason: String,
+    reason: Reason,
     provider: String,
     candidates: Vec<Candidate>,
     signature_kind: String,
@@ -211,20 +236,29 @@ pub fn review(
     request: &ReviewRequest,
     mut reproduce: impl FnMut(&Candidate) -> Result<bool, String>,
 ) -> Report {
-    let mut report = Report::incomplete("AI incomplete; provider near; no verified candidates");
+    let mut report = Report::incomplete("AI incomplete; reason client_error");
     let Ok(bytes) = serde_json::to_vec(request) else {
         return report;
     };
     report.evidence.request_sha256 = Hex32(sha256(&bytes));
-    if !(1..=16).contains(&request.max_candidates) || !(1..=300).contains(&request.timeout_s) {
+    if !(1..=16).contains(&request.max_candidates) || !(1..=600).contains(&request.timeout_s) {
+        report.detail = "AI incomplete; reason request_schema".into();
         return report;
     }
     let response_bytes = match transport.review(bytes, request.timeout_s) {
         Ok(bytes) if bytes.len() <= MAX_RESPONSE_BYTES => bytes,
-        _ => return report,
+        Ok(_) => {
+            report.detail = "AI incomplete; reason schema_invalid".into();
+            return report;
+        }
+        Err(_) => {
+            report.detail = "AI incomplete; reason sidecar_transport_error".into();
+            return report;
+        }
     };
     report.evidence.preflight_digest = Hex32(sha256(&response_bytes));
     let Ok(response) = serde_json::from_slice::<Response>(&response_bytes) else {
+        report.detail = "AI incomplete; reason sidecar_response_invalid".into();
         return report;
     };
     // Only publish allowlisted metadata, never arbitrary untrusted text/errors.
@@ -248,9 +282,18 @@ pub fn review(
     if let Some(hash) = hex_hash(&response.response_sha256) {
         report.evidence.response_sha256 = hash;
     }
-    // Usage/cost are committed in preflight_digest, never interpreted as safety evidence.
-    let _ = (&response.usage, &response.cost_usd, &response.reason);
-    if response.status != "complete"
+    // The response digest commits the reason and usage; neither is safety evidence.
+    let _ = (&response.usage, &response.cost_usd);
+    if response.status == "incomplete" && response.reason != Reason::VerifiedProviderResponse {
+        let reason = serde_json::to_value(&response.reason).expect("reason serializes");
+        report.detail = format!(
+            "AI incomplete; provider near; reason {}",
+            reason.as_str().expect("reason is a string")
+        );
+        return report;
+    }
+    if response.reason != Reason::VerifiedProviderResponse
+        || response.status != "complete"
         || response.provider != "near"
         || response.signature_kind != "provider_tee"
         || report.evidence.completion_id.is_empty()
@@ -335,11 +378,19 @@ pub fn candidate_corpus(
                 to: "proxy".into(),
                 value: "0".into(),
                 data: data.into(),
+                expect: replay::Expect::Success,
                 label: "AI candidate (untrusted)".into(),
             })
         })
         .collect::<Result<Vec<_>, &str>>()?;
     Ok(Corpus {
+        preconditions: replay::Preconditions {
+            actor,
+            min_token_balance: "0".into(),
+            min_allowance: "0".into(),
+            min_vault_balance: "0".into(),
+            max_vault_balance: "0".into(),
+        },
         calls,
         max_txs: MAX_STEPS as u32,
         confirmations,

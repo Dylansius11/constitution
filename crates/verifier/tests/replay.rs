@@ -208,6 +208,8 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         ]));
     let proxy = deployed(&deployment, "proxy");
     let token = deployed(&deployment, "token");
+    let admin = deployed(&deployment, "proxyAdmin");
+    let current_address = deployed(&deployment, "vaultV1Implementation");
     let send = |to: Address, sig: &str, args: &[&str]| {
         run(Command::new(foundry("cast"))
             .args(["send", &to.to_string(), sig])
@@ -223,6 +225,24 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     send(proxy, "deposit(uint256)", &["100"]);
     let honest_address = deploy(&repo, &url, actor, "VaultV2Honest");
     let negative_address = deploy(&repo, &url, actor, "VaultV2Drain");
+    let changed_name =
+        "../crates/verifier/tests/fixtures/ReplayChangedWithdraw.sol:ReplayChangedWithdraw";
+    let metadata_name =
+        "../crates/verifier/tests/fixtures/ReplayChangedWithdraw.sol:ReplayChangesInitialization";
+    let state_name =
+        "../crates/verifier/tests/fixtures/ReplayChangedWithdraw.sol:ReplayChangesExistingState";
+    let admin_name =
+        "../crates/verifier/tests/fixtures/ReplayUpgradeContext.sol:ReplayAdminInitializer";
+    let rejects_name =
+        "../crates/verifier/tests/fixtures/ReplayUpgradeContext.sol:ReplayRejectsAdmin";
+    let address_name =
+        "../crates/verifier/tests/fixtures/ReplayUpgradeContext.sol:ReplayRealAddress";
+    let changed_address = deploy(&repo, &url, actor, changed_name);
+    let metadata_address = deploy(&repo, &url, actor, metadata_name);
+    let state_address = deploy(&repo, &url, actor, state_name);
+    let admin_address = deploy(&repo, &url, actor, admin_name);
+    let rejects_address = deploy(&repo, &url, actor, rejects_name);
+    let real_address = deploy(&repo, &url, actor, address_name);
     let header = rpc(&url, "eth_getBlockByNumber", json!(["latest", false]));
     let block = EvidenceBlock {
         number: u64::from_str_radix(
@@ -233,12 +253,7 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         hash: header["hash"].as_str().unwrap().parse().unwrap(),
     };
     rpc(&url, "anvil_mine", json!(["0x2"]));
-    let corpus = Corpus::from_json(
-        &std::fs::read(repo.join("rules/r5/corpus.json")).unwrap(),
-        7,
-        2,
-    )
-    .unwrap();
+    let corpus = test_corpus();
     let current = runtime(&repo, "VaultV1");
     let honest = runtime(&repo, "VaultV2Honest");
     let honest_hash = B256::from(constitution_verifier::keccak(&honest));
@@ -307,6 +322,67 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         replay(&witness, &corpus, &current, &honest, &init),
         (StageStatus::Pass, 0)
     );
+    for (field, value) in [
+        ("min_token_balance", "901"),
+        ("min_allowance", "901"),
+        ("min_vault_balance", "101"),
+        ("max_vault_balance", "99"),
+    ] {
+        let mut data = test_corpus_json();
+        data["preconditions"][field] = json!(value);
+        if field == "min_vault_balance" {
+            data["preconditions"]["max_vault_balance"] = json!("101");
+        } else if field == "max_vault_balance" {
+            data["preconditions"]["min_vault_balance"] = json!("99");
+        }
+        let unmet = Corpus::from_json(&serde_json::to_vec(&data).unwrap(), 7, 2).unwrap();
+        let error = constitution_verifier::replay::replay_detailed(
+            &witness, &unmet, &current, &honest, &init,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind,
+            constitution_verifier::replay::IncompleteKind::Environment
+        );
+        assert_eq!(
+            error.reason,
+            constitution_verifier::replay::IncompleteReason::PreconditionUnmet
+        );
+    }
+    let mut data = test_corpus_json();
+    data["calls"][0]["expect"] = json!("revert");
+    let mismatch = Corpus::from_json(&serde_json::to_vec(&data).unwrap(), 7, 2).unwrap();
+    let error = constitution_verifier::replay::replay_detailed(
+        &witness, &mismatch, &current, &honest, &init,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.kind,
+        constitution_verifier::replay::IncompleteKind::Environment
+    );
+    assert_eq!(
+        error.reason,
+        constitution_verifier::replay::IncompleteReason::ExpectedOutcomeMismatch
+    );
+    data["calls"][0]["expect"] = json!("success");
+    data["calls"][6]["expect"] = json!("success");
+    let both_revert = Corpus::from_json(&serde_json::to_vec(&data).unwrap(), 7, 2).unwrap();
+    let error = constitution_verifier::replay::replay_detailed(
+        &witness,
+        &both_revert,
+        &current,
+        &honest,
+        &init,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.kind,
+        constitution_verifier::replay::IncompleteKind::Environment
+    );
+    assert_eq!(
+        error.reason,
+        constitution_verifier::replay::IncompleteReason::ExpectedOutcomeMismatch
+    );
     eprintln!(
         "local honest replay wall time: {:?}; block {}",
         start.elapsed(),
@@ -330,38 +406,103 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     let result = replay(&candidate_witness, &corpus, &current, &negative_r2, &init);
     eprintln!("local R2 Fail fixture R5 outcome: {result:?}");
     assert_eq!(result, (StageStatus::Fail, 50));
-    let changed = runtime(
-        &repo,
-        "../crates/verifier/tests/fixtures/ReplayChangedWithdraw.sol:ReplayChangedWithdraw",
-    );
+    let fetch = |address: Address, code: &[u8], init: &[u8]| {
+        fetch_witness(
+            &url,
+            &url,
+            block,
+            &corpus,
+            proxy,
+            address,
+            B256::from(constitution_verifier::keccak(code)),
+            init,
+            Instant::now() + Duration::from_secs(300),
+        )
+        .unwrap()
+    };
+    let changed = runtime(&repo, changed_name);
+    let changed_witness = fetch(changed_address, &changed, &[]);
     assert_eq!(
-        replay(&witness, &corpus, &current, &changed, &[]),
+        replay(&changed_witness, &corpus, &current, &changed, &[]),
         (StageStatus::Fail, 50)
     );
-    let init_writer = runtime(
-        &repo,
-        "../crates/verifier/tests/fixtures/ReplayChangedWithdraw.sol:ReplayChangesInitialization",
-    );
+    let init_writer = runtime(&repo, metadata_name);
+    let metadata_witness = fetch(metadata_address, &init_writer, &[]);
     assert_eq!(
-        replay(&witness, &corpus, &current, &init_writer, &[]),
+        replay(&metadata_witness, &corpus, &current, &init_writer, &[]),
         (StageStatus::Fail, 50)
     );
-    let state_writer = runtime(
-        &repo,
-        "../crates/verifier/tests/fixtures/ReplayChangedWithdraw.sol:ReplayChangesExistingState",
-    );
+    let state_writer = runtime(&repo, state_name);
     let bad_init = constitution_verifier::keccak(b"badInit()")[..4].to_vec();
+    let state_witness = fetch(state_address, &state_writer, &bad_init);
     assert_eq!(
-        replay(&witness, &corpus, &current, &state_writer, &bad_init),
+        replay(&state_witness, &corpus, &current, &state_writer, &bad_init),
         (StageStatus::Fail, 50)
     );
+    let current_witness = fetch(current_address, &current, &[]);
     assert_eq!(
-        replay(&witness, &corpus, &current, &current, &[]),
+        replay(&current_witness, &corpus, &current, &current, &[]),
         (StageStatus::Pass, 0)
     );
+    let empty_witness = fetch(honest_address, &honest, &[]);
     assert_eq!(
-        replay(&witness, &corpus, &current, &honest, &[]),
+        replay(&empty_witness, &corpus, &current, &honest, &[]),
         (StageStatus::Fail, 50)
+    );
+    let calldata = |signature: &str| {
+        hex::decode(
+            run(Command::new(foundry("cast")).args([
+                "calldata",
+                signature,
+                &admin.to_string(),
+                "1000000",
+            ]))
+            .trim()
+            .trim_start_matches("0x"),
+        )
+        .unwrap()
+    };
+    let admin_init = hex::decode(
+        run(Command::new(foundry("cast")).args([
+            "calldata",
+            "initializeAdmin(address,address,uint256)",
+            &admin.to_string(),
+            actor,
+            "1000000",
+        ]))
+        .trim()
+        .trim_start_matches("0x"),
+    )
+    .unwrap();
+    let admin_code = runtime(&repo, admin_name);
+    let admin_witness = fetch(admin_address, &admin_code, &admin_init);
+    assert_eq!(
+        replay(&admin_witness, &corpus, &current, &admin_code, &admin_init),
+        (StageStatus::Pass, 0)
+    );
+    let rejects_init = calldata("initializeNotAdmin(address,uint256)");
+    let rejects_code = runtime(&repo, rejects_name);
+    let rejects_witness = fetch(rejects_address, &rejects_code, &rejects_init);
+    assert_ne!(
+        replay(
+            &rejects_witness,
+            &corpus,
+            &current,
+            &rejects_code,
+            &rejects_init
+        ),
+        (StageStatus::Pass, 0)
+    );
+    let deployed_code = rpc(
+        &url,
+        "eth_getCode",
+        json!([real_address, format!("0x{:x}", block.number)]),
+    );
+    let real_code = hex::decode(deployed_code.as_str().unwrap().trim_start_matches("0x")).unwrap();
+    let real_witness = fetch(real_address, &real_code, &init);
+    assert_ne!(
+        replay(&real_witness, &corpus, &current, &real_code, &init),
+        (StageStatus::Pass, 0)
     );
     let mut low_cap = init.clone();
     *low_cap.last_mut().unwrap() = 1;
@@ -607,9 +748,24 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
         matches!(report.review, constitution_types::AiReview::Vetoed { counterexample_hash, .. } if counterexample_hash != [0;32])
     );
     assert!(report.evidence.candidates[0].reproduced);
+    // The replay now installs the authenticated code at the candidate's real address, so the
+    // honest candidate needs its own witness rather than reusing the negative candidate's.
+    let honest_ai_witness = constitution_verifier::ai::fetch_candidate_witness(
+        &archive_rpc.url,
+        &proof_rpc.url,
+        ai_block,
+        &calls,
+        proxy,
+        honest_address,
+        honest_hash,
+        &init,
+        actor.parse().unwrap(),
+        Instant::now() + std::time::Duration::from_secs(300),
+    )
+    .unwrap();
     assert!(
         !constitution_verifier::ai::reproduce(
-            &ai_witness,
+            &honest_ai_witness,
             &calls,
             &current,
             &honest,
@@ -617,6 +773,18 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
             actor.parse().unwrap()
         )
         .unwrap()
+    );
+    assert!(
+        constitution_verifier::ai::reproduce(
+            &ai_witness,
+            &calls,
+            &current,
+            &honest,
+            &init,
+            actor.parse().unwrap()
+        )
+        .is_err(),
+        "a witness for another candidate address must not authenticate this runtime"
     );
     // A non-reproducing, early-reverting candidate still needs a complete R2
     // baseline witness. It must not become Incomplete just because no token
@@ -657,10 +825,91 @@ fn local_vault_replay_accepts_honest_rejects_changed_logs_and_missing_witness() 
     }
 }
 
+/// The committed corpus uses the project-owned Base Sepolia actor; the local chain seeds Anvil's
+/// account 0 instead, so the committed calls are rewritten to that actor.
+fn test_corpus_json() -> Value {
+    const COMMITTED_ACTOR: &str = "289541ff1cd4882653a02b049ebb5d6a06374826";
+    const LOCAL_ACTOR: &str = "f39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+    let committed: Value =
+        serde_json::from_slice(include_bytes!("../../../rules/r5/corpus.json")).unwrap();
+    let mut calls = committed["calls"].as_array().unwrap().clone();
+    for call in &mut calls {
+        call["from"] = json!(format!("0x{LOCAL_ACTOR}"));
+        let data = call["data"]
+            .as_str()
+            .unwrap()
+            .replace(COMMITTED_ACTOR, LOCAL_ACTOR);
+        call["data"] = json!(data);
+    }
+    json!({
+        "preconditions": {
+            "actor": format!("0x{LOCAL_ACTOR}"),
+            "min_token_balance": "900", "min_allowance": "900",
+            "min_vault_balance": "100", "max_vault_balance": "100"
+        },
+        "calls": calls
+    })
+}
+
+fn test_corpus() -> Corpus {
+    Corpus::from_json(&serde_json::to_vec(&test_corpus_json()).unwrap(), 7, 2).unwrap()
+}
+
 #[test]
-fn corpus_rejects_invalid_target_empty_and_over_bound() {
-    assert!(Corpus::from_json(b"[]", 7, 2).is_err());
-    let call = br#"[{"from":"0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266","to":"elsewhere","value":"0","data":"0x","label":"invalid"}]"#;
-    assert!(Corpus::from_json(call, 7, 2).is_err());
-    assert!(Corpus::from_json(include_bytes!("../../../rules/r5/corpus.json"), 6, 2).is_err());
+fn corpus_requires_declared_outcome_and_preconditions_and_rejects_unknown_fields() {
+    let valid = test_corpus_json();
+    assert!(Corpus::from_json(&serde_json::to_vec(&valid).unwrap(), 7, 2).is_ok());
+    assert!(Corpus::from_json(&serde_json::to_vec(&valid).unwrap(), 6, 2).is_err());
+    for field in ["preconditions", "calls"] {
+        let mut invalid = valid.clone();
+        invalid.as_object_mut().unwrap().remove(field);
+        assert!(Corpus::from_json(&serde_json::to_vec(&invalid).unwrap(), 7, 2).is_err());
+    }
+    for field in [
+        "actor",
+        "min_token_balance",
+        "min_allowance",
+        "min_vault_balance",
+        "max_vault_balance",
+    ] {
+        let mut invalid = valid.clone();
+        invalid["preconditions"]
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+        assert!(Corpus::from_json(&serde_json::to_vec(&invalid).unwrap(), 7, 2).is_err());
+    }
+    for field in ["from", "to", "value", "data", "label", "expect"] {
+        let mut invalid = valid.clone();
+        invalid["calls"][0].as_object_mut().unwrap().remove(field);
+        assert!(Corpus::from_json(&serde_json::to_vec(&invalid).unwrap(), 7, 2).is_err());
+    }
+    for value in [
+        "-1",
+        "0x10",
+        "",
+        "115792089237316195423570985008687907853269984665640564039457584007913129639936",
+    ] {
+        let mut invalid = valid.clone();
+        invalid["preconditions"]["min_allowance"] = json!(value);
+        assert!(Corpus::from_json(&serde_json::to_vec(&invalid).unwrap(), 7, 2).is_err());
+    }
+    let mut invalid = valid.clone();
+    invalid["preconditions"]["min_vault_balance"] = json!("101");
+    assert!(Corpus::from_json(&serde_json::to_vec(&invalid).unwrap(), 7, 2).is_err());
+    let mut invalid = valid.clone();
+    invalid["calls"][0]["expect"] = json!("unknown");
+    assert!(Corpus::from_json(&serde_json::to_vec(&invalid).unwrap(), 7, 2).is_err());
+    for path in ["root", "preconditions", "call"] {
+        let mut invalid = valid.clone();
+        match path {
+            "root" => invalid["unknown"] = json!(true),
+            "preconditions" => invalid["preconditions"]["unknown"] = json!(true),
+            _ => invalid["calls"][0]["unknown"] = json!(true),
+        }
+        assert!(Corpus::from_json(&serde_json::to_vec(&invalid).unwrap(), 7, 2).is_err());
+    }
+    let mut invalid = valid;
+    invalid["calls"][0]["to"] = json!("elsewhere");
+    assert!(Corpus::from_json(&serde_json::to_vec(&invalid).unwrap(), 7, 2).is_err());
 }

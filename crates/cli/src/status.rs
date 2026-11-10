@@ -57,7 +57,9 @@ pub fn status(
     let start = Instant::now();
     loop {
         let proposal = receipt::read_proposal(near, gate, id)?;
-        let run_value = run.map(|(client, run_id)| client.run(run_id)).transpose()?;
+        let run_value = run
+            .map(|(client, run_id)| client.run(run_id, gate, id))
+            .transpose()?;
         let observed = receipt::observe(near, gate, &proposal, evm, network, run_value.as_ref())?;
         println!("proposal {id}: {:?}", proposal.state);
         if let Some(rejection) = &proposal.rejection {

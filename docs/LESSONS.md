@@ -4,6 +4,18 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-10: The first real Pass needed three environment facts the local tests could not show
+
+- [V, testnet] The first attested Pass, MPC signature and Base upgrade came only after three environment defects, each invisible to local tests: (1) pointing the R5 proof endpoint at the keyed archive provider, which proves only the head block, so every run failed `proof_window_exceeded`; (2) a relay function-call key with 0.1 NEAR allowance while `submit_verdict` prepays 300 Tgas, which costs 0.30 NEAR at the observed gas price, so every submission died before reaching the gate; (3) an honest fixture `initializeV2(10)` below the vault's 100 recorded deposits, which R5 correctly rejected with reason 50.
+- Root cause: each was a configuration or fixture assumption that no test touched, and the first symptom was a generic classification (`replay_unavailable`, `rpc_server_error`). Sanitized failure reasons found (1) in one run; the allowance needed a reproduction of the same call from the dev machine, because the Rust client's error text did not match the allowance needle.
+- Rule: keep the proof provider separate from the archive provider; size the relay key allowance as at least `attempts x 0.3 NEAR` ([I] the key is charged the full prepaid gas cost up front; the check message showed cost 0.3009 NEAR against allowance 0.1; whether unused gas is credited back to the allowance is unobserved); build honest fixtures from the live prestate (`totalDeposits` before choosing a cap); probe providers and keys with the real call before building an image. Provider throttling is a normal condition, so reads back off within the run deadline.
+
+### 2026-11-10: Recompute dstack runtime digests before authenticating the event chain
+
+- [V, actual production Phala CVM] Intel DCAP signature-chain and `UpToDate` checks passed, but appraisal rejected event 20 because dstack 0.5.12 returned an empty redundant runtime `digest`. The official `TdxEvent::digest()` derives runtime digests from event content; the signed RTMR3, not a separately supplied digest string, authenticates the chain.
+- Root cause: the local simulator always populated digests, so the parser treated an optional redundant field as mandatory. Empty/absent digest regression failed before the correction; afterwards it passed while altered content still failed the quote binding. The actual CLI appraisal then passed all seven checks for expected compose `b18c4e5b41c902266bcbe8adbdcc1ae0627ae5fefb1315f16e17224e5a6a1ed9`.
+- Rule: independently derive canonical v1/v2 event digests, reject a mismatching supplied digest, and always compare the complete recomputed chain to the signed register. Keep Intel production trust, `UpToDate`, expected compose and key/nonce/release bindings unchanged. A later CVM restart requires fresh identity appraisal.
+
 ### 2026-11-05: Prepaid proposal credit must include storage for restricted NEAR keys
 
 - [V, local] A fresh review found that `propose` still required an attached storage fee although D17 exposes only a function-call key. The old prepaid-credit regression failed at the attached-fee check. After cutover, the actual CLI successfully registered a proposal in near-sandbox using a genuine method-restricted key; forbidden credit withdrawal and NEAR transfer remained refused.

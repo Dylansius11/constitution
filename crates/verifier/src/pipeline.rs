@@ -14,7 +14,7 @@ use std::{
 /// Whole-run wall clock covering sandbox stages, replay RPCs and AI candidates. It stays
 /// well below the gate's proposal TTL and the 2 h default so a stalled provider cannot pin
 /// the single worker; exceeding it ends the run `failed` with `infrastructure_timeout`.
-pub const RUN_DEADLINE: Duration = Duration::from_secs(20 * 60);
+pub const RUN_DEADLINE: Duration = Duration::from_secs(30 * 60);
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Stage {
     pub name: String,
@@ -416,6 +416,17 @@ pub fn execute_observed(
             run.elapsed_ms = start.elapsed().as_millis() as u64;
             run.evidence = Some(ev);
             run.fail("infrastructure_timeout");
+            return run;
+        }
+        let signing_time = now();
+        if signing_time > p.expires_at_s
+            || signing_time > cert.expires_at_s
+            || cert.expires_at_s < cert.issued_at_s
+            || cert.expires_at_s - cert.issued_at_s > m.max_cert_ttl_s
+        {
+            run.elapsed_ms = start.elapsed().as_millis() as u64;
+            run.evidence = Some(ev);
+            run.fail("proposal_expired");
             return run;
         }
         match identity.sign_certificate(&cert) {
@@ -908,6 +919,10 @@ fn run_stages(
             run.record("r5_replay", StageStatus::Incomplete, code, start);
             return Err(code);
         }
+        ReplayOutcome::DetailedFault(code, detail) => {
+            run.record("r5_replay", StageStatus::Incomplete, detail, start);
+            return Err(code);
+        }
         ReplayOutcome::Evidence(evidence, detail) => {
             let code = evidence.detail_code;
             run.record("r5_replay", evidence.status, detail, start);
@@ -958,7 +973,7 @@ fn ai_evidence(
     if m.ai.model != crate::ai::MODEL
         || m.ai.signature_kind != "provider_tee"
         || !(1..=16).contains(&m.ai.max_candidates)
-        || !(1..=300).contains(&m.ai.timeout_s)
+        || !(1..=600).contains(&m.ai.timeout_s)
     {
         return crate::ai::Report::incomplete("AI incomplete; unsupported committed policy");
     }
@@ -1024,6 +1039,12 @@ fn ai_evidence(
             ctx.deadline,
         )
         .map_err(|e| e.to_string())?;
+        if witness.executor != revm::primitives::Address::from(p.executor.0)
+            || witness.proxy_admin != revm::primitives::Address::from(p.proxy_admin.0)
+            || witness.signer != revm::primitives::Address::from(p.derived_eoa.0)
+        {
+            return Err("AI replay upgrade authority mismatch".into());
+        }
         crate::ai::reproduce(
             &witness,
             &calls,
@@ -1039,6 +1060,7 @@ fn ai_evidence(
 enum ReplayOutcome {
     Evidence(RuleEvidence, String),
     Fault(&'static str),
+    DetailedFault(&'static str, String),
 }
 /// One witness fetch plus pure replay.
 enum ReplayAttempt {
@@ -1059,17 +1081,31 @@ fn replay_stage(
 ) -> ReplayOutcome {
     use crate::replay::{Corpus, EvidenceBlock, IncompleteKind, fetch_witness, replay_detailed};
     let Some(rpc) = ctx.archive_rpc else {
-        return ReplayOutcome::Fault("rpc_unavailable");
+        return ReplayOutcome::DetailedFault("rpc_unavailable", "archive_rpc_missing".into());
     };
     let Some(proof_rpc) = ctx.proof_rpc else {
-        return ReplayOutcome::Fault("rpc_unavailable");
+        return ReplayOutcome::DetailedFault("rpc_unavailable", "proof_rpc_missing".into());
     };
     let Ok(bytes) = std::fs::read(repo.join("rules/r5/corpus.json")) else {
-        return ReplayOutcome::Fault("committed_data_unavailable");
+        return ReplayOutcome::DetailedFault(
+            "committed_data_unavailable",
+            "corpus_read_failed".into(),
+        );
     };
     let corpus = match Corpus::from_json(&bytes, m.r5.max_txs, m.r5.confirmations) {
         Ok(corpus) if corpus.sha256 == m.r5.corpus_sha256.0 => corpus,
-        _ => return ReplayOutcome::Fault("committed_data_unavailable"),
+        Ok(_) => {
+            return ReplayOutcome::DetailedFault(
+                "committed_data_unavailable",
+                "corpus_mismatch".into(),
+            );
+        }
+        Err(_) => {
+            return ReplayOutcome::DetailedFault(
+                "committed_data_unavailable",
+                "corpus_invalid".into(),
+            );
+        }
     };
     let attempt = || {
         let witness = match fetch_witness(
@@ -1089,6 +1125,17 @@ fn replay_stage(
             Ok(witness) => witness,
             Err(error) => return ReplayAttempt::Incomplete(error),
         };
+        if witness.executor != revm::primitives::Address::from(p.executor.0)
+            || witness.proxy_admin != revm::primitives::Address::from(p.proxy_admin.0)
+            || witness.signer != revm::primitives::Address::from(p.derived_eoa.0)
+        {
+            return ReplayAttempt::Incomplete(crate::replay::Incomplete {
+                message: "upgrade authority differs from gate config".into(),
+                kind: IncompleteKind::Environment,
+                reason: crate::replay::IncompleteReason::ReplayIncomplete,
+                rpc_transport: false,
+            });
+        }
         let (status, code) =
             match replay_detailed(&witness, &corpus, current, candidate, &p.init_calldata.0) {
                 Ok(true) => (StageStatus::Pass, 0),
@@ -1114,39 +1161,49 @@ fn replay_stage(
                 );
             }
             ReplayAttempt::Unencodable => {
-                return ReplayOutcome::Fault("committed_data_unavailable");
+                return ReplayOutcome::DetailedFault(
+                    "committed_data_unavailable",
+                    "witness_serialization_failed".into(),
+                );
             }
             ReplayAttempt::Incomplete(error) => {
                 if ctx.expired() {
                     return ReplayOutcome::Fault("infrastructure_timeout");
                 }
                 if error.kind == IncompleteKind::Environment {
-                    return ReplayOutcome::Fault(if error.rpc_transport {
+                    let code = if error.rpc_transport {
                         "rpc_unavailable"
                     } else {
                         "replay_unavailable"
-                    });
+                    };
+                    return ReplayOutcome::DetailedFault(
+                        code,
+                        format!("{}; {}; {}", code, error.reason.code(), error.message),
+                    );
                 }
                 if confirmed
                     .as_ref()
                     .is_some_and(|previous: &crate::replay::Incomplete| {
-                        previous.message != error.message
+                        previous.message != error.message || previous.reason != error.reason
                     })
                 {
-                    return ReplayOutcome::Fault("rpc_unavailable");
+                    return ReplayOutcome::DetailedFault(
+                        "rpc_unavailable",
+                        "contradiction_changed_between_fetches".into(),
+                    );
                 }
                 confirmed = Some(error);
             }
         }
     }
-    let error = confirmed.map_or_else(String::new, |e| e.message);
+    let error = confirmed.expect("two incomplete replay attempts");
     ReplayOutcome::Evidence(
         RuleEvidence {
             status: StageStatus::Incomplete,
             detail_code: 51,
-            artifact_sha256: Hex32(sha256(error.as_bytes())),
+            artifact_sha256: Hex32(sha256(error.message.as_bytes())),
         },
-        format!("reason 51; {error}"),
+        format!("reason 51; {}; {}", error.reason.code(), error.message),
     )
 }
 
@@ -1176,6 +1233,8 @@ mod replay_stage_tests {
             chain_id: 84532,
             proxy: Hex20([1; 20]),
             executor: Hex20([2; 20]),
+            proxy_admin: Hex20([10; 20]),
+            derived_eoa: Hex20([11; 20]),
             expected_current_impl: Hex20([3; 20]),
             observed_current_impl: Hex20([3; 20]),
             current_impl_codehash: Hex32([4; 32]),
@@ -1186,7 +1245,7 @@ mod replay_stage_tests {
             rule_set_hash: Hex32([8; 32]),
             evidence_block_number: 1,
             evidence_block_hash: Hex32([9; 32]),
-            expires_at_s: 1,
+            expires_at_s: now() + 3600,
         }
     }
     static CANARY: std::sync::LazyLock<CanaryPolicy> =
@@ -1199,6 +1258,15 @@ mod replay_stage_tests {
         prior: u32,
         deadline: Instant,
     ) -> RunContext<'a> {
+        context_with(rpc, tools, prior, deadline, &HEALTH)
+    }
+    fn context_with<'a>(
+        rpc: Option<&'a str>,
+        tools: &'a dyn ToolBackend,
+        prior: u32,
+        deadline: Instant,
+        health: &'a CanaryHealth,
+    ) -> RunContext<'a> {
         RunContext {
             archive_provider: "local",
             archive_rpc: rpc,
@@ -1206,7 +1274,7 @@ mod replay_stage_tests {
             ai_transport: &crate::ai::LocalSidecar,
             tools,
             canary: &CANARY,
-            canary_health: &HEALTH,
+            canary_health: health,
             prior_failed_runs: prior,
             deadline,
             observer: None,
@@ -1218,11 +1286,15 @@ mod replay_stage_tests {
     fn repo_root() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
-    fn committed_manifest() -> RuleSetManifest {
+    fn test_corpus_repo() -> (tempfile::TempDir, RuleSetManifest) {
+        let repo = tempfile::tempdir().unwrap();
+        let bytes = br#"{"preconditions":{"actor":"0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266","min_token_balance":"0","min_allowance":"0","min_vault_balance":"0","max_vault_balance":"0"},"calls":[{"from":"0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266","to":"proxy","value":"0","data":"0x","label":"test","expect":"success"}]}"#;
+        std::fs::create_dir_all(repo.path().join("rules/r5")).unwrap();
+        std::fs::write(repo.path().join("rules/r5/corpus.json"), bytes).unwrap();
         let mut m = manifest();
         m.r5.max_txs = 7;
-        m.r5.corpus_sha256 = Hex32(sha256(include_bytes!("../../../rules/r5/corpus.json")));
-        m
+        m.r5.corpus_sha256 = Hex32(sha256(bytes));
+        (repo, m)
     }
     fn outcome(
         repo: &Path,
@@ -1243,6 +1315,7 @@ mod replay_stage_tests {
     fn fault(repo: &Path, m: &RuleSetManifest, rpc: Option<&str>) -> &'static str {
         match outcome(repo, m, &proposal(), rpc, later()) {
             ReplayOutcome::Fault(code) => code,
+            ReplayOutcome::DetailedFault(code, _) => code,
             ReplayOutcome::Evidence(_, detail) => panic!("expected a fault, got {detail}"),
         }
     }
@@ -1264,20 +1337,20 @@ mod replay_stage_tests {
     }
     #[test]
     fn replay_stage_refuses_wrong_commitment_before_any_rpc() {
-        let mut m = manifest();
+        let (repo, mut m) = test_corpus_repo();
         m.r5.max_txs = 7;
         m.r5.corpus_sha256 = Hex32([0; 32]);
         assert_eq!(
-            fault(&repo_root(), &m, Some("http://unused.invalid")),
+            fault(repo.path(), &m, Some("http://unused.invalid")),
             "committed_data_unavailable"
         );
     }
     #[test]
     fn replay_stage_rpc_failure_is_a_fault_without_endpoint_credentials() {
-        let m = committed_manifest();
+        let (repo, m) = test_corpus_repo();
         assert_eq!(
             fault(
-                &repo_root(),
+                repo.path(),
                 &m,
                 Some("http://relay:password@127.0.0.1:0/secret-key")
             ),
@@ -1404,44 +1477,51 @@ mod replay_stage_tests {
             "eth_chainId" => Reply::Result(serde_json::json!("0x14a34")),
             _ => Reply::Null,
         });
-        let m = committed_manifest();
+        let (repo, m) = test_corpus_repo();
         assert_eq!(
-            fault(&repo_root(), &m, Some(&stub.url)),
+            fault(repo.path(), &m, Some(&stub.url)),
             "replay_unavailable"
         );
         assert_eq!(stub.count("eth_getBlockByNumber"), 2);
     }
     #[test]
     fn lagging_confirmations_are_environmental_not_a_witness_reject() {
-        let m = committed_manifest();
+        let (repo, m) = test_corpus_repo();
         let (stub, p) = chain_stub(100, |_| 1, |_| "0x");
-        let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
+        let result = outcome(repo.path(), &m, &p, Some(&stub.url), later());
+        assert!(
+            matches!(result, ReplayOutcome::DetailedFault("replay_unavailable", detail) if detail.contains("insufficient_confirmations"))
+        );
         assert_eq!(stub.count("eth_blockNumber"), 2);
         assert_eq!(stub.count("eth_getCode"), 0);
         // A node that catches up on the second read lets the run continue to the code read.
         let (stub, p) = chain_stub(100, |nth| if nth == 1 { 1 } else { 5 }, |_| "0x");
-        outcome(&repo_root(), &m, &p, Some(&stub.url), later());
+        outcome(repo.path(), &m, &p, Some(&stub.url), later());
         assert!(stub.count("eth_getCode") >= 1);
     }
     #[test]
     fn unauthenticated_missing_candidate_code_is_environmental() {
-        let m = committed_manifest();
+        let (repo, m) = test_corpus_repo();
         let (stub, p) = chain_stub(100, |_| 5, |_| "0x");
-        let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
+        let result = outcome(repo.path(), &m, &p, Some(&stub.url), later());
+        assert!(
+            matches!(result, ReplayOutcome::DetailedFault("replay_unavailable", detail) if detail.contains("code_mismatch"))
+        );
         // A later response changing cannot turn the first unauthenticated read into a verdict.
         let (stub, p) = chain_stub(100, |_| 5, |nth| if nth == 1 { "0x" } else { "0x6001" });
-        let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
+        let result = outcome(repo.path(), &m, &p, Some(&stub.url), later());
+        assert!(matches!(
+            result,
+            ReplayOutcome::DetailedFault("replay_unavailable", _)
+        ));
     }
     #[test]
     fn slow_provider_hits_the_run_deadline_not_a_witness_reject() {
         let stub = provider(|_, _| Reply::Slow(Duration::from_secs(5)));
-        let m = committed_manifest();
+        let (repo, m) = test_corpus_repo();
         let started = Instant::now();
         let result = outcome(
-            &repo_root(),
+            repo.path(),
             &m,
             &proposal(),
             Some(&stub.url),
@@ -1654,7 +1734,9 @@ mod replay_stage_tests {
         let (m, mut p, sealed) = sealed_fixture(&identity, false);
         p.current_impl_codehash = Hex32(keccak(RUNTIME));
         p.new_impl_codehash = Hex32(keccak(RUNTIME));
-        *HEALTH.0.lock().unwrap() = if prior_failed_runs > 0 {
+        // A per-run health record: tests run in parallel and must not share canary state.
+        let health = CanaryHealth::default();
+        *health.0.lock().unwrap() = if prior_failed_runs > 0 {
             [Some(Instant::now()); 3]
         } else {
             [None; 3]
@@ -1671,7 +1753,7 @@ mod replay_stage_tests {
             &p,
             &sealed,
             1,
-            context(None, &backend, prior_failed_runs, deadline),
+            context_with(None, &backend, prior_failed_runs, deadline, &health),
         );
         (run, backend.opened.into_inner().unwrap())
     }
@@ -1821,6 +1903,26 @@ mod replay_stage_tests {
         assert_eq!(run.error_code.as_deref(), Some("sandbox_unavailable"));
         assert!(run.certificate_b64.is_none() && !run.canary_failed);
         assert_eq!(opened.len(), 1);
+    }
+    #[test]
+    fn proposal_expiring_before_signing_withholds_rejection() {
+        let identity = Identity::new();
+        let (m, mut p, sealed) = sealed_fixture(&identity, true);
+        p.expires_at_s = now().saturating_sub(1);
+        let run = execute(
+            &repo_root(),
+            &m,
+            &identity,
+            &p,
+            &sealed,
+            1,
+            "local",
+            None,
+            None,
+        );
+        assert_eq!(run.error_code.as_deref(), Some("proposal_expired"));
+        assert!(run.certificate_b64.is_none());
+        assert!(run.signature_b64.is_none());
     }
     #[test]
     fn deadline_expiring_before_signing_never_issues_a_certificate() {

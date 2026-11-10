@@ -8,6 +8,12 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[package.metadata.near.reproducible_build]
+image = "sourcescan/cargo-near:0.22.0-rust-1.99.1"
+image_digest = "sha256:c9655eaf7436b90c87ea8b25739f91063032c5c30ba24cfeafe72c142943b5bb"
+passed_env = ["CARGO_BUILD_JOBS"]
+container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -20,12 +26,13 @@ serde_json.workspace = true
 omni-transaction.workspace = true
 alloy-sol-types.workspace = true
 hex.workspace = true
+k256 = { version = "=0.13.4", default-features = false, features = ["arithmetic", "ecdsa"] }
 
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }
 near-workspaces.workspace = true
 tokio.workspace = true
 ed25519-dalek.workspace = true
-k256.workspace = true
 rlp.workspace = true
 proptest.workspace = true
+k256.workspace = true

@@ -29,7 +29,7 @@ async fn handler(
         "query" => {
             let value = match q["params"]["method_name"].as_str().unwrap() {
                 "get_config" => {
-                    json!({"chain_id":84532,"executor":"0xa44d05793c89be410c93647fd08f3523444681ae","proxy":"0x1111111111111111111111111111111111111111","proxy_admin":"0x2222222222222222222222222222222222222222","derived_eoa":"0x8221c9477886cc456d7e1cccc0866e0401b81070","mpc_account":"mpc.testnet","mpc_path":"local","mpc_domain_id":0})
+                    json!({"chain_id":84532,"executor":"0xa44d05793c89be410c93647fd08f3523444681ae","proxy":"0x1111111111111111111111111111111111111111","proxy_admin":"0x2222222222222222222222222222222222222222","derived_eoa":"0x8221c9477886cc456d7e1cccc0866e0401b81070","mpc_account":"mpc.testnet","mpc_path":"local","mpc_domain_id":0,"governance_delay_days":3})
                 }
                 "get_proposal" => s.proposal,
                 other => panic!("unexpected view {other}"),

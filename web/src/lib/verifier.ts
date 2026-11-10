@@ -80,6 +80,9 @@ export type RunErrorCode = (typeof RUN_ERROR_CODES)[number] | "unknown_code";
  * A `failed` run has no certificate, signature, verdict or submission; the parser enforces it.
  */
 export interface VerifierRun {
+  gate_account: string;
+  proposal_id: number;
+  boot_id: string;
   stage: string;
   started_at: number;
   stages: RunStage[];
@@ -202,7 +205,7 @@ export interface StartRunArgs {
 
 export interface VerifierClient {
   identity(): Promise<VerifierIdentity>;
-  startRun(args: StartRunArgs): Promise<{ runId: number; label: string | null }>;
+  startRun(args: StartRunArgs): Promise<{ runId: number; gateAccount: string; proposalId: number; bootId: string; label: string | null }>;
   /** `null` when the verifier does not know this run id. */
   getRun(runId: number): Promise<VerifierRun | null>;
   /** `null` when the run is unknown or has no evidence yet. */
@@ -263,6 +266,9 @@ function parseVerdict(value: unknown, path: string): RunVerdict {
 export function parseRun(value: unknown): VerifierRun {
   const o = new Obj(value, "run");
   const run: VerifierRun = {
+    gate_account: o.str("gate_account"),
+    proposal_id: o.safe("proposal_id"),
+    boot_id: o.str("boot_id"),
     stage: o.str("stage"),
     started_at: o.safe("started_at"),
     stages: o.arr("stages").map((entry, i) => {
@@ -424,7 +430,12 @@ export function createVerifierClient(options: VerifierClientOptions): VerifierCl
           "verifier run",
         );
         const o = new Obj(parseJson(text), "run_started");
-        return { runId: o.safe("run_id"), label: o.maybe("label", asString) ?? null };
+        const gateAccount = o.str("gate_account");
+        const returnedProposal = o.safe("proposal_id");
+        const bootId = o.str("boot_id");
+        if (gateAccount !== gate || returnedProposal !== proposalId || !/^[0-9a-f]{64}$/.test(bootId))
+          throw new InputError("verifier run binding differs from the proposal");
+        return { runId: o.safe("run_id"), gateAccount, proposalId: returnedProposal, bootId, label: o.maybe("label", asString) ?? null };
       } catch (error) {
         const code =
           error instanceof HttpStatusError ? refusalCode(error.status, error.body) : undefined;

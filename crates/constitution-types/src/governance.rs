@@ -1,6 +1,12 @@
-//! Timelocked governance storage. The seven-day delay is not a parameter.
+//! Timelocked governance storage. Each gate fixes its delay at initialization.
 
-pub const TIMELOCK_NS: u64 = 604_800 * 1_000_000_000;
+pub const DEFAULT_GOVERNANCE_DELAY_DAYS: u32 = 3;
+pub const MIN_GOVERNANCE_DELAY_DAYS: u32 = 1;
+pub const MAX_GOVERNANCE_DELAY_DAYS: u32 = 30;
+
+fn default_governance_delay_days() -> u32 {
+    DEFAULT_GOVERNANCE_DELAY_DAYS
+}
 
 #[derive(
     Debug,
@@ -31,6 +37,9 @@ pub struct Config {
     pub mpc_account: crate::AccountId,
     pub mpc_path: String,
     pub mpc_domain_id: u32,
+    /// Whole days, selected at initialization; no governance change can alter this value.
+    #[serde(default = "default_governance_delay_days")]
+    pub governance_delay_days: u32,
 }
 
 #[derive(

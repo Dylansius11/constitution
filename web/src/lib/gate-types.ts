@@ -30,6 +30,7 @@ export interface Config {
   mpc_account: string;
   mpc_path: string;
   mpc_domain_id: number;
+  governance_delay_days: number;
 }
 
 export interface Params {
@@ -119,6 +120,21 @@ export interface PendingChange {
   evm: EvmTx | null;
 }
 
+/**
+ * Number of access keys in a NEAR `view_access_key_list` result. Only the count is kept: the page
+ * never needs to show a key, and each entry must still look like a key so a malformed response is
+ * rejected rather than reported as a count.
+ */
+export function parseAccessKeyList(value: unknown, path = "access_keys"): number {
+  const keys = new Obj(value, path).arr("keys");
+  keys.forEach((entry, i) => {
+    const key = new Obj(entry, `${path}.keys[${i}]`);
+    key.str("public_key");
+    key.obj("access_key");
+  });
+  return keys.length;
+}
+
 function parsePubkeyB64(value: unknown, path: string): string {
   if (typeof value !== "string" || !/^[A-Za-z0-9+/]{43}=$/.test(value)) {
     throw new WireError(path, "expected a base64 32-byte key");
@@ -128,6 +144,8 @@ function parsePubkeyB64(value: unknown, path: string): string {
 
 export function parseConfig(value: unknown, path = "config"): Config {
   const o = new Obj(value, path);
+  const delay = o.safe("governance_delay_days", 30);
+  if (delay < 1) throw new WireError(o.at("governance_delay_days"), "expected 1 to 30 days");
   return {
     chain_id: o.safe("chain_id"),
     executor: o.hex("executor", 20),
@@ -137,6 +155,7 @@ export function parseConfig(value: unknown, path = "config"): Config {
     mpc_account: o.account("mpc_account"),
     mpc_path: o.str("mpc_path"),
     mpc_domain_id: o.safe("mpc_domain_id", 0xffff_ffff),
+    governance_delay_days: delay,
   };
 }
 
