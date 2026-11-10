@@ -123,6 +123,7 @@ pub fn fresh_gate(initial_nonce: u64) -> Gate {
             mpc_account: "v1.signer-prod.testnet".parse().unwrap(),
             mpc_path: "constitution/base-sepolia/v1".into(),
             mpc_domain_id: 0,
+            governance_delay_days: DEFAULT_GOVERNANCE_DELAY_DAYS,
         },
         Constitution {
             rule_set_hash: [5; 32],

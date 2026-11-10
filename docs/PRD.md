@@ -2,10 +2,10 @@
 
 ## TL;DR
 
-- [I] One-liner: **"Steal every admin key. You still cannot violate the upgrade constitution."** Scoped claim: for the one protected proxy, no key we control (admin, governor, deployer, verifier operator, relayer) can make the proxy run an implementation that has not passed the owner-committed rules, or change those rules faster than a public 7-day timelock. The residual trust (MPC network, TEE vendors, declared rule coverage) is stated in [Risks and guarantees](#risks-and-guarantees).
+- [I] One-liner: **"Steal every admin key. You still cannot violate the upgrade constitution."** Scoped claim: for the one protected proxy, no key we control (admin, governor, deployer, verifier operator, relayer) can make the proxy run an implementation that has not passed the owner-committed rules, or change those rules faster than the deployment-selected public timelock. The residual trust (MPC network, TEE vendors, declared rule coverage) is stated in [Risks and guarantees](#risks-and-guarantees).
 - [I] Mechanism: an EVM proxy's upgrade authority belongs to an address derived through NEAR Chain Signatures for a NEAR **gate** contract whose account has no full-access keys. The gate asks the MPC network to sign one exact upgrade transaction only after an attested deterministic verifier certifies the proposal against a committed rule set. A private red-team AI can only veto, and only with a counterexample that the deterministic verifier reproduces.
 - [V] Status 2026-10-26: scope locked by the founder in brief 15 (source below). Planning docs only. No application code exists before 2026-11-01T00:00:00Z. Nothing is deployed, nothing is audited.
-- [I] Primary success condition: on the final submission, a judge can (1) watch or run a hidden-drain V2 being rejected with a receipt while the Base Sepolia proxy stays unchanged, (2) watch or run an honest V2 being certified, MPC-signed and executed through `upgradeAndCall` with real explorer links, and (3) see a governance rule change refused before its 7-day delay ends, with every claim traceable to a receipt.
+- [I] Primary success condition: on the final submission, a judge can (1) watch or run a hidden-drain V2 being rejected with a receipt while the Base Sepolia proxy stays unchanged, (2) watch or run an honest V2 being certified, MPC-signed and executed through `upgradeAndCall` with real explorer links, and (3) see a governance rule change refused before its selected delay ends, with every claim traceable to a receipt.
 - [V] Tracks: AI Security & Defense (`security`, primary), Privacy & Private AI (`privacy`, only for the genuinely private analysis path), Open Innovation (`open`, backup). Multiple track ids per entry are allowed; award stacking is UNVERIFIED (EVENT.md).
 
 ## Problem, users and buyer
@@ -46,7 +46,7 @@ Why each unusual primitive is load-bearing:
 | Attested verifier (TEE) | Runs deterministic checks on private source and signs a certificate with a key that only exists in measured code | Certificates come from an operator who could lie or be hacked |
 | Private red-team AI (NEAR AI Cloud Confidential TEE tier) | Searches for exploit sequences in unreleased code without disclosing it; can only veto | Either no adversarial search, or unreleased patch code leaves the trust boundary |
 | EVM `ConstitutionExecutor` | On-chain last line: certificate id single use, deadline, new implementation code hash, expected current implementation | A signed but withheld transaction could land after expiry or against a changed state |
-| 7-day public timelock | Rules, verifier allowlist and authority migration change only after public delay | The governor key becomes an instant bypass |
+| Deployment-selected public timelock | Rules, verifier allowlist and authority migration change only after the immutable selected delay | The governor key becomes an instant bypass |
 
 [I] When a simpler solution wins: a protocol that is immutable, or whose upgrades are rare and fully reviewed by an independent auditor plus a well-run multisig, may not need this. CONSTITUTION is for teams that upgrade often, ship emergency patches, or cannot rule out signer compromise. It complements, not replaces, audits.
 
@@ -58,7 +58,7 @@ Editorial target: about 3 minutes [I]. [U] No official video duration limit was 
 2. **The attack.** The judge, using that key, proposes `VaultV2Drain`: it looks like a routine fee update but contains a hidden path that lets one address withdraw the whole vault. (F1, F9, F10)
 3. **Rejection.** The private red-team AI proposes a counterexample; the deterministic verifier reproduces it ("address X withdrew 100% of the vault"); the gate records a rejection receipt; the MPC signer is never called; the Base Sepolia explorer shows the proxy implementation unchanged. (F5, F6, F8)
 4. **Honest upgrade.** `VaultV2Honest` passes every rule; the gate requests the Chain Signature; the relayed transaction executes `ProxyAdmin.upgradeAndCall` via `ConstitutionExecutor` on Base Sepolia; explorer link and receipt shown. (F3, F4, F8)
-5. **Even governance waits.** The governor key schedules a rule change and immediately tries to apply it: the gate refuses (`E53_TIMELOCK_NOT_ELAPSED`) with a real testnet receipt. A rule change scheduled at activation and matured after 7 real days is shown only if it actually matured (F11, P1). A local time-travel test is labeled "local test", never presented as testnet evidence.
+5. **Even governance waits.** The governor key schedules a rule change and immediately tries to apply it: the gate refuses (`E53_TIMELOCK_NOT_ELAPSED`) with a real testnet receipt. A change is shown as matured only after the deployment's selected delay has actually elapsed (F11, P1). A local time-travel test is labeled "local test", never presented as testnet evidence.
 6. **Business.** Buyer, pricing hypothesis, next 90 days, without invented customers or revenue.
 
 Fallback order if live inference fails during recording: show the real rejection receipt from the rehearsal run with its timestamp and say so on screen. Never replay a fixture as live.
@@ -76,13 +76,13 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 - Acceptance: every transition and every rejection reachable by a test; no path to `SignRequested` without a valid certificate (see F3); expired proposals cannot be certified.
 - Proof surface: gate events, CLI `status`, receipt.
 
-### F2. Constitution governance and timelock (P0, real 7-day maturation proof P1)
+### F2. Constitution governance and timelock (P0, real maturation proof P1)
 
-- Outcome: the rule set, verifier allowlist, gate parameters and any authority migration change only through a public queue with a fixed 7-day minimum delay that no role can shorten.
+- Outcome: the rule set, verifier allowlist, gate parameters and any authority migration change only through a public queue with a deployment-selected delay of 1–30 whole days, default 3; the chosen duration is immutable after initialization. Ordinary certified vault upgrades do not wait for this governance delay.
 - Roles: `governor` may only schedule; `guardian` may only cancel pending changes, pause signing or remove a verifier immediately; nobody may apply before `eta`; anyone may apply after `eta` (D17).
 - Change kinds: `SetRuleSet(rule_set_hash, manifest_uri, ai_required)`, `AddVerifier(pubkey, release_hash, attestation_uri)`, `RemoveVerifier(pubkey)`, `SetParams(params)`, `SetGovernor`, `SetGuardian`, `MigrateAuthority(new_signer)`, `Unpause`.
 - Exceptions: `RemoveVerifier` and a global `pause_signing` may take effect immediately when invoked by guardian, because they can only reduce what the gate signs (fail closed). Unpause is timelocked.
-- Rejections: apply before `eta` (`E53_TIMELOCK_NOT_ELAPSED`), unknown change (`E52`), not pending (`E54`), scheduler is not governor (`E50`), canceller is not guardian (`E56`), rule-set change while signatures are outstanding (`E55`, D13). The 7-day delay is a constant; no change kind alters it.
+- Rejections: apply before `eta` (`E53_TIMELOCK_NOT_ELAPSED`), unknown change (`E52`), not pending (`E54`), scheduler is not governor (`E50`), canceller is not guardian (`E56`), rule-set change while signatures are outstanding (`E55`, D13). Initialization rejects explicit 0 or 31 days with `E51_INVALID_CHANGE`; no change kind, including `SetParams`, alters the delay. A future duration change requires a new gate and the existing timelocked authority migration.
 - Acceptance: unit tests for each rejection; local time-travel test applies after `eta` (labeled local); testnet receipt of an early-apply refusal; P1 testnet receipt of a matured apply.
 
 ### F3. Exact upgrade transaction and Chain Signature (P0)
@@ -123,8 +123,8 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 
 ### F7. Authority lockdown and bypass audit (P0)
 
-- Outcome: a read-only `constitution audit` check that anyone can run proves the claim's preconditions from public state: gate account has zero full-access keys and no self-upgrade path outside F2; derived EOA equals the executor's authorized caller; executor owns ProxyAdmin; ProxyAdmin is the proxy's admin (ERC-1967 admin slot); active rule-set hash and verifier allowlist match the committed manifest.
-- Acceptance: audit fails loudly on each violated precondition in local tests; testnet audit output recorded after the activation ceremony.
+- Outcome: a read-only `constitution audit` check that anyone can run checks the claim's preconditions from public state: gate account has zero full-access keys and no self-upgrade path outside F2; derived EOA equals the executor's authorized caller; executor owns ProxyAdmin; ProxyAdmin is the proxy's admin (ERC-1967 admin slot); active rule-set hash and verifier allowlist match the committed manifest. The deployment record must explicitly commit `governance_delay_days`; audit compares it with observed gate configuration.
+- Acceptance: audit fails loudly on each violated precondition in local tests; rehearse user-facing E2E and audit before lockdown, then record final testnet audit output and essential live checks after key deletion (D21). Retained-key staging is not keyless proof; deletion requires fresh founder authorization.
 
 ### F8. Receipts (P0)
 
@@ -147,7 +147,7 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 
 ### F11. Real timelock maturation on testnet (P1)
 
-- Outcome: a harmless rule-set change scheduled at the activation ceremony is applied after 7 real days with a receipt, before the submission cutoff. Requires activation by 2026-11-07T12:00:00Z (BUILD-PLAN).
+- Outcome: a harmless governance change scheduled at activation is applied after the selected number of real days with a receipt, before the submission cutoff, if feasible. The old 2026-11-07T12:00:00Z activation milestone was for seven days and is stale; calculate feasibility from the actual schedule and observed `eta_ns`, never assume maturation.
 
 ### S1. Act 2 semi-autonomous proposal repair (stretch, D4 approved 2026-11-05)
 
@@ -206,7 +206,7 @@ What the product guarantees, if the stated trust assumptions hold [I]:
 
 - G1. Against implementations that cannot write arbitrary proxy storage, the proxy changes implementation only through `ConstitutionExecutor`, which only accepts transactions signed for the gate's derived EOA. This is conditional: an implementation capable of computed-slot `SSTORE` can bypass that upgrade path; the executor's tracker is not an on-chain storage-write guard.
 - G2. The gate requests a signature only for the exact executor call bound to a certificate from an allowlisted verifier over the active rule-set hash.
-- G3. Rules, verifier allowlist and authority migration change only after a public 7-day delay; guardian actions can only reduce authority. Liveness limit: EVM nonces are assigned at certification, so a certified transaction that nobody ever mines delays later ones until someone relays it (permissionless; a reverted transaction still consumes the nonce). Delay only; no signature is ever created without a certificate.
+- G3. Rules, verifier allowlist and authority migration change only after the public deployment-selected immutable delay; guardian actions can only reduce authority. Liveness limit: EVM nonces are assigned at certification, so a certified transaction that nobody ever mines delays later ones until someone relays it (permissionless; a reverted transaction still consumes the nonce). Delay only; no signature is ever created without a certificate.
 - G4. AI output can only cause rejection, never certification.
 
 Trust assumptions and limits:

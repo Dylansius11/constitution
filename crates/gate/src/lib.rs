@@ -1,8 +1,8 @@
 //! NEAR gate contract. Interface: docs/technical/SMART-CONTRACT.md.
 use constitution_types::{
     AccountId, Base64, ChangeKind, ChangeStatus, Config, Constitution, GateError,
-    MAX_INIT_CALLDATA, Params, PendingChange, Proposal, ProposalState, ProposeArgs, TIMELOCK_NS,
-    VerifierRecord, ns_to_s, s_to_ns,
+    MAX_GOVERNANCE_DELAY_DAYS, MAX_INIT_CALLDATA, MIN_GOVERNANCE_DELAY_DAYS, Params, PendingChange,
+    Proposal, ProposalState, ProposeArgs, VerifierRecord, ns_to_s, s_to_ns,
 };
 use near_sdk::{
     BorshStorageKey, NearToken, PanicOnDefault, Promise, env,
@@ -111,6 +111,12 @@ impl Gate {
             config.chain_id == 84532,
             GateError::InvalidChange,
             "chain_id",
+        );
+        check(
+            (MIN_GOVERNANCE_DELAY_DAYS..=MAX_GOVERNANCE_DELAY_DAYS)
+                .contains(&config.governance_delay_days),
+            GateError::InvalidChange,
+            "governance_delay_days",
         );
         check(
             config.mpc_account.as_str() == "v1.signer-prod.testnet",

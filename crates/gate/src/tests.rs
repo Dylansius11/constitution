@@ -42,6 +42,7 @@ fn config() -> Config {
         mpc_account: "v1.signer-prod.testnet".parse().unwrap(),
         mpc_path: "constitution/base-sepolia/v1".into(),
         mpc_domain_id: 0,
+        governance_delay_days: constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS,
     }
 }
 fn constitution() -> Constitution {
@@ -146,9 +147,83 @@ fn schedule(g: &mut Gate, kind: ChangeKind) -> u64 {
 }
 fn matured(g: &mut Gate, kind: ChangeKind) -> u64 {
     let id = schedule(g, kind);
-    context("anyone.testnet", 1_000_000_000 + TIMELOCK_NS, 0);
+    context("anyone.testnet", 1_000_000_000 + 259_200_000_000_000, 0);
     drop(g.apply_change(id));
     id
+}
+
+#[test]
+fn default_governance_delay_schedules_three_day_eta() {
+    let mut encoded = serde_json::to_value(config()).unwrap();
+    encoded
+        .as_object_mut()
+        .unwrap()
+        .remove("governance_delay_days");
+    let default_config: Config = serde_json::from_value(encoded).unwrap();
+    near_sdk::mock::with_mocked_blockchain(|b| b.take_storage());
+    context("alice.testnet", 1_000_000_000, 0);
+    let mut g = Gate::new(
+        default_config,
+        constitution(),
+        roles(),
+        vec![(Base64([7; 32]), verifier())],
+        42,
+    );
+    let id = schedule(&mut g, rule_change());
+    assert_eq!(g.get_change(id).unwrap().eta_ns, 259_201_000_000_000);
+}
+
+#[test]
+fn selected_governance_delays_enforce_eta_boundaries() {
+    for (days, eta) in [
+        (1, 86_401_000_000_000),
+        (3, 259_201_000_000_000),
+        (30, 2_592_001_000_000_000),
+    ] {
+        let mut cfg = config();
+        cfg.governance_delay_days = days;
+        near_sdk::mock::with_mocked_blockchain(|b| b.take_storage());
+        context("alice.testnet", 1_000_000_000, 0);
+        let mut g = Gate::new(
+            cfg,
+            constitution(),
+            roles(),
+            vec![(Base64([7; 32]), verifier())],
+            42,
+        );
+        let id = schedule(&mut g, rule_change());
+        assert_eq!(g.get_change(id).unwrap().eta_ns, eta);
+        context("anyone.testnet", eta - 1, 0);
+        fails("E53_TIMELOCK_NOT_ELAPSED", || g.apply_change(id));
+        context("anyone.testnet", eta, 0);
+        drop(g.apply_change(id));
+        assert_eq!(g.get_constitution().rule_set_hash, [12; 32]);
+    }
+}
+
+#[test]
+fn governance_delay_is_init_only_even_after_set_params() {
+    let mut g = gate();
+    let mut encoded = serde_json::to_value(params()).unwrap();
+    encoded["governance_delay_days"] = serde_json::json!(1);
+    let replacement: Params = serde_json::from_value(encoded).unwrap();
+    matured(
+        &mut g,
+        ChangeKind::SetParams {
+            params: replacement,
+        },
+    );
+    assert_eq!(g.get_config().governance_delay_days, 3);
+    let id = schedule(&mut g, rule_change());
+    assert_eq!(g.get_change(id).unwrap().eta_ns, 259_201_000_000_000);
+}
+
+#[test]
+fn scheduling_rejects_eta_overflow_without_queuing() {
+    let mut g = gate();
+    context("governor.testnet", u64::MAX - 1, 0);
+    fails("E51_INVALID_CHANGE", || g.schedule_change(rule_change()));
+    assert!(g.list_changes(0, 50).is_empty());
 }
 
 #[test]
@@ -303,13 +378,13 @@ fn expire_boundary_releases_once_and_reopens_duplicate_slot_while_paused() {
 fn t_gate_6_timelock_before_eta_minus_one_and_at_eta() {
     let mut g = gate();
     let id = schedule(&mut g, rule_change());
-    assert_eq!(g.get_change(id).unwrap().eta_ns, 604_801_000_000_000);
+    assert_eq!(g.get_change(id).unwrap().eta_ns, 259_201_000_000_000);
     let msg = fails("E53_TIMELOCK_NOT_ELAPSED", || g.apply_change(id));
-    assert!(msg.contains("eta_ns=604801000000000"));
+    assert!(msg.contains("eta_ns=259201000000000"));
     assert!(msg.contains("now_ns=1000000000"));
-    context("anyone.testnet", 604_800_999_999_999, 0);
+    context("anyone.testnet", 259_200_999_999_999, 0);
     fails("E53_TIMELOCK_NOT_ELAPSED", || g.apply_change(id));
-    context("anyone.testnet", 604_801_000_000_000, 0);
+    context("anyone.testnet", 259_201_000_000_000, 0);
     drop(g.apply_change(id));
     assert_eq!(g.get_constitution().rule_set_hash, [12; 32]);
     assert!(!g.get_constitution().ai_required);
@@ -490,6 +565,11 @@ fn initialization_rejects_every_invalid_binding() {
     let mut c = config();
     c.chain_id = 1;
     fails("E51_INVALID_CHANGE", || init(c, constitution(), vs()));
+    for days in [0, 31] {
+        let mut c = config();
+        c.governance_delay_days = days;
+        fails("E51_INVALID_CHANGE", || init(c, constitution(), vs()));
+    }
     let mut c = config();
     c.mpc_account = "evil.testnet".parse().unwrap();
     fails("E51_INVALID_CHANGE", || init(c, constitution(), vs()));
@@ -587,7 +667,7 @@ fn lifecycle_and_guardian_events_identify_the_actual_transition() {
     let id = schedule(&mut g, rule_change());
     let event = last_event("change_scheduled");
     assert_eq!(event["change_id"], id);
-    assert_eq!(event["eta_ns"], 604_801_000_000_000u64);
+    assert_eq!(event["eta_ns"], 259_201_000_000_000u64);
     assert_eq!(
         event["kind"]["SetRuleSet"]["rule_set_hash"],
         format!("0x{}", "0c".repeat(32))
@@ -608,7 +688,7 @@ fn lifecycle_and_guardian_events_identify_the_actual_transition() {
     assert_eq!(last_event("change_applied")["change_id"], id);
     assert_eq!(
         g.verifiers.get(&[8; 32]).unwrap().added_at_ns,
-        604_801_000_000_000
+        259_201_000_000_000
     );
     context("guardian.testnet", 604_801_000_000_000, 0);
     g.remove_verifier_now(Base64([8; 32]));

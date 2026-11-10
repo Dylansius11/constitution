@@ -28,7 +28,7 @@ Guarantee and limit: see PRD "Risks and guarantees" (G1 to G4 and trust assumpti
 | Derivation | `sha3_256("near-mpc-recovery v0.1.0 epsilon derivation:" + gate_account_id + "," + path)` tweak of the MPC root key | [V] near/mpc `kdf.rs` |
 | Derived EOA | `keccak256(uncompressed_pubkey[1..65])[12..32]` | [V] chainsig.js EVM adapter; computed in P1.2 |
 | EVM chain id | `84532` | [V] docs.base.org and live `eth_chainId` = `0x14a34` |
-| Timelock delay | `604_800` s (7 days), compile-time constant | [I] product rule; no method changes it |
+| Timelock delay | `Config.governance_delay_days`: 1–30 whole days, default 3 | [I] selected at initialization; immutable thereafter (D20) |
 | Certificate domain tag | ASCII `constitution.v1\0`, exactly 16 bytes | [I] |
 | ERC-1967 implementation slot | `0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc` | [V] OZ v5.6.1 `ERC1967Utils.sol`; recomputed locally |
 | ERC-1967 admin slot | `0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103` | [V] same |
@@ -76,6 +76,7 @@ pub struct Config {
     mpc_account: AccountId,     // v1.signer-prod.testnet
     mpc_path: String,           // "constitution/base-sepolia/v1"
     mpc_domain_id: u32,         // 0
+    governance_delay_days: u32, // 1..=30 whole days; serde omission defaults to 3
 }
 
 pub struct Constitution {
@@ -195,8 +196,8 @@ All methods are `#[near]`; JSON arguments unless marked Borsh. "Anyone" means an
 
 `#[init] new(config: Config, constitution: Constitution, roles: Roles, verifiers: Vec<(Base64 [u8;32] pubkey, VerifierRecord)>, initial_evm_nonce: u64) -> Self`
 
-- Called in the same batch transaction as the code deploy. Validates chain/MPC identity, non-zero addresses, parameter bounds above, nonempty verifier set, nonzero verifier `release_hash`, unique verifier keys and URI lengths; invalid input is `E51_INVALID_CHANGE`.
-- No method exists to deploy code, add or delete keys, delete the account or call arbitrary functions on itself (D6). The deployer then deletes every access key of the gate account (activation ceremony, BUILD-PLAN P2.8).
+- Called in the same batch transaction as the code deploy. Validates chain/MPC identity, non-zero addresses, parameter bounds above, nonempty verifier set, nonzero verifier `release_hash`, unique verifier keys and URI lengths; invalid input is `E51_INVALID_CHANGE`. Omitted `config.governance_delay_days` defaults to 3; explicit 0 or 31 is rejected with `E51_INVALID_CHANGE`.
+- No method exists to deploy code, add or delete keys, delete the account or call arbitrary functions on itself (D6). Rehearse user-facing E2E and audit first; deleting every gate access key requires fresh founder authorization (D21), followed by final audit and essential live checks.
 
 ### Proposer and credit
 
@@ -243,14 +244,14 @@ The gate does not re-run `ecrecover` on-chain: [V] `env::ecrecover` in near-sdk 
 
 | Method | Caller | Effects | Rejections |
 | --- | --- | --- | --- |
-| `schedule_change(kind: ChangeKind) -> u64` | governor | Pending queue capped at 8 total; per kind at most 1 Pending MigrateAuthority/SetGuardian/SetGovernor and at most 2 Pending of every other kind; eta remains now +604,800 seconds | `E50_NOT_GOVERNOR`, `E51_INVALID_CHANGE`, `E59_PENDING_CHANGE_LIMIT`, `E60_DUPLICATE_AUTHORITY_CHANGE` (per-kind cap), `E12_STORAGE_INSOLVENT` |
+| `schedule_change(kind: ChangeKind) -> u64` | governor | Pending queue capped at 8 total; per kind at most 1 Pending MigrateAuthority/SetGuardian/SetGovernor and at most 2 Pending of every other kind; `eta_ns` is checked `now_ns + governance_delay_days * 86_400 * 1_000_000_000` | `E50_NOT_GOVERNOR`, `E51_INVALID_CHANGE`, `E59_PENDING_CHANGE_LIMIT`, `E60_DUPLICATE_AUTHORITY_CHANGE` (per-kind cap), `E12_STORAGE_INSOLVENT` |
 | `apply_change(change_id: u64)` | anyone | Applies after eta and deletes the change body (a migration body stays for re-request/bump). Migration assigns one nonce and signs rotateSigner; applied Failed or 20-minute timed-out InFlight migration can re-request identical bytes with a new attempt (including failed fee bumps) | `E52_NOT_FOUND` (also for an already applied or cancelled change), `E53_TIMELOCK_NOT_ELAPSED`, `E54_NOT_PENDING`, `E55_SIGNATURES_OUTSTANDING`: rule change waits for every stored deadline, and for SignRequested also the 20-minute timeout; `E12_STORAGE_INSOLVENT` |
 | `cancel_change(change_id: u64)` | guardian | Deletes a Pending change body; frees queue slot | `E56_NOT_GUARDIAN`, `E52_NOT_FOUND` (also for an already terminal change), `E54_NOT_PENDING` |
 | `cancel_changes(ids: Vec<u64>)` | guardian | At most 8 unique IDs; validates entire batch before cancelling; only reduces authority | `E56_NOT_GUARDIAN`, `E59_PENDING_CHANGE_LIMIT`, `E51_INVALID_CHANGE` (duplicate IDs), `E52_NOT_FOUND`, `E54_NOT_PENDING` |
 | `pause_signing()` | guardian | `signing_paused = true` immediately; only reduces authority | `E56_NOT_GUARDIAN` |
 | `remove_verifier_now(pubkey: Base64 [u8;32])` | guardian | Removes immediately; only reduces authority | `E56_NOT_GUARDIAN`, `E57_LAST_VERIFIER` |
 
-Unpausing, adding verifiers, rule changes, parameter changes, role changes and authority migration are timelocked. The governor cannot cancel (D17), so a leaked governor key can only create publicly visible pending changes.
+Unpausing, adding verifiers, rule changes, parameter changes, role changes and authority migration are timelocked. The duration is immutable after initialization, including through `SetParams`; changing it requires a new gate and the existing timelocked authority migration. Ordinary certified vault upgrades do not wait for this delay. The governor cannot cancel (D17), so a leaked governor key can only create publicly visible pending changes.
 
 ### Views
 
@@ -286,7 +287,7 @@ Codes are stable receipt prefixes; the four new codes are gate-private (the shar
 | `E50_NOT_GOVERNOR` | Scheduler is not governor |
 | `E51_INVALID_CHANGE` | Invalid initialization/change/parameter/URI/address, zero release hash, duplicate batch ID, or bounded arithmetic overflow |
 | `E52_NOT_FOUND` | Governance change does not exist |
-| `E53_TIMELOCK_NOT_ELAPSED` | Applying before immutable seven-day eta |
+| `E53_TIMELOCK_NOT_ELAPSED` | Applying before the selected immutable eta |
 | `E54_NOT_PENDING` | Change is not Pending and is not a retryable applied migration |
 | `E55_SIGNATURES_OUTSTANDING` | Rule change is unsafe while an upgrade signature deadline/request is outstanding |
 | `E56_NOT_GUARDIAN` | Immediate restrictive action caller is not guardian |
@@ -458,7 +459,7 @@ Limits [I]: `currentImplementation` is the executor's record, not a read of the 
 | Authority | Who holds it | What a thief can do | What a thief cannot do |
 | --- | --- | --- | --- |
 | Gate account access keys | nobody after activation | nothing | deploy code, add keys, delete account, transfer gate funds |
-| Governor (demo: public QR function-call key) | demo account | schedule up to 8 Pending changes, at most one per authority kind, visible 7 days | apply early, cancel, sign, propose more than one active proposal per account |
+| Governor (demo: public QR function-call key) | demo account | schedule up to 8 Pending changes, at most one per authority kind, visible for the selected delay | apply early, cancel, sign, propose more than one active proposal per account |
 | Guardian | founder | cancel one or a bounded batch of Pending changes, pause signing, remove a verifier | add anything, unpause, sign; apply is permissionless but cannot bypass eta |
 | Verifier Ed25519 key | inside measured CVM | sign certificates for the declared rule set until removed; the rules and AI requirement still bound what passes | change rules, verifier set or gate code |
 | Verifier relay NEAR key | CVM env, function-call key | submit verdicts (validity comes from the certificate signature) | anything else |
@@ -469,7 +470,7 @@ Limits [I]: `currentImplementation` is the executor's record, not a read of the 
 Bypass analysis (each item has a test or audit check in "Test matrix"):
 
 1. Replace gate code at the same account: impossible without access keys and without a deploy method (D6). Audit: `gate_has_no_access_keys`, `gate_code_is_committed_build`. Substitute executor code: `executor_code_is_committed_build` compares `eth_getCode` against the committed `executor_runtime_hash` and local Foundry artifact, masking only compiler-declared immutable references; ownership/slot checks still apply. `gate_operating_surplus` fails when `get_operating_surplus` is below 1 NEAR (12 preconditions total; schema and exact offline hash command in ARCHITECTURE “CLI”).
-2. New verifier or rules: 7-day public queue; guardian can cancel. Audit reads roles, pause state and the full pending-change queue with `eta_ns`; an unplanned MigrateAuthority/AddVerifier/RemoveVerifier/SetRuleSet/SetGuardian/SetGovernor prints named `WARN pending_authority_change` and a loud “pending authority change” summary (WARN exits 0, FAIL exits 1). Exact planned change tuples live in the committed deployment record; a missing view fails closed as `read_failed`.
+2. New verifier or rules: public queue for the selected delay; guardian can cancel. Audit reads roles, pause state and the full pending-change queue with `eta_ns`; an unplanned MigrateAuthority/AddVerifier/RemoveVerifier/SetRuleSet/SetGuardian/SetGovernor prints named `WARN pending_authority_change` and a loud “pending authority change” summary (WARN exits 0, FAIL exits 1). Exact planned change tuples live in the committed deployment record; a missing view fails closed as `read_failed`.
 3. Verifier key extraction from the TEE: residual risk; mitigations are measurement allowlisting, `remove_verifier_now`, short certificate TTL.
 4. Stale signature replay: executor deadline and `usedCertificate`.
 5. Wrong chain, proxy or calldata: chain id and every field are inside the signed preimage built by the gate.
@@ -540,6 +541,7 @@ NOT DEPLOYED. Fill only with observed values:
 | --- | --- | --- | --- | --- |
 | Gate account id | NEAR testnet | `constitution-gate.testnet` (created, no code; keys deleted at activation) | `Ehjsjb6HGLcWmg5v2ehGHUgMcSK27LTfN5FFR3G4eErf` | 2026-11-02 |
 | Gate wasm code hash | NEAR testnet | not built | | |
+| Governance delay | NEAR testnet | not initialized; select 1–30 whole days at initialization (default 3), then commit expected value for audit | pending | |
 | Derived EOA | Base Sepolia | `0x3b20f46860d27d81917a45221c594fc051af7e94` for (`constitution-gate.testnet`, `constitution/base-sepolia/v1`), live `derived_public_key` view at block 275927720 equals the offline derivation (`vectors/mpc-derivation.json`) | view call | 2026-11-02 |
 | Executor | Base Sepolia | production: not deployed (activation P2.8). Spike: `0xf26e7a09f0b4b22ec964f7cf23fd1b8a543851e8`, signer = spike-derived EOA `0x8221c9477886cc456d7e1cccc0866e0401b81070` | spike `0xccaddd37f3a08b3f05b1a74db2138bee58e326496eac88dc885f21bdb2ffcbc3` | 2026-11-03 |
 | Proxy / ProxyAdmin | Base Sepolia | production: not deployed. Spike: proxy `0xef855da4d6f2e1c7814f1898fc5771e3bba8b569`, ProxyAdmin `0xe1531f314cf21ca10ec0a93fbd167bf17b791316`, `owner()` = spike executor (cast re-read) | `spikes/gate-min/base-sepolia-evidence.json` | 2026-11-03 |
@@ -577,7 +579,7 @@ NOT DEPLOYED. Fill only with observed values:
 | First-assigned nonces strictly increase across upgrade and authority-migration targets, never move to another calldata payload; retries preserve the signing hash; fee bumps preserve nonce/deadline/inputs | `generated_operations_match_reference_model`, `migration_and_upgrade_nonces_never_collide`, `signing_retries_bumps_and_stale_callbacks_preserve_nonce_and_credit` |
 | Only a valid, bound Pass from a registered verifier within TTL requests an upgrade signature; every expected failure asserts the exact documented error code | `certificate_mutations_never_authorize_signing`, `every_certificate_rejection_class_has_exact_error_and_no_effect`, `certificate_time_boundaries_and_terminal_rejections`, `generated_operations_match_reference_model` |
 | Rejected, AI-vetoed and Expired proposals never request signatures; stale/duplicate callbacks never accept a second result per attempt; expiry is exclusive and 1,024-byte calldata is accepted | `certificate_time_boundaries_and_terminal_rejections`, `proposal_expiry_and_calldata_boundaries_release_exactly_once`, `timelocked_verifiers_and_guardian_actions_never_expand_authority`, `signing_retries_bumps_and_stale_callbacks_preserve_nonce_and_credit` |
-| Guardian actions only pause, cancel or remove verifier authority; adding/removing verifiers and unpause are timelocked; early apply is exactly E53; the delay remains 604,800 seconds after parameter changes | `timelocked_verifiers_and_guardian_actions_never_expand_authority`, `generated_operations_match_reference_model` |
+| Guardian actions only pause, cancel or remove verifier authority; adding/removing verifiers and unpause are timelocked; early apply is exactly E53; `SetParams` cannot change the selected delay | `timelocked_verifiers_and_guardian_actions_never_expand_authority`, `generated_operations_match_reference_model` |
 | Rule changes wait for in-flight signatures; retries under superseded rules preserve expired bytes and cannot extend the deadline | `rule_changes_wait_for_inflight_signatures_and_expired_retries_only_fill_nonce` |
 | A lost callback is recoverable at the exact 20-minute timeout; a late original callback cannot double-apply | `requested_signature_retries_only_after_timeout_and_ignores_old_attempt` |
 | Clean review kind other than provider_tee never authorizes Pass, even when AI is optional | `non_provider_clean_never_authorizes_pass_even_when_ai_optional`, `certificate_mutations_never_authorize_signing` |

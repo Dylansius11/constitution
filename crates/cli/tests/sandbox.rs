@@ -36,6 +36,7 @@ impl Local {
             mpc_account: "v1.signer-prod.testnet".parse()?,
             mpc_path: "constitution/base-sepolia/v1".into(),
             mpc_domain_id: 0,
+            governance_delay_days: constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS,
         };
         let constitution = Constitution {
             rule_set_hash: [5; 32],

@@ -544,7 +544,7 @@ impl Machine {
                         kind,
                         scheduled_by: "governor.testnet".parse().unwrap(),
                         scheduled_at_ns: self.now,
-                        eta_ns: self.now + 604_800_000_000_000,
+                        eta_ns: self.now + 259_200_000_000_000,
                         status: ChangeStatus::Pending,
                         evm: None,
                     }));
@@ -635,8 +635,8 @@ impl Machine {
                     40_000_000_000,
                     60_000_000_000,
                     120_000_000_000,
-                    604_800_000_000_000 - 1,
-                    604_800_000_000_000,
+                    259_200_000_000_000 - 1,
+                    259_200_000_000_000,
                     1_200_000_000_000 - 1,
                     1_200_000_000_000,
                 ][usize::from(delta)];
@@ -809,7 +809,6 @@ impl Machine {
                 self.verifiers[usize::from(index)]
             );
         }
-        assert_eq!(TIMELOCK_NS, 604_800_000_000_000);
         for (id, expected) in self.changes.iter().enumerate() {
             let Some(expected) = expected else {
                 assert!(g.get_change(id as u64).is_none());
@@ -817,7 +816,7 @@ impl Machine {
             };
             let actual = g.get_change(id as u64).unwrap();
             assert_eq!(actual, expected);
-            assert_eq!(actual.eta_ns - actual.scheduled_at_ns, 604_800_000_000_000);
+            assert_eq!(actual.eta_ns - actual.scheduled_at_ns, 259_200_000_000_000);
             assert_eq!(
                 borsh::from_slice::<PendingChange>(&borsh::to_vec(actual).unwrap()).unwrap(),
                 *actual
@@ -1171,11 +1170,11 @@ proptest! {
         context("governor.testnet".parse().unwrap(), START, 0, None);
         let change = g.schedule_change(ChangeKind::MigrateAuthority { new_signer: [12; 20] });
         g = roundtrip(g);
-        context(account(0), START + TIMELOCK_NS - 1, 0, None);
+        context(account(0), START + 259_200_000_000_000 - 1, 0, None);
         expect_code("E53_TIMELOCK_NOT_ELAPSED", || g.apply_change(change));
         prop_assert!(sign_requests().is_empty());
         g = roundtrip(g);
-        let now = START + TIMELOCK_NS;
+        let now = START + 259_200_000_000_000;
         context(account(0), now, 0, None);
         drop(g.apply_change(change));
         prop_assert_eq!(sign_requests().len(), 1);
@@ -1274,7 +1273,7 @@ proptest! {
                 rule_set_hash: [5; 32], manifest_uri: "ipfs://optional-ai".into(), ai_required: false,
             });
             g = roundtrip(g);
-            now += TIMELOCK_NS;
+            now += 259_200_000_000_000;
             context(account(0), now, 0, None);
             drop(g.apply_change(change));
             g = roundtrip(g);
@@ -1410,7 +1409,7 @@ proptest! {
         context("governor.testnet".parse().unwrap(), START, 0, None);
         let id = g.schedule_change(ChangeKind::MigrateAuthority { new_signer: [12; 20] });
         g = roundtrip(g);
-        let mut now = START + TIMELOCK_NS;
+        let mut now = START + 259_200_000_000_000;
         context(account(0), now, 0, None);
         drop(g.apply_change(id));
         g = roundtrip(g);

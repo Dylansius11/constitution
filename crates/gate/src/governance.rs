@@ -34,8 +34,12 @@ impl Gate {
             env::panic_str(DUPLICATE_AUTHORITY_CHANGE);
         }
         let now = env::block_timestamp();
+        let delay_ns = u64::from(self.config.governance_delay_days)
+            .checked_mul(86_400)
+            .and_then(s_to_ns)
+            .unwrap_or_else(|| env::panic_str(GateError::InvalidChange.code()));
         let eta_ns = now
-            .checked_add(TIMELOCK_NS)
+            .checked_add(delay_ns)
             .unwrap_or_else(|| env::panic_str(GateError::InvalidChange.code()));
         let id = self.next_change_id;
         let next = id

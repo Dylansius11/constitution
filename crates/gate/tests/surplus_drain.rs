@@ -48,7 +48,7 @@ impl Harness {
             .await?
             .into_result()?;
         gate.call("new").args_json(json!({
-            "config":Config{chain_id:84532,executor:[1;20],proxy:[2;20],proxy_admin:[3;20],derived_eoa:[4;20],mpc_account:mpc,mpc_path:"constitution/base-sepolia/v1".into(),mpc_domain_id:0},
+            "config":Config{chain_id:84532,executor:[1;20],proxy:[2;20],proxy_admin:[3;20],derived_eoa:[4;20],mpc_account:mpc,mpc_path:"constitution/base-sepolia/v1".into(),mpc_domain_id:0,governance_delay_days:constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS},
             "constitution":Constitution{rule_set_hash:[5;32],manifest_uri:"ipfs://rules".into(),ai_required:true,params:Params{proposal_deposit:100,proposal_ttl_s:300,max_cert_ttl_s:1800,sign_validity_s:3600,gas_limit:500000,max_fee_per_gas:10,max_priority_fee_per_gas:1,fee_cap:1000,sign_gas_tgas:15,callback_gas_tgas:30}},
             "roles":Roles{governor:actor.id().clone(),guardian:actor.id().clone()},
             "verifiers":[(Base64(key().verifying_key().to_bytes()),VerifierRecord{release_hash:[6;32],attestation_uri:"ipfs://quote".into(),added_at_ns:0})],"initial_evm_nonce":42

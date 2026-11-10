@@ -125,6 +125,7 @@ fn deploy() -> (Anvil, Config, String) {
         mpc_account: "v1.signer-prod.testnet".parse().unwrap(),
         mpc_path: "constitution/base-sepolia/v1".into(),
         mpc_domain_id: 0,
+        governance_delay_days: constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS,
     };
     let created = forge(&[
         "create",

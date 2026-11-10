@@ -29,8 +29,9 @@ pub use bytes::{Base64, Base64Bytes, Hex20, Hex32, HexBytes, U128Str};
 pub use certificate::certificate_hash;
 pub use certificate::{AiReview, Certificate, DOMAIN, Verdict};
 pub use governance::{
-    ChangeKind, ChangeStatus, Config, Constitution, Params, PendingChange, Roles, SignTarget,
-    TIMELOCK_NS, VerifierRecord, change_id_hash,
+    ChangeKind, ChangeStatus, Config, Constitution, DEFAULT_GOVERNANCE_DELAY_DAYS,
+    MAX_GOVERNANCE_DELAY_DAYS, MIN_GOVERNANCE_DELAY_DAYS, Params, PendingChange, Roles, SignTarget,
+    VerifierRecord, change_id_hash,
 };
 pub use manifest::{EvidenceManifest, RuleSetManifest};
 pub use near_account_id::AccountId;
