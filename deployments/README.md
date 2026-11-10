@@ -1,6 +1,6 @@
 # Audit deployment records
 
-[V, 2026-11-10] `testnet.json` is the pre-deletion record of the retained-key final-gate candidate `constitution-gate.testnet`: every value was observed on testnet (see SMART-CONTRACT "Deployment and measured costs"). It is not keyless evidence until the gate's last access key is deleted and the audit is repeated with exit 0. Never copy spike or staging (`constitution-validation-1110`) addresses into it.
+[V, 2026-11-10] `testnet.json` is the record of the final gate `constitution-gate.testnet`: every value was observed on testnet (see SMART-CONTRACT "Deployment and measured costs"). The gate's last access key was deleted at block 277098815 and `constitution audit` against this record then exited 0. Never copy spike or staging (`constitution-validation-1110`) addresses into it.
 
 `testnet.schema.json` describes the JSON consumed by `Deployment`, `DeployedVerifier` and `PlannedChange` in `crates/cli/src/audit.rs`. The CLI does not fetch or execute the schema; it deserializes with the canonical Rust types. Unknown fields are rejected at these three record envelopes. The schema uses JSON Schema draft 2020-12; preserve integer precision (not JavaScript floating-point numbers) when editing nanosecond timestamps.
 
@@ -62,7 +62,7 @@ Copy the helper's final lowercase `0x` hash into the observed deployment record 
 
 ## Audit ceremony and local coverage
 
-[I] See [`scripts/activate.md`](../scripts/activate.md) for the planned audit command and D21 key-deletion gates. Complete user-facing E2E and audit rehearsal, review and fixes before fresh explicit founder permission for deletion. Before deletion, only `gate_has_no_access_keys` may FAIL (exit 1); retained-key staging is not keyless proof. After deletion, the final audit, including the committed delay comparison and operating surplus, must pass; repeat essential live checks and retain observed evidence.
+[I] See [`scripts/activate.md`](../scripts/activate.md) for the audit command and the D21 key-deletion gates. The record is audited before deletion (only `gate_has_no_access_keys` may FAIL) and after deletion (the final audit, including the committed delay comparison and operating surplus, must pass; it did on 2026-11-10). Retained-key staging is not keyless proof.
 
 An unplanned `MigrateAuthority`, `AddVerifier`, `RemoveVerifier`, `SetRuleSet`, `SetGovernor` or `SetGuardian` prints `WARN pending_authority_change`, its exact `eta_ns`, and the loud warning summary. Pause prints `WARN signing_paused`; WARN alone exits 0, while any FAIL still exits 1. A pause never revokes already signed EVM transactions.
 
