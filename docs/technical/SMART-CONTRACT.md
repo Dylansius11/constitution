@@ -470,7 +470,7 @@ Limits [I]: `currentImplementation` is the executor's record, not a read of the 
 
 [I] The guardian key is liveness-critical: a hostile or compromised guardian can repeatedly pause and cancel Unpause and SetGuardian changes, permanently halting signing and preventing its own replacement after key deletion. This restricts authority rather than bypassing certification.
 
-**Founder decision [V, 2026-11-10, chat; owner: founder; affects P2.8]:** accept this trust assumption and document it. No pause-duration bound and no governor-delayed unpause is added, so the gate wasm and every staging/final proof stay unchanged. Consequence stated openly: the guardian key is liveness-critical and, because a hostile guardian could keep the gate paused, its custody must be handled before final key deletion (BLOCKERS: guardian key custody).
+**Founder decision [V, 2026-11-10, chat; owner: founder; affects P2.8]:** accept this trust assumption and document it. No pause-duration bound and no governor-delayed unpause is added, so the gate wasm and every staging/final proof stay unchanged. Consequence stated openly: the guardian key is liveness-critical and, because a hostile guardian could keep the gate paused, its custody matters. The founder authorized the final key deletion on 2026-11-10 while guardian key custody remained open (OPEN-DECISIONS), so custody and monitoring until 2026-11-18 are an operational duty, not a gate property.
 
 Bypass analysis (each item has a test or audit check in "Test matrix"):
 

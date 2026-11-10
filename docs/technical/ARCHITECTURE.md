@@ -3,8 +3,8 @@
 ## TL;DR and approval
 
 - [V] Stack approved by the founder on 2026-10-26: **Option C**, Phala Cloud dstack Intel TDX CVM verifier + Rust-first operations + Astro static page (OPEN-DECISIONS D1). Verifier host D2, spam control D3, attestation appraisal D5 resolved the same day.
-- [I] Core invariant: the Base Sepolia proxy can only change implementation through `ConstitutionExecutor`, which only accepts transactions signed by the MPC key derived for a keyless NEAR gate, and the gate only requests a signature for the exact executor call bound to a valid certificate over the active, timelocked rule set.
-- [V] Nothing is built or deployed. Every version below was observed live on 2026-10-26; compatibility between them is proven only by build phase 1 spikes.
+- [I] Core invariant, conditional on implementations not writing arbitrary proxy storage: the Base Sepolia proxy changes implementation through `ConstitutionExecutor`, which accepts transactions signed by the MPC key derived for the keyless NEAR gate; the gate requests an upgrade signature only for the exact executor call bound to a valid certificate over the active rule set. Computed-slot writes are a stated limit (PRD G1).
+- [V, exercised on testnet 2026-11-10] The final gate, verifier and Base Sepolia executor/proxy were deployed; the gate became keyless at block 277098815. The final keyless audit exited 0. Deployment evidence is in SMART-CONTRACT; versions below were initially researched on 2026-10-26.
 - Exact contract interfaces: `docs/technical/SMART-CONTRACT.md`. Setup and accounts: `docs/technical/INTEGRATIONS.md`. Scope: `docs/PRD.md`.
 
 ## System diagram and responsibilities
@@ -12,7 +12,7 @@
 ```mermaid
 flowchart LR
   subgraph Public["Untrusted, public"]
-    U[Proposer: CLI or public page<br/>demo QR key or own account]
+    U[Proposer: CLI or public page]
     R[Relayer: CLI / verifier loop<br/>broadcasts signed tx]
     P[Public page<br/>Astro static, reads only public data]
   end
@@ -64,7 +64,7 @@ Trust boundaries [I]: NEAR consensus and the MPC network are trusted for signing
 | Executor | Calls from derived EOA | `upgradeAndCall` on ProxyAdmin | `signer`, `currentImplementation`, used ids | `contracts/src/ConstitutionExecutor.sol` |
 | Demo vault | User deposits/withdrawals | Token movements | ERC-7201 vault storage | `contracts/src/demo/` |
 | CLI `constitution` | Commands, local keys from NEAR keychain / `.env` | NEAR txs, sealed bundles, relayed EVM txs, receipts, audit report | Local config only | `crates/cli` |
-| Public page | Public RPC views, verifier status, demo function-call key | Rendered state, `propose` txs signed with the demo key | none | `web/` |
+| Public page | Public RPC views, verifier status | Rendered state and receipts; public demo key not published | none | `web/` |
 
 ## Data flow
 
@@ -73,7 +73,7 @@ Trust boundaries [I]: NEAR consensus and the MPC network are trusted for signing
 ```mermaid
 sequenceDiagram
   autonumber
-  participant J as Judge (page or CLI, demo key)
+  participant J as Proposer (page or CLI)
   participant G as Gate (NEAR)
   participant V as Verifier (CVM)
   participant AI as NEAR AI (TEE)
@@ -89,11 +89,13 @@ sequenceDiagram
   V->>AI: E2EE chat: find exploit sequences
   AI-->>V: candidates + signed response
   V->>V: verifyResponse (provider_tee), replay candidate in revm
-  V->>V: reproduced: R2 violated, reason 22
-  V->>G: submit_verdict(Reject{2,22}, sig)
+  V->>V: reproduced: R2 violated
+  V->>G: submit_verdict(Reject, sig)
   G-->>J: verdict_rejected (MPC never called)
   J->>B: read ERC-1967 slot: unchanged
 ```
+
+[V, exercised on testnet 2026-11-10] The recorded drain was rejected at R2 reason 20 before AI review; this diagram describes the design flow, not the exact observed run. The demo key was deleted unpublished and the final V1-specific rule set cannot repeat the V1-to-V2 upgrade.
 
 ### Honest proposal (step 4)
 
@@ -143,9 +145,9 @@ All rows observed 2026-10-26. "Index" = official crates.io sparse index (`https:
 | Page | Astro | 7.4.2 (Node >= 22.23.4) | `npm view` | Static output, islands for live status |
 | Page language | TypeScript | 7.0.2 | `npm view` | |
 | Page EVM reads | viem | 2.57.14 (`npm view viem version`, 2026-11-02; 2.57.11 on 2026-10-26) | `npm view` | Also the independent encoding oracle (T-ENC-1, `tools/vectors-viem`) |
-| Page NEAR signing | near-api-js | 7.4.0 (Node >= 22.22.2) | `npm view` | Signs `propose`, preset `schedule_change` and `apply_change` with the demo function-call key |
+| Page NEAR signing | near-api-js | 7.4.0 (Node >= 22.22.2) | `npm view` | Signing support for the original demo-key design; no demo secret was published |
 | Page bundle sealing | libsodium-wrappers | 0.8.4 | `npm view` | `crypto_box_seal`; interop with Rust `crypto_box` proven by T-ENC-3 before use |
-| Page QR | qrcode | 1.5.4 (Node >= 10.13.0) | `npm view` | Renders the public demo key; text alternative always shown |
+| Page QR | qrcode | 1.5.4 (Node >= 10.13.0) | `npm view` | Original demo-key design; no public QR was delivered |
 | Page checks | Biome 2.6.3, Vitest 5.0.5, Playwright 1.64.1 | as listed | `npm view` | |
 | Attested host | Phala Cloud dstack CVM | instance size from P1.6 | phala.com/pricing | USD 20 verified-account credit (D2) |
 | Archive / proof RPC | Validation Cloud Base Sepolia for state/debug; Base public RPC for proofs | free tier / rate-limited public | docs.validationcloud.io; docs.base.org | Separate endpoints, one pinned header and verified account/storage proofs (D10, refined 2026-11-05) |
@@ -159,7 +161,7 @@ Alternatives, recommendation and the founder's choice are in OPEN-DECISIONS D1. 
 ```text
 constitution/
   CLAUDE.md
-  Makefile                      # attack, upgrade, audit, test, vectors (planned)
+  Makefile                      # attack, upgrade, audit, test, vectors
   Cargo.toml                    # workspace: crates/*
   rust-toolchain.toml           # 1.99.1, wasm32-unknown-unknown
   crates/
@@ -192,7 +194,7 @@ constitution/
     run-service.mjs             # fail-closed child lifecycle, no automatic restart
     compose.service.yaml        # shared staging bind, host-loopback API publication
     compose.offline.yaml        # explicit local registry; no attestation/submission
-    compose.tee.yaml            # candidate CVM mounts; P1.6 appraisal still required
+    compose.tee.yaml            # candidate CVM mounts
     ai-sidecar/                 # Node 24, @nearai/inference-sdk, localhost only
   fixtures/proposals/{drain,honest}/
   vectors/                      # shared JSON test vectors (T-ENC)
@@ -201,7 +203,7 @@ constitution/
   docs/
 ```
 
-Import boundaries [I]: `gate` depends only on `constitution-types` and near-sdk; `constitution-types` has no network or filesystem code; `verifier` never imports `cli`; `web` imports nothing from Rust and re-derives hashes independently; the AI sidecar listens on localhost only and has no access to signing keys.
+Import boundaries [I]: `gate` depends only on `constitution-types` and near-sdk; `constitution-types` has no network or filesystem code; `verifier` never imports `cli`; `web` imports nothing from Rust and re-derives hashes independently. The sidecar has no signing key of its own, but shares the verifier's OS identity and socket permissions (PRD risks).
 
 ### Verifier HTTP API (served from the CVM)
 
@@ -230,14 +232,11 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 
 [I] The R3 list is **exactly eight ordered 32-byte values**, with Foundry `0x7109709ecfa91a80626ff3989d68f67f5b1dd12d` and Halmos `0xf3993a62377bcd56ae39d773740a5390411e8bc9` zero-padded to 32 bytes. Numeric PUSH immediates are compared (including Solidity's PUSH20 addresses); both ERC-1967 ASCII labels are rejected anywhere in runtime. Shared `validate_rule_set` enforces the list, so CLI and verifier accept identical inputs. Borsh field order, `Vec<Hex32>` encoding and manifest version 1 are unchanged; this revised supported list and harness produce a new rule-set commitment, not a serialization-format fork. G1 assumes implementations cannot write arbitrary storage: a runtime computing its SSTORE slot from calldata can evade R3, as documented by the filter-limit test. Computed cheatcode addresses, environment fingerprinting beyond chain id, and entry points not explored by R2 remain limits. Filters are filters, not proofs.
 
-[I] R5 requires a corpus object with actor token-balance and allowance minima, inclusive vault-balance bounds, and an expected success or revert for every ordered call. It checks these against authenticated prestate and the old execution before candidate replay; unmet preconditions or reference expectations are Incomplete, never a candidate rejection. The currently committed legacy array is intentionally invalid under this schema until the project-owned actor corpus and its commitments are regenerated; see `rules/r5/README.md`.
+[I] R5 requires a corpus object with actor token-balance and allowance minima, inclusive vault-balance bounds, and an expected success or revert for every ordered call. It checks these against authenticated prestate and the old execution before candidate replay; unmet preconditions or reference expectations are Incomplete, never a candidate rejection. The committed corpus includes these preconditions and expected outcomes.
 
 [I] R5 uses the proof-backed proposed implementation address and replays signer → executor → ProxyAdmin → proxy at the pinned header; the initializer sees the admin caller and derived-EOA origin. Executor bookkeeping is normalized for differential comparison. Since the certificate is not yet available, replay uses an all-zero certificate ID and maximum deadline: initializer code reading executor `usedCertificate(0)` can distinguish this context from the eventual transaction. This is a residual limitation, not full transaction equivalence.
 
-[V, local CLI, 2026-11-06] The previous 300 s manifest hash was
-`0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`.
-[I] The 600 s manifest changes that commitment; recompute with
-`cargo run -p constitution-cli -- rules hash rules/manifest.json` before activation.
+[V, exercised on testnet 2026-11-10] The deployed rule-set hash is `0x1efe635ac3eb0eb59b0df0d56c7243b2728922898b55487bc5cf8063db94a410`, matching the committed manifest in the final audit (SMART-CONTRACT).
 
 ### Evidence manifest
 
@@ -257,9 +256,7 @@ stops both on a child failure. The trusted service alone accesses the host Docke
 socket (root-equivalent); tool jobs receive only staged files and use libraries
 embedded in their image. An identical absolute TMPDIR bind bridges the service
 and daemon filesystems. Both image references must be immutable in the final
-rendered deployment inputs before quote appraisal. Packaging and a candidate
-Compose file do not prove CVM execution, ingress policy or DCAP verification;
-P1.6 remains required. Operator steps and resource limits:
+rendered deployment inputs before quote appraisal. [V, exercised on testnet 2026-11-10] The final CVM was appraised and used for the recorded runs; see SMART-CONTRACT for measurements and deployment evidence. Operator steps and resource limits:
 [`crates/verifier/src/LOCAL.md`](../../crates/verifier/src/LOCAL.md#packaged-linux-service).
 
 ### AI review
@@ -270,7 +267,7 @@ P1.6 remains required. Operator steps and resource limits:
 - After the stream completes: `receipt = await client.verifyResponse(completion.id)`; require `receipt.signatureKind === "provider_tee"`; otherwise AI review is `incomplete`.
 - The verifier replays each candidate in revm on the evidence-block fork with the new implementation. Only a reproduced R2 violation creates `Reject{2,22}`. Prompt text and model output are untrusted data: nothing from them is executed except as EVM transactions inside the sandboxed replay.
 
-### CLI (planned interface)
+### CLI (implemented interface)
 
 | Command | Effect |
 | --- | --- |
@@ -316,17 +313,17 @@ The runner shares `status`'s terminal-run policy: `done` without a certificate, 
 
 On failure, inspect `submission.json` first. Use the existing `status`, `receipt`, `verifier run` or `relay` commands for that proposal as appropriate; do not rerun the demo to retry a verifier POST or uncertain transaction. Existing output directories are rejected, never overwritten. An interrupted process or uncertain NEAR write may require manual chain inspection; the runner is not a crash-recovery database. An offline/unattested verifier still cannot issue Pass or submit verdicts. These runners do not implement a full-VPS signing fallback.
 
-The delay cutover additionally requires a mandatory explicit `governance_delay_days` (u32, 1–30) in the deployment record and an audit comparison against `get_config`; this requirement is not met merely by the gate's initialization default. The historical local implementation count below predates this cutover.
+The audit requires an explicit `governance_delay_days` (u32, 1–30) in the deployment record and compares it against `get_config`; the gate's initialization default is not a substitute.
 
-`constitution audit` [I, local implementation; no activated-testnet claim] reads public state at NEAR `final` and EVM `latest` and prints 11 PASS/FAIL preconditions: `gate_has_no_access_keys`, `gate_code_is_committed_build`, `executor_code_is_committed_build`, `gate_binds_this_deployment` (chain, executor, proxy and MPC account match the record and RPC chain), `derived_eoa_is_executor_signer` (MPC derivation equals gate EOA and executor signer), `executor_controls_this_proxy`, `executor_owns_proxy_admin`, `proxy_admin_is_erc1967_admin`, `implementation_tracker_matches_slot`, `active_rule_set_is_committed_manifest`, `verifier_allowlist_is_committed`. The existing ownership and slot checks remain even though the executor constructor deploys the proxy/admin. An unreadable value aborts with named `FAIL read_failed`, exit 1; never a pass.
+`constitution audit` reads public state at NEAR `final` and EVM `latest`; unreadable values fail rather than pass. [V, exercised on testnet 2026-11-10] The final post-deletion audit exited 0 with 16 checks/information lines, including zero gate keys, deployment binding, ownership, implementation tracking, rule set and verifier allowlist (SMART-CONTRACT).
 
-The planned activation record `deployments/testnet.json` is a strict JSON object (unknown fields rejected): `chain_id` (u64), `gate` (NEAR account), `gate_code_hash` (NEAR base58), `mpc_account` (NEAR account), `executor` and `proxy` (lowercase 0x-prefixed 20-byte hex), **`executor_runtime_hash`** (lowercase 0x-prefixed 32-byte hex), `verifiers` (array of `{pubkey: <32-byte base64>, release_hash: <32-byte lowercase 0x hex>}`), and optional `planned_changes` (default `[]`, array of `{id: <u64>, kind: <exact shared ChangeKind JSON>, eta_ns: <u64>}`). No fixture record is presented as activated. A missing/null executor hash is decoded only to emit named `FAIL executor_code_is_committed_build`, not skipped. Both the deployment hash and the masked observed runtime must equal the local artifact hash; byte lengths must match. Immutable offsets/lengths come exclusively from `deployedBytecode.immutableReferences`, not the deployment or RPC. All other bytes (including Solidity metadata) remain hashed; malformed/missing masking metadata fails closed. Build from the intended committed source with pinned Foundry/solc, then from repo root run exactly `forge build --root contracts --offline && cargo run -p constitution-cli -- executor-runtime-hash --executor-artifact contracts/out/ConstitutionExecutor.sol/ConstitutionExecutor.json`; copy its final 0x hash into `executor_runtime_hash` before committing the activation record. The local artifact and deployment record are trusted audit inputs, not independently authenticated source provenance.
+The activation record `deployments/testnet.json` commits deployment identifiers, expected executor runtime, verifier identities, governance delay and planned changes. The local artifact and deployment record are trusted audit inputs, not independently authenticated source provenance. Executor runtime masking uses compiler-declared immutable offsets; malformed or missing masking metadata fails closed.
 
-For D21, rehearse user-facing E2E and audit before final key deletion; retained-key staging is not keyless proof. Fresh founder authorization is required at deletion, then the final audit and essential live checks must be repeated.
+[V, exercised on testnet 2026-11-10] D21's fresh founder authorization preceded key deletion and the final audit followed it. Retained-key staging and the pre-deletion demo runs are not themselves keyless proof.
 
-Governance adds three named information lines: `gate_roles` shows the current governor/guardian ids, `signing_paused` shows the actual boolean (WARN when true; signed transactions are not revoked), and `pending_governance_changes` counts pending changes. `get_roles`, `is_signing_paused`, and every page of `list_changes` are read; a missing pause view is `FAIL read_failed` until the gate view lands. Every pending kind (including MigrateAuthority, AddVerifier, SetGuardian, SetGovernor, SetParams, SetRuleSet) is printed as exact ChangeKind JSON with `id`, `eta_ns`, and planned status. Unplanned MigrateAuthority/AddVerifier/SetGuardian/SetGovernor gets named `WARN pending_authority_change` and overall **`audit WARNING: pending authority change`** instead of “audit passed”; only an exact `(id, kind, eta_ns)` match in the committed `planned_changes` suppresses that warning. Other pending changes use `pending_governance_change`. WARN alone exits 0; any FAIL exits 1. RPC and verifier transport errors strip reqwest URLs and redact endpoint userinfo/path/query keys; diagnostics identify hosts only, including relay race errors and receipt JSON failure paths. Read paths use reqwest JSON-RPC; near-api is used only for signed NEAR writes.
+Governance information includes `gate_roles`, `signing_paused` and `pending_governance_changes`; a missing required view is `FAIL read_failed`. Pending changes include their exact kind, id, ETA and planned status. Unplanned authority changes produce `WARN pending_authority_change`; WARN alone exits 0, while any FAIL exits 1. RPC and verifier transport diagnostics redact endpoint credentials and sensitive URL details.
 
-`constitution relay` [I, implemented 2026-11-02, local evidence only] reads the proposal (or, with `--change`, an applied `MigrateAuthority` change) and the gate config, decodes the raw EIP-1559 bytes, recovers the sender with k256 and refuses to broadcast unless sender = `derived_eoa`, signing hash = the gate's recorded `signing_hash`, and chain, `to` and nonce match. It sends to `BASE_SEPOLIA_SEND_URL` only if `BASE_SEPOLIA_RPC_URL` does not already know the transaction, so relaying twice is harmless; `--watch` reports inclusion, and a revert (for example `DeadlinePassed`) exits 1 with the next step.
+`constitution relay` reads the proposal (or, with `--change`, an applied `MigrateAuthority` change), decodes the signed EIP-1559 bytes, recovers the sender and checks the signing hash and transaction binding before broadcast. It avoids re-broadcasting a known transaction; `--watch` reports inclusion. [V, exercised on testnet 2026-11-10] The honest upgrade was relayed and included on Base Sepolia.
 
 ### Receipt JSON
 
@@ -404,7 +401,7 @@ Authority matrix and on-chain bypass analysis: SMART-CONTRACT "Security and upgr
 - **Untrusted proposal code inside the verifier**: tools run as an unprivileged user without access to `/var/run/dstack.sock`, signing keys, the AI API key or the network (archive reads happen in the Rust service, not in the sandbox). Foundry FFI disabled. Per-stage CPU and wall-time limits.
 - **Prompt injection** in source comments: the model can only emit candidates; candidates are EVM call sequences replayed in revm; nothing else is executed.
 - **Malicious RPC**: evidence block hash is bound; `eth_getProof` against the block's state root where the provider supports it; the gate trusts the verifier's evidence, stated as a limit.
-- **Page host compromise**: the page holds only the public demo key; it cannot produce certificates or signatures.
+- **Page host compromise**: no demo secret was published. A compromised host cannot itself produce verifier certificates or MPC signatures; it remains untrusted.
 - **Verifier key extraction**: residual TEE risk; guardian `remove_verifier_now`, short certificate TTL.
 
 Residual risks are listed in PRD "Risks and guarantees".
@@ -417,10 +414,10 @@ Residual risks are listed in PRD "Risks and guarantees".
 | Testnet dev | Spikes and iteration | Gate deployed **with** a developer key (labeled "dev, claim inactive"); audit fails by design |
 | Testnet activated | Demo and judging | Fresh gate account, keys deleted, executor + proxy deployed, verifier in Phala CVM |
 
-Compatibility spikes: P1.1 to P1.7 in BUILD-PLAN. Planned verification commands (not run): `cargo test -p constitution-types`, `cargo test -p constitution-gate`, `cargo near build reproducible-wasm` (in `crates/gate`), `forge test` (in `contracts`), `pnpm --dir tools/vectors-viem vectors`, and the audit command in `scripts/activate.md` step 6 (`constitution audit --deployment deployments/testnet.json --manifest ... --executor-artifact ... --near-rpc ... --evm-rpc ...`; the CLI has no `--network` flag). Observed evidence is recorded only in SMART-CONTRACT "Deployment and measured costs".
+Compatibility spikes and observed local checks are recorded in BUILD-PLAN. The final testnet deployment, keyless audit and transaction evidence are in SMART-CONTRACT "Deployment and measured costs"; commands listed in the project testing matrix are not claims of a fresh run.
 
 ## Sources
 
 Opened 2026-10-26 unless stated: research notes `scratch/research/A-chain-stack.md` and `scratch/research/B-verifier-ai-integrations.md` (each row cites its primary URL); https://docs.phala.com/phala-cloud/key-management/get-a-key.md ; https://docs.phala.com/dstack/getting-started.md ; https://phala.com/pricing ; https://docs.near.ai/cloud/inference-sdk/javascript.md ; https://docs.near.ai/cloud/verification/cloud-api/response-signatures.md ; https://docs.near.ai/cloud/models.md ; https://cloud-api.near.ai/v1/model/list ; https://docs.validationcloud.io/nodeapi/base/overview ; https://static.rust-lang.org/dist/channel-rust-stable.toml ; https://index.crates.io (near-api, borsh, clap, axum, tokio, ed25519-dalek, crypto_box, sha2, reqwest, dstack-sdk, alloy-sol-types) ; https://docs.rs/near-sdk/5.29.1 .
 
-Unverified prerequisites: OPEN-DECISIONS BLOCKERS B1 to B8; P1 spikes.
+Open prerequisites and operational decisions are tracked in OPEN-DECISIONS BLOCKERS.
