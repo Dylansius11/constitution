@@ -74,7 +74,7 @@ forge build --root contracts
 If `CARGO_TARGET_DIR` is set, use its `debug/constitution` binary instead. The manifest hash is:
 
 ```text
-0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93
+0x1efe635ac3eb0eb59b0df0d56c7243b2728922898b55487bc5cf8063db94a410
 ```
 
 The executor helper prints a **masked local runtime hash**, not an instance address or a transaction hash. It excludes only the compiler-declared immutable regions; see [deployment records](deployments/README.md). Neither helper proves a live deployment is safe.
