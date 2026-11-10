@@ -1,0 +1,59 @@
+# Deploy together with phala-pre-launch.sh as the measured pre_launch_script.
+# Image references are immutable GHCR digests, preloaded by the pre-launch script.
+services:
+  verifier:
+    image: ghcr.io/dylansius11/constitution-verifier-service@sha256:0e528a8567df25613e219d57f941e74559cb42ad672d987442271225f8d2c171
+    platform: linux/amd64
+    pull_policy: never
+    user: "10001:10001"
+    group_add:
+      - ${DOCKER_GID:?Set by pre-launch}
+      - ${DSTACK_GID:?Set by pre-launch}
+    init: true
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1
+    stop_grace_period: 15s
+    environment:
+      HOME: /tmp
+      TMPDIR: /var/lib/constitution/work
+      VERIFIER_TOOL_IMAGE: ghcr.io/dylansius11/constitution-verifier-tool@sha256:4e733a569d80f739bc7939be24817265e1caed4ab1558f449c3ec5f618a7e2f3
+      VERIFIER_LISTEN_ADDR: 0.0.0.0:8787
+      VERIFIER_PEER_SOURCE: socket
+      VERIFIER_RELAY_KEY_FILE: /run/constitution/relay.json
+      PAGE_ORIGIN: ${PAGE_ORIGIN:?Set the page origin}
+      GATE_ACCOUNT_ID: ${GATE_ACCOUNT_ID:?Set the gate account}
+      NEAR_RPC_URL: ${NEAR_RPC_URL:?Set the NEAR RPC URL}
+      BASE_SEPOLIA_ARCHIVE_RPC_URL: ${BASE_SEPOLIA_ARCHIVE_RPC_URL:?Set the archive RPC URL}
+      BASE_SEPOLIA_PROOF_RPC_URL: ${BASE_SEPOLIA_PROOF_RPC_URL:?Set the proof RPC URL}
+      VERIFIER_RELAY_ACCOUNT_ID: ${VERIFIER_RELAY_ACCOUNT_ID:?Set the relay account}
+      NEARAI_API_KEY: ${NEARAI_API_KEY:?Set the NEAR AI key}
+      NEARAI_MODEL: z-ai/glm-5.3-flash
+      NEARAI_BASE_URL: https://cloud-api.near.ai/v1
+    ports:
+      - "8787:8787"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        bind: {create_host_path: false}
+      - type: bind
+        source: /var/run/dstack.sock
+        target: /var/run/dstack.sock
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: /var/lib/constitution/work
+        target: /var/lib/constitution/work
+        bind: {create_host_path: false}
+      - type: bind
+        source: /run/constitution/relay.json
+        target: /run/constitution/relay.json
+        read_only: true
+        bind: {create_host_path: false}
