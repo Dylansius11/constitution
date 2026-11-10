@@ -14,6 +14,7 @@ fn failing_keyed_rpc_is_absent_from_audit_relay_status_and_receipt_output() {
         &deployment,
         serde_json::json!({
             "chain_id":84532,"gate":"gate.testnet","gate_code_hash":"committed",
+            "governance_delay_days":3,
             "mpc_account":"mpc.testnet","executor":"0x1111111111111111111111111111111111111111",
             "proxy":"0x2222222222222222222222222222222222222222","verifiers":[]
         })

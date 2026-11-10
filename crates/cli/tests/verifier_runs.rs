@@ -183,7 +183,7 @@ async fn chain(Json(request): Json<Value>) -> Json<Value> {
                 "get_config" => {
                     json!({"chain_id":84532,"executor":"0x1111111111111111111111111111111111111111",
                     "proxy":"0x1111111111111111111111111111111111111111","proxy_admin":"0x2222222222222222222222222222222222222222",
-                    "derived_eoa":"0x2222222222222222222222222222222222222222","mpc_account":"mpc.testnet","mpc_path":"fake","mpc_domain_id":0})
+                    "derived_eoa":"0x2222222222222222222222222222222222222222","mpc_account":"mpc.testnet","mpc_path":"fake","mpc_domain_id":0,"governance_delay_days":3})
                 }
                 other => panic!("unexpected fake view {other}"),
             };

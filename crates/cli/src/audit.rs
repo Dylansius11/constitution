@@ -23,6 +23,8 @@ pub const MIN_OPERATING_SURPLUS: u128 = 1_000_000_000_000_000_000_000_000;
 #[serde(deny_unknown_fields)]
 pub struct Deployment {
     pub chain_id: u64,
+    /// Initialization-selected immutable delay committed by the deployment ceremony.
+    pub governance_delay_days: u32,
     pub gate: AccountId,
     /// NEAR `view_account` code hash (base58) of the reproducible gate build.
     pub gate_code_hash: String,
@@ -154,14 +156,20 @@ pub fn evaluate(d: &Deployment, manifest_hash: [u8; 32], o: &Observed) -> Vec<Ch
                 && o.evm_chain_id == d.chain_id
                 && c.executor == d.executor.0
                 && c.proxy == d.proxy.0
-                && c.mpc_account == d.mpc_account,
+                && c.mpc_account == d.mpc_account
+                && c.governance_delay_days == d.governance_delay_days
+                && (constitution_types::MIN_GOVERNANCE_DELAY_DAYS
+                    ..=constitution_types::MAX_GOVERNANCE_DELAY_DAYS)
+                    .contains(&d.governance_delay_days),
             format!(
-                "gate config chain {} executor {} proxy {} mpc {}; EVM RPC chain {}",
+                "gate config chain {} executor {} proxy {} mpc {}; EVM RPC chain {}; governance delay {} days (committed {})",
                 c.chain_id,
                 addr(&c.executor),
                 addr(&c.proxy),
                 c.mpc_account,
-                o.evm_chain_id
+                o.evm_chain_id,
+                c.governance_delay_days,
+                d.governance_delay_days
             ),
         ),
         check(
@@ -358,9 +366,18 @@ pub fn observe(
     build: &crate::executor_build::ExecutorBuild,
 ) -> Result<Observed, Failure> {
     let gate = d.gate.as_str();
-    let config: Config = near
+    // The initialization ABI permits omission, but an audit must never treat that default as
+    // an observed value from get_config.
+    let config_json: serde_json::Value = near
         .view(gate, "get_config", json!({}))
         .map_err(read_failed)?;
+    if config_json.get("governance_delay_days").is_none() {
+        return Err(read_failed(
+            "get_config is missing governance_delay_days".into(),
+        ));
+    }
+    let config: Config = serde_json::from_value(config_json)
+        .map_err(|e| read_failed(format!("get_config: unexpected JSON: {e}")))?;
     let constitution: Constitution = near
         .view(gate, "get_constitution", json!({}))
         .map_err(read_failed)?;
@@ -520,6 +537,7 @@ mod tests {
     fn deployment() -> Deployment {
         Deployment {
             chain_id: 84532,
+            governance_delay_days: constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS,
             gate: GATE.parse().unwrap(),
             gate_code_hash: "Code111".into(),
             mpc_account: "v1.signer-prod.testnet".parse().unwrap(),
@@ -606,6 +624,15 @@ mod tests {
     }
 
     #[test]
+    fn audit_refuses_uncommitted_governance_delay() {
+        let mut observed = healthy();
+        for days in [0, 1, 30, 31] {
+            observed.config.governance_delay_days = days;
+            assert_eq!(failed(&observed), vec!["gate_binds_this_deployment"]);
+        }
+    }
+
+    #[test]
     fn t_aud_1_each_violation_fails_exactly_its_named_precondition() {
         type Break = fn(&mut Observed);
         let cases: [(&str, Break); 14] = [
@@ -661,6 +688,7 @@ mod tests {
     fn missing_executor_commitment_fails_by_name() {
         let d: Deployment = serde_json::from_value(json!({
             "chain_id":84532, "gate":GATE, "gate_code_hash":"Code111",
+            "governance_delay_days":3,
             "mpc_account":"v1.signer-prod.testnet", "executor":addr(&EXECUTOR),
             "proxy":addr(&PROXY), "verifiers":[{"pubkey":Base64([7;32]),"release_hash":Hex32([6;32])}]
         })).unwrap();

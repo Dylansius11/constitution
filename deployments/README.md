@@ -2,7 +2,7 @@
 
 [I] Activation is planned, not run. There is deliberately **no `testnet.json`**: no production gate/executor deployment has been activated. Never copy spike addresses or the CLI's local sample into an activation record.
 
-`testnet.schema.json` describes the JSON consumed by `Deployment`, `DeployedVerifier` and `PlannedChange` in `crates/cli/src/audit.rs`. The CLI does not fetch or execute the schema; it deserializes with the canonical Rust types. Unknown fields are rejected at these three record envelopes. The schema uses JSON Schema draft 2020-12; integer bounds are unsigned 64-bit. Preserve integer precision (not JavaScript floating-point numbers) when editing nanosecond timestamps.
+`testnet.schema.json` describes the JSON consumed by `Deployment`, `DeployedVerifier` and `PlannedChange` in `crates/cli/src/audit.rs`. The CLI does not fetch or execute the schema; it deserializes with the canonical Rust types. Unknown fields are rejected at these three record envelopes. The schema uses JSON Schema draft 2020-12; preserve integer precision (not JavaScript floating-point numbers) when editing nanosecond timestamps.
 
 ## Fields
 
@@ -12,6 +12,7 @@
 | `gate` | required NEAR account id | Fresh real gate account, not the spike gate. Lowercase NEAR account syntax, 2–64 characters. |
 | `gate_code_hash` | required string | NEAR base58 `view_account.code_hash`, committing to the reproducible gate wasm (SHA-256 bytes encoded as base58). Do not use a hex SHA-256 or an unverified RPC value as the build commitment; compare independently with the reproducible build. |
 | `mpc_account` | required NEAR account id | MPC account bound by the gate config; planned activation uses `v1.signer-prod.testnet`. |
+| `governance_delay_days` | required u32 JSON integer, 1–30 | Explicit expected immutable initialization duration; audit compares it to the observed `get_config` value. Omission from gate initialization defaults to 3, but omission from the deployment record or observed `get_config` is an audit failure. |
 | `executor` | required lowercase `0x` + 40 hex digits | Actual `ConstitutionExecutor` address observed from deployment. |
 | `executor_runtime_hash` | lowercase `0x` + 64 hex digits | Keccak256 of the local Foundry deployed runtime after zeroing only compiler-declared immutable regions. Required for a passing audit. Missing/null is accepted at decode solely to produce named `FAIL executor_code_is_committed_build`, never to skip this check. See the exact command below. |
 | `proxy` | required lowercase `0x` + 40 hex digits | Actual protected proxy address from the executor deployment. ProxyAdmin is not a record field: audit reads and cross-checks it through the gate, executor and ERC-1967 slot. |
@@ -23,6 +24,15 @@
 | `planned_changes[].id` | required u64 JSON integer | Observed gate change id. |
 | `planned_changes[].kind` | required canonical `ChangeKind` JSON | Exact enum and payload scheduled on the gate (see below), not a free-form label. |
 | `planned_changes[].eta_ns` | required u64 JSON integer | Exact observed gate ETA in **nanoseconds**, not seconds or a quoted decimal. Only matching all three of id/kind/ETA marks a change planned. |
+
+Illustrative record fragment only, **not an observed deployment**:
+
+```json
+{"governance_delay_days": 3}
+```
+
+Replace 3 with the actual selected and independently observed value in a real record. `SetParams` cannot change this field; changing duration requires a new gate and the existing timelocked authority migration. Ordinary certified vault upgrades do not wait for this delay.
+
 
 ### Produce `executor_runtime_hash`
 
@@ -52,7 +62,7 @@ Copy the helper's final lowercase `0x` hash into the observed deployment record 
 
 ## Audit ceremony and local coverage
 
-[I] See [`scripts/activate.md`](../scripts/activate.md) for the exact planned audit command and key-deletion gates. Before deletion, only `gate_has_no_access_keys` may FAIL (exit 1). After deletion, expect 12 PASS preconditions (the new one is `gate_operating_surplus`, at least 1 NEAR) plus 3 PASS information lines and `audit passed: 15 named checks/information lines` (exit 0).
+[I] See [`scripts/activate.md`](../scripts/activate.md) for the planned audit command and D21 key-deletion gates. Complete user-facing E2E and audit rehearsal, review and fixes before fresh explicit founder permission for deletion. Before deletion, only `gate_has_no_access_keys` may FAIL (exit 1); retained-key staging is not keyless proof. After deletion, the final audit, including the committed delay comparison and operating surplus, must pass; repeat essential live checks and retain observed evidence.
 
 An unplanned `MigrateAuthority`, `AddVerifier`, `RemoveVerifier`, `SetRuleSet`, `SetGovernor` or `SetGuardian` prints `WARN pending_authority_change`, its exact `eta_ns`, and the loud warning summary. Pause prints `WARN signing_paused`; WARN alone exits 0, while any FAIL still exits 1. A pause never revokes already signed EVM transactions.
 
