@@ -65,6 +65,7 @@ pub struct Gate {
     next_change_id: u64,
     next_evm_nonce: u64,                              // derived EOA nonce the gate will assign next
     signing_paused: bool,
+    paused_at_ns: Option<u64>,                        // latest guardian pause or renewal, NEAR nanoseconds
 }
 
 pub struct Config {
@@ -232,23 +233,23 @@ Check order (first failure panics, nothing is written):
 
 | Method | Caller | Effects | Rejections |
 | --- | --- | --- | --- |
-| `#[private] on_signed(target: SignTarget, attempt: u32)` | gate only | Reads the raw MPC result with `env::promise_result` (max 4096 bytes) and parses it strictly inside the callback, so malformed or wrong-shape results become a recorded failure instead of a generated-deserializer panic. Ok: build the signed raw tx from the stored fields, state `Signed`, release the reservation only if `active_by_account[proposer]` is still this proposal, emit `signed { proposal_id, nonce, tx_hash, raw_tx }`. Err: state `SignFailed`, emit `sign_failed`. Stale `attempt` is ignored with a log | never panics after logging |
+| `#[private] on_signed(target: SignTarget, attempt: u32)` | gate only | Reads the raw MPC result (max 4096 bytes) and parses inside the callback. It validates the signature against the reconstructed transaction digest and configured derived EOA before producing raw bytes. Ok: state `Signed`, release the reservation only if `active_by_account[proposer]` still names this proposal, emit `signed`. Err: state `SignFailed`, emit `sign_failed`. Stale `attempt` is ignored with a log | never panics after logging |
 | `retry_sign(proposal_id: u64)` | anyone | SignFailed or SignRequested at least 20 minutes after its latest request becomes SignRequested; identical transaction, incremented attempt; late original callback ignored | `E31_WRONG_STATE`, `E20_SIGNING_PAUSED`, `E45_BINDING_MISMATCH rule_set_hash` unless `now_s > stored deadline_s` (equality is still executable on EVM), `E12_STORAGE_INSOLVENT` |
 | `bump_fee(target: SignTarget)` | anyone | Signed proposal or migration only, and only once `MIN_BUMP_AGE` = 600 s has passed since its latest signing request (a stuck-transaction proxy; N11); both fees increase by 25% rounded up, max fee <= cap; same nonce/deadline/calldata; at most 8 per target; old raw tx survives failure | `E30_NOT_FOUND` / `E52_NOT_FOUND`, `E31_WRONG_STATE`, `E20_SIGNING_PAUSED`, `E45` for proposals as for retry, `E62_BUMP_TOO_EARLY`, `E48_FEE_CAP`, `E49_TOO_MANY_BUMPS`, `E12_STORAGE_INSOLVENT` |
 
-`SignTarget` is `Proposal(u64)` or `Change(u64)`. `SignatureResponse` accepts exactly the shape observed in spike P1.2 [V, NEAR testnet 2026-11-02, sign tx `FNd6BUDznLA3wwmdtiCE2F8auBaJmfQMTCDS4g4ro6Rz`, captured in `vectors/mpc-response.json`]: `{"scheme":"Secp256k1","big_r":{"affine_point":"<33-byte hex>"},"s":{"scalar":"<32-byte hex>"},"recovery_id":<u8>}`, identical to near/mpc source at commit `b78f4f5b`. The installed `near-smart-contracts` skill shows a different shape and is wrong. Conversion: `r = affine_point[1..33]`, `s = scalar`, `y_parity = recovery_id`; the captured signature recovers to the derived EOA in Rust and Python.
+`SignTarget` is `Proposal(u64)` or `Change(u64)`. [I] The minimal accepted MPC response is `{"scheme":"Secp256k1","big_r":{"affine_point":"<33-byte compressed lowercase hex>"},"s":{"scalar":"<32-byte lowercase hex>"},"recovery_id":<0 or 1>}`; extra fields at the response, `big_r`, and `s` levels are ignored. Required fields, scheme, lengths, scalar ranges, low-s and parity remain strict. The gate recovers secp256k1 over the keccak256 hash of the reconstructed EIP-1559 preimage and requires the resulting address to equal `config.derived_eoa` before emitting or storing a signed transaction. [V, NEAR testnet 2026-11-02] The earlier spike captured this required shape in `vectors/mpc-response.json`; this is not a claim about any later deployed MPC schema.
 
-The gate does not re-run `ecrecover` on-chain: [V] `env::ecrecover` in near-sdk 5.29.1 is available only under the `unstable` feature. Safety does not depend on it: the EVM derives the sender from the signature, and the executor rejects any sender other than the derived EOA (`NotSigner`). The relay and `constitution audit` recover the sender off-chain and refuse to broadcast a mismatch.
+[I] The pinned MPC account, `payload_v2/Ecdsa` request, domain, path and 1-yocto deposit remain external compatibility and availability dependencies. A change to them, an incompatible response shape or insufficient callback gas can halt both upgrades and authority migration after key deletion. Recovery cost and callback gas for this implementation require measurement before freeze; the historical spike callback cost below does not measure this implementation.
 
 ### Governance
 
 | Method | Caller | Effects | Rejections |
 | --- | --- | --- | --- |
 | `schedule_change(kind: ChangeKind) -> u64` | governor | Pending queue capped at 8 total; per kind at most 1 Pending MigrateAuthority/SetGuardian/SetGovernor and at most 2 Pending of every other kind; `eta_ns` is checked `now_ns + governance_delay_days * 86_400 * 1_000_000_000` | `E50_NOT_GOVERNOR`, `E51_INVALID_CHANGE`, `E59_PENDING_CHANGE_LIMIT`, `E60_DUPLICATE_AUTHORITY_CHANGE` (per-kind cap), `E12_STORAGE_INSOLVENT` |
-| `apply_change(change_id: u64)` | anyone | Applies after eta and deletes the change body (a migration body stays for re-request/bump). Migration assigns one nonce and signs rotateSigner; applied Failed or 20-minute timed-out InFlight migration can re-request identical bytes with a new attempt (including failed fee bumps) | `E52_NOT_FOUND` (also for an already applied or cancelled change), `E53_TIMELOCK_NOT_ELAPSED`, `E54_NOT_PENDING`, `E55_SIGNATURES_OUTSTANDING`: rule change waits for every stored deadline, and for SignRequested also the 20-minute timeout; `E12_STORAGE_INSOLVENT` |
+| `apply_change(change_id: u64)` | anyone | Applies after eta and deletes the change body (a migration body stays for re-request/bump). An Unpause must have been scheduled strictly after the latest guardian pause or renewal; equal timestamps favor the pause. Migration assigns one nonce and signs rotateSigner; applied Failed or timed-out InFlight migration can re-request identical bytes | `E52_NOT_FOUND`, `E53_TIMELOCK_NOT_ELAPSED`, `E54_NOT_PENDING`, `E51_INVALID_CHANGE` (stale Unpause), `E55_SIGNATURES_OUTSTANDING`, `E12_STORAGE_INSOLVENT` |
 | `cancel_change(change_id: u64)` | guardian | Deletes a Pending change body; frees queue slot | `E56_NOT_GUARDIAN`, `E52_NOT_FOUND` (also for an already terminal change), `E54_NOT_PENDING` |
 | `cancel_changes(ids: Vec<u64>)` | guardian | At most 8 unique IDs; validates entire batch before cancelling; only reduces authority | `E56_NOT_GUARDIAN`, `E59_PENDING_CHANGE_LIMIT`, `E51_INVALID_CHANGE` (duplicate IDs), `E52_NOT_FOUND`, `E54_NOT_PENDING` |
-| `pause_signing()` | guardian | `signing_paused = true` immediately; only reduces authority | `E56_NOT_GUARDIAN` |
+| `pause_signing()` | guardian | `signing_paused = true` immediately and records `paused_at_ns`, including on renewal | `E56_NOT_GUARDIAN` |
 | `remove_verifier_now(pubkey: Base64 [u8;32])` | guardian | Removes immediately; only reduces authority | `E56_NOT_GUARDIAN`, `E57_LAST_VERIFIER` |
 
 Unpausing, adding verifiers, rule changes, parameter changes, role changes and authority migration are timelocked. The duration is immutable after initialization, including through `SetParams`; changing it requires a new gate and the existing timelocked authority migration. Ordinary certified vault upgrades do not wait for this delay. The governor cannot cancel (D17), so a leaked governor key can only create publicly visible pending changes.
@@ -285,7 +286,7 @@ Codes are stable receipt prefixes; the four new codes are gate-private (the shar
 | `E48_FEE_CAP` | Fee increase overflows or exceeds the timelocked cap |
 | `E49_TOO_MANY_BUMPS` | Eight fee bumps exhausted or attempt counter overflowed |
 | `E50_NOT_GOVERNOR` | Scheduler is not governor |
-| `E51_INVALID_CHANGE` | Invalid initialization/change/parameter/URI/address, zero release hash, duplicate batch ID, or bounded arithmetic overflow |
+| `E51_INVALID_CHANGE` | Invalid initialization/change/parameter/URI/address, zero release hash, duplicate batch ID, bounded arithmetic overflow, or Unpause scheduled no later than the latest pause |
 | `E52_NOT_FOUND` | Governance change does not exist |
 | `E53_TIMELOCK_NOT_ELAPSED` | Applying before the selected immutable eta |
 | `E54_NOT_PENDING` | Change is not Pending and is not a retryable applied migration |
@@ -467,6 +468,10 @@ Limits [I]: `currentImplementation` is the executor's record, not a read of the 
 | Derived EOA | MPC network for gate account + path | only via MPC network compromise | n/a |
 | Proposer accounts | anyone | spend own credit, occupy one active slot | anything else |
 
+[I] The guardian key is liveness-critical: a hostile or compromised guardian can repeatedly pause and cancel Unpause and SetGuardian changes, permanently halting signing and preventing its own replacement after key deletion. This restricts authority rather than bypassing certification.
+
+**Founder decision pending [I] (before final key deletion; owner: founder; affects P2.8):** choose whether to accept this trust assumption, bound each pause by a maximum duration, or require governor-delay unpause only. No option is selected here; the latter two alter the veto/liveness trade-off and require a separately approved behavior change.
+
 Bypass analysis (each item has a test or audit check in "Test matrix"):
 
 1. Replace gate code at the same account: impossible without access keys and without a deploy method (D6). Audit: `gate_has_no_access_keys`, `gate_code_is_committed_build`. Substitute executor code: `executor_code_is_committed_build` compares `eth_getCode` against the committed `executor_runtime_hash` and local Foundry artifact, masking only compiler-declared immutable references; ownership/slot checks still apply. `gate_operating_surplus` fails when `get_operating_surplus` is below 1 NEAR (12 preconditions total; schema and exact offline hash command in ARCHITECTURE “CLI”).
@@ -571,7 +576,7 @@ NOT DEPLOYED. Fill only with observed values:
 
 - [I] `crates/gate/tests/props_state_machine.rs` drives the public Rust API with a small reference model, Borsh reloads after every operation, three funded actors, generated operation vectors (up to 32 operations), and focused generated lifecycle traces. Shrinking prints the operation vector and failing step. Proptest uses 64 cases per property and fixed seed `0x434f4e5354495455`; no network or near-workspaces is involved.
 - [I] Conservation means deposited credit = free credit + proposal reservations + successful or in-flight withdrawal transfers (failed transfers restore credit). Model liabilities equal free credit + reservations and never exceed measured liquid balance after each committed call. No slash operation exists. MPC's 1-yocto deposit comes from the gate operating balance. Active keys include proposer identity: another account's identical payload cannot block a proposal.
-- [I] Nonce uniqueness binds a nonce to one proposal and immutable executor calldata/deadline. Documented retries may request the identical payload again; fee bumps may change only fees at the same nonce. Duplicate/stale callbacks must not accept another signature or refund twice. The success callback uses the captured MPC response shape as a local fixture, not a real signature for the generated transaction. Registered release/attestation metadata is exercised, not Intel attestation appraisal.
+- [I] Nonce uniqueness binds a nonce to one proposal and immutable executor calldata/deadline. Documented retries may request the identical payload again; fee bumps may change only fees at the same nonce. Duplicate/stale callbacks must not accept another signature or refund twice. Successful local mock callbacks sign each actual digest with a disposable test key; they are not MPC or testnet evidence. Registered release/attestation metadata is exercised, not Intel attestation appraisal.
 
 | Invariant | Enforcing test(s) |
 | --- | --- |
@@ -580,6 +585,8 @@ NOT DEPLOYED. Fill only with observed values:
 | Only a valid, bound Pass from a registered verifier within TTL requests an upgrade signature; every expected failure asserts the exact documented error code | `certificate_mutations_never_authorize_signing`, `every_certificate_rejection_class_has_exact_error_and_no_effect`, `certificate_time_boundaries_and_terminal_rejections`, `generated_operations_match_reference_model` |
 | Rejected, AI-vetoed and Expired proposals never request signatures; stale/duplicate callbacks never accept a second result per attempt; expiry is exclusive and 1,024-byte calldata is accepted | `certificate_time_boundaries_and_terminal_rejections`, `proposal_expiry_and_calldata_boundaries_release_exactly_once`, `timelocked_verifiers_and_guardian_actions_never_expand_authority`, `signing_retries_bumps_and_stale_callbacks_preserve_nonce_and_credit` |
 | Guardian actions only pause, cancel or remove verifier authority; adding/removing verifiers and unpause are timelocked; early apply is exactly E53; `SetParams` cannot change the selected delay | `timelocked_verifiers_and_guardian_actions_never_expand_authority`, `generated_operations_match_reference_model` |
+| Earlier or simultaneous Unpause cannot override a later pause or renewal; a newly scheduled Unpause waits its full delay | `unpause_requires_a_new_queue_after_latest_pause_including_equal_timestamp`, `guardian_pause_renewal_invalidates_queued_unpause` |
+| MPC extra fields are ignored without accepting forged, malformed or wrong-digest signatures | `mpc_extra_fields_are_accepted_for_a_valid_signature`, `mpc_forged_malformed_and_wrong_digest_are_rejected`, `callback_accepts_extra_fields_and_rejects_forged_or_wrong_digest` |
 | Rule changes wait for in-flight signatures; retries under superseded rules preserve expired bytes and cannot extend the deadline | `rule_changes_wait_for_inflight_signatures_and_expired_retries_only_fill_nonce` |
 | A lost callback is recoverable at the exact 20-minute timeout; a late original callback cannot double-apply | `requested_signature_retries_only_after_timeout_and_ignores_old_attempt` |
 | Clean review kind other than provider_tee never authorizes Pass, even when AI is optional | `non_provider_clean_never_authorizes_pass_even_when_ai_optional`, `certificate_mutations_never_authorize_signing` |
@@ -590,5 +597,5 @@ NOT DEPLOYED. Fill only with observed values:
 | Late failed callbacks after deadline/timeout pruning do not reallocate outstanding-signature storage | unit `late_failed_callback_after_rule_cleanup_does_not_allocate_outstanding_entry` |
 | Gate state, every stored proposal and every queued change Borsh round-trip after every model step | All model-driven tests above |
 
-- [V] Pre-hardening local WSL evidence (2026-11-03): original 9/9 tests passed with 64 cases and a 22-mutation matrix. This is historical evidence, not verification of the revised rules above. The existing ABI surface test remains authoritative; the revised surface has 30 methods.
+- [V] Pre-hardening local WSL evidence (2026-11-03): original 9/9 tests passed with 64 cases and a 22-mutation matrix. This is historical evidence, not verification of the revised rules above. [I] The current ABI surface test enumerates 34 methods.
 - [V local, 2026-11-03] Revised suite passed **15/15**, 64 cases per property, fixed seed `0x434f4e5354495455`, and one fixed 23-mutation rejection matrix; property execution 25.96 s in the gate-wide run. The refund-before-callback unit regression was observed failing before the contingent reserve fix and passing in the final 52-unit run. Two test-harness issues found during verification were corrected: the mocked balance includes attached deposits, and sandbox account patching must preserve the existing code/storage account fields.

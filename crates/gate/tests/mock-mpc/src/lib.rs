@@ -1,4 +1,4 @@
-//! TEST DOUBLE ONLY. Replays a captured signature, not a live MPC signer.
+//! TEST DOUBLE ONLY. Signs requested digests with a public, disposable test key.
 use near_sdk::{env, near};
 
 #[near(contract_state)]
@@ -20,7 +20,19 @@ impl MockMpc {
             1 => env::panic_str("MOCK_MPC_FAILURE"),
             2 => env::value_return(b"not json"),
             3 => env::value_return(br#"{"scheme":"Ed25519"}"#),
-            _ => env::value_return(include_bytes!("../../../../../vectors/mpc-response.json")),
+            _ => {
+                let digest = hex::decode(request["payload_v2"]["Ecdsa"].as_str().unwrap()).unwrap();
+                let key = k256::ecdsa::SigningKey::from_bytes((&[1u8; 32]).into()).unwrap();
+                let (signature, id) = key.sign_prehash_recoverable(&digest).unwrap();
+                let bytes = signature.to_bytes();
+                let result = serde_json::json!({
+                    "scheme": "Secp256k1",
+                    "big_r": {"affine_point": format!("0{}{}", 2 + id.to_byte(), hex::encode(&bytes[..32]))},
+                    "s": {"scalar": hex::encode(&bytes[32..])},
+                    "recovery_id": id.to_byte()
+                });
+                env::value_return(&serde_json::to_vec(&result).unwrap());
+            }
         }
     }
 }

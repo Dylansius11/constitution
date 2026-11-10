@@ -82,6 +82,7 @@ pub struct Gate {
     next_change_id: u64,
     next_evm_nonce: u64,
     signing_paused: bool,
+    paused_at_ns: Option<u64>,
     // Indexes avoid scans over historical proposals. P2.3 maintains signing membership.
     active_by_key: LookupMap<[u8; 32], u64>,
     outstanding_signatures: IterableSet<u64>,
@@ -174,6 +175,7 @@ impl Gate {
             next_change_id: 0,
             next_evm_nonce: initial_evm_nonce,
             signing_paused: false,
+            paused_at_ns: None,
             active_by_key: LookupMap::new(StorageKey::ActiveByKey),
             outstanding_signatures: IterableSet::new(StorageKey::OutstandingSignatures),
             fee_bumps: LookupMap::new(StorageKey::FeeBumps),

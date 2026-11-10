@@ -77,6 +77,7 @@ struct Machine {
     changes: Vec<Option<PendingChange>>,
     verifiers: [bool; 2],
     paused: bool,
+    paused_at: Option<u64>,
     rules: [u8; 32],
     parameters: Params,
     next_nonce: u64,
@@ -96,6 +97,7 @@ impl Machine {
             changes: vec![],
             verifiers: [true, false],
             paused: false,
+            paused_at: None,
             rules: [5; 32],
             parameters: params(),
             next_nonce: nonce,
@@ -472,6 +474,7 @@ impl Machine {
                 if authorized {
                     g.pause_signing();
                     self.paused = true;
+                    self.paused_at = Some(self.now);
                 } else {
                     expect_code("E56_NOT_GUARDIAN", || g.pause_signing());
                 }
@@ -556,7 +559,10 @@ impl Machine {
                 let error = if let Some(c) = change {
                     if self.now < c.eta_ns {
                         Some("E53_TIMELOCK_NOT_ELAPSED")
-                    } else if self.invalid_change(&c.kind) {
+                    } else if self.invalid_change(&c.kind)
+                        || (matches!(c.kind, ChangeKind::Unpause)
+                            && self.paused_at.is_some_and(|at| c.scheduled_at_ns <= at))
+                    {
                         Some("E51_INVALID_CHANGE")
                     } else if matches!(c.kind, ChangeKind::RemoveVerifier { .. })
                         && !self.verifiers[0]
@@ -914,6 +920,7 @@ proptest! {
         m.step(&Op::Deposit(2, 300));
         m.step(&Op::Propose(0, 0, 0));
         m.step(&Op::Pause(true));
+        m.now += 1;
         m.step(&Op::Schedule(1, true));
         m.step(&Op::Schedule(0, true));
         m.step(&Op::Apply(0)); // E53, no allowlist expansion.
@@ -1195,9 +1202,7 @@ proptest! {
             prop_assert_eq!(e.attempts, attempt + 1);
             g = roundtrip(g);
         }
-        context("gate.testnet".parse().unwrap(), now, 0, Some(near_sdk::PromiseResult::Successful(
-            include_bytes!("../../../vectors/mpc-response.json").to_vec(),
-        )));
+        context("gate.testnet".parse().unwrap(), now, 0, Some(mpc_response(original.signing_hash)));
         g.on_signed(SignTarget::Change(change), failures + 1);
         g = roundtrip(g);
         let signed = g.get_change(change).unwrap().evm.as_ref().unwrap().signed_tx.clone();
@@ -1241,6 +1246,7 @@ proptest! {
         if pause {
             m.step(&Op::Pause(true));
             m.step(&Op::Retry(0)); // Timeout cannot bypass the guardian's pause.
+            m.now += 1;
             m.step(&Op::Schedule(0, true));
             m.step(&Op::Advance(7));
             m.step(&Op::Apply(0));

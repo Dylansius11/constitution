@@ -26,12 +26,13 @@ serde_json.workspace = true
 omni-transaction.workspace = true
 alloy-sol-types.workspace = true
 hex.workspace = true
+k256 = { version = "=0.13.4", default-features = false, features = ["arithmetic", "ecdsa"] }
 
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }
 near-workspaces.workspace = true
 tokio.workspace = true
 ed25519-dalek.workspace = true
-k256.workspace = true
 rlp.workspace = true
 proptest.workspace = true
+k256.workspace = true

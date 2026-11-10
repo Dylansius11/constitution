@@ -1,5 +1,4 @@
-//! Local sandbox with an explicitly labeled mock MPC. Captured signatures are replayed,
-//! not signatures for these generated certificates, and are never broadcast to EVM.
+//! Local sandbox with an explicitly labeled mock MPC and a disposable signing key.
 use constitution_types::*;
 use ed25519_dalek::{Signer, SigningKey};
 use near_workspaces::{
@@ -17,6 +16,13 @@ fn artifact(path: &str) -> PathBuf {
 }
 fn key() -> SigningKey {
     SigningKey::from_bytes(&[42; 32])
+}
+fn mock_evm_address() -> [u8; 20] {
+    let key = k256::ecdsa::SigningKey::from_bytes((&[1u8; 32]).into()).unwrap();
+    let point = key.verifying_key().to_encoded_point(false);
+    alloy_sol_types::private::keccak256(&point.as_bytes()[1..]).0[12..]
+        .try_into()
+        .unwrap()
 }
 struct Harness {
     worker: Worker<Sandbox>,
@@ -50,9 +56,9 @@ impl Harness {
             .await?
             .into_result()?;
         gate.call("new").args_json(json!({
-            "config":Config{chain_id:84532,executor:[1;20],proxy:[2;20],proxy_admin:[3;20],derived_eoa:[4;20],mpc_account:mpc,mpc_path:"constitution/base-sepolia/v1".into(),mpc_domain_id:0,governance_delay_days:constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS},
+            "config":Config{chain_id:84532,executor:[1;20],proxy:[2;20],proxy_admin:[3;20],derived_eoa:mock_evm_address(),mpc_account:mpc,mpc_path:"constitution/base-sepolia/v1".into(),mpc_domain_id:0,governance_delay_days:constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS},
             "constitution":Constitution{rule_set_hash:[5;32],manifest_uri:"ipfs://rules".into(),ai_required:true,
-                params:Params{proposal_deposit:100,proposal_ttl_s:7200,max_cert_ttl_s:1800,sign_validity_s:3600,gas_limit:500000,max_fee_per_gas:10,max_priority_fee_per_gas:1,fee_cap,sign_gas_tgas:15,callback_gas_tgas:30}},
+                params:Params{proposal_deposit:100,proposal_ttl_s:7200,max_cert_ttl_s:1800,sign_validity_s:3600,gas_limit:500000,max_fee_per_gas:10,max_priority_fee_per_gas:1,fee_cap,sign_gas_tgas:150,callback_gas_tgas:100}},
             "roles":Roles{governor:actor.id().clone(),guardian:actor.id().clone()},
             "verifiers":[(Base64(key().verifying_key().to_bytes()),VerifierRecord{release_hash:[6;32],attestation_uri:"ipfs://quote".into(),added_at_ns:0})],"initial_evm_nonce":42
         })).transact().await?.into_result()?;

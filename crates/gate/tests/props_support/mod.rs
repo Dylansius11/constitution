@@ -91,6 +91,25 @@ pub fn proposal_context(gate: &mut Gate, who: AccountId, now: u64) {
 pub fn key(index: u8) -> SigningKey {
     SigningKey::from_bytes(&[42 + index; 32])
 }
+pub fn evm_address() -> [u8; 20] {
+    let key = k256::ecdsa::SigningKey::from_bytes((&[1u8; 32]).into()).unwrap();
+    let point = key.verifying_key().to_encoded_point(false);
+    env::keccak256_array(&point.as_bytes()[1..])[12..]
+        .try_into()
+        .unwrap()
+}
+
+pub fn mpc_response(digest: [u8; 32]) -> PromiseResult {
+    let key = k256::ecdsa::SigningKey::from_bytes((&[1u8; 32]).into()).unwrap();
+    let (signature, id) = key.sign_prehash_recoverable(&digest).unwrap();
+    let bytes = signature.to_bytes();
+    PromiseResult::Successful(serde_json::to_vec(&serde_json::json!({
+        "scheme": "Secp256k1",
+        "big_r": {"affine_point": format!("0{}{}", 2 + id.to_byte(), hex::encode(&bytes[..32]))},
+        "s": {"scalar": hex::encode(&bytes[32..])},
+        "recovery_id": id.to_byte()
+    })).unwrap())
+}
 
 pub fn params() -> Params {
     Params {
@@ -119,7 +138,7 @@ pub fn fresh_gate(initial_nonce: u64) -> Gate {
             executor: [1; 20],
             proxy: [2; 20],
             proxy_admin: [3; 20],
-            derived_eoa: [4; 20],
+            derived_eoa: evm_address(),
             mpc_account: "v1.signer-prod.testnet".parse().unwrap(),
             mpc_path: "constitution/base-sepolia/v1".into(),
             mpc_domain_id: 0,
@@ -231,9 +250,17 @@ pub fn callback(gate: &mut Gate, id: u64, attempt: u32, now: u64, outcome: u8) {
 pub fn target_callback(gate: &mut Gate, target: SignTarget, attempt: u32, now: u64, outcome: u8) {
     let result = match outcome {
         0 => PromiseResult::Failed,
-        1 => PromiseResult::Successful(
-            include_bytes!("../../../../vectors/mpc-response.json").to_vec(),
-        ),
+        1 => {
+            let digest = match &target {
+                SignTarget::Proposal(id) => gate
+                    .get_proposal(*id)
+                    .and_then(|p| p.evm.as_ref().map(|e| e.signing_hash)),
+                SignTarget::Change(id) => gate
+                    .get_change(*id)
+                    .and_then(|c| c.evm.as_ref().map(|e| e.signing_hash)),
+            };
+            mpc_response(digest.unwrap_or([0; 32]))
+        }
         _ => PromiseResult::Successful(b"{\"wrong\":true}".to_vec()),
     };
     context("gate.testnet".parse().unwrap(), now, 0, Some(result));

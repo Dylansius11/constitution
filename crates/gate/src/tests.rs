@@ -38,12 +38,31 @@ fn config() -> Config {
         executor: [1; 20],
         proxy: [2; 20],
         proxy_admin: [3; 20],
-        derived_eoa: [4; 20],
+        derived_eoa: test_evm_address(),
         mpc_account: "v1.signer-prod.testnet".parse().unwrap(),
         mpc_path: "constitution/base-sepolia/v1".into(),
         mpc_domain_id: 0,
         governance_delay_days: constitution_types::DEFAULT_GOVERNANCE_DELAY_DAYS,
     }
+}
+fn test_evm_address() -> [u8; 20] {
+    let key = k256::ecdsa::SigningKey::from_bytes((&[1u8; 32]).into()).unwrap();
+    let public = key.verifying_key().to_encoded_point(false);
+    env::keccak256_array(&public.as_bytes()[1..])[12..]
+        .try_into()
+        .unwrap()
+}
+
+fn test_mpc_response(digest: [u8; 32]) -> near_sdk::PromiseResult {
+    let key = k256::ecdsa::SigningKey::from_bytes((&[1u8; 32]).into()).unwrap();
+    let (sig, id) = key.sign_prehash_recoverable(&digest).unwrap();
+    let bytes = sig.to_bytes();
+    near_sdk::PromiseResult::Successful(serde_json::to_vec(&json!({
+        "scheme": "Secp256k1",
+        "big_r": {"affine_point": format!("0{}{}", 2 + id.to_byte(), hex::encode(&bytes[..32]))},
+        "s": {"scalar": hex::encode(&bytes[32..])},
+        "recovery_id": id.to_byte()
+    })).unwrap())
 }
 fn constitution() -> Constitution {
     Constitution {
@@ -452,6 +471,47 @@ fn t_gate_8_rules_block_through_inclusive_executor_deadline() {
     assert!(g.outstanding_signatures.is_empty());
 }
 #[test]
+fn unpause_requires_a_new_queue_after_latest_pause_including_equal_timestamp() {
+    let mut g = gate();
+    let before = schedule(&mut g, ChangeKind::Unpause);
+    context("guardian.testnet", 1_000_000_001, 0);
+    g.pause_signing();
+    context("anyone.testnet", 1_000_000_000 + 259_200_000_000_000, 0);
+    fails("E51_INVALID_CHANGE", || g.apply_change(before));
+    assert!(g.is_signing_paused());
+    context("guardian.testnet", 1_000_000_001, 0);
+    g.cancel_change(before);
+    context("governor.testnet", 1_000_000_001, 0);
+    let equal = g.schedule_change(ChangeKind::Unpause);
+    context("anyone.testnet", 1_000_000_001 + 259_200_000_000_000, 0);
+    fails("E51_INVALID_CHANGE", || g.apply_change(equal));
+    assert!(g.is_signing_paused());
+    context("guardian.testnet", 1_000_000_002, 0);
+    g.cancel_change(equal);
+    context("governor.testnet", 1_000_000_002, 0);
+    let after = g.schedule_change(ChangeKind::Unpause);
+    context("anyone.testnet", 1_000_000_002 + 259_200_000_000_000 - 1, 0);
+    fails("E53_TIMELOCK_NOT_ELAPSED", || g.apply_change(after));
+    context("anyone.testnet", 1_000_000_002 + 259_200_000_000_000, 0);
+    drop(g.apply_change(after));
+    assert!(!g.is_signing_paused());
+}
+
+#[test]
+fn guardian_pause_renewal_invalidates_queued_unpause() {
+    let mut g = gate();
+    context("guardian.testnet", 10, 0);
+    g.pause_signing();
+    context("governor.testnet", 11, 0);
+    let id = g.schedule_change(ChangeKind::Unpause);
+    context("guardian.testnet", 12, 0);
+    g.pause_signing();
+    context("anyone.testnet", 11 + 259_200_000_000_000, 0);
+    fails("E51_INVALID_CHANGE", || g.apply_change(id));
+    assert!(g.is_signing_paused());
+}
+
+#[test]
 fn governance_applies_all_unsigned_changes_and_guards_last_verifier() {
     let mut g = gate();
     context("guardian.testnet", 1_000_000_000, 0);
@@ -492,7 +552,10 @@ fn governance_applies_all_unsigned_changes_and_guards_last_verifier() {
     p.proposal_deposit = 200;
     matured(&mut g, ChangeKind::SetParams { params: p.clone() });
     assert_eq!(g.get_constitution().params, p);
-    matured(&mut g, ChangeKind::Unpause);
+    context("governor.testnet", 1_000_000_001, 0);
+    let unpause = g.schedule_change(ChangeKind::Unpause);
+    context("anyone.testnet", 1_000_000_001 + 259_200_000_000_000, 0);
+    drop(g.apply_change(unpause));
     assert!(!g.signing_paused);
     matured(
         &mut g,

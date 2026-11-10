@@ -89,6 +89,14 @@ impl Gate {
             ));
         }
         self.validate_change(&change.kind);
+        if matches!(change.kind, ChangeKind::Unpause) {
+            check(
+                self.paused_at_ns
+                    .is_none_or(|paused_at| change.scheduled_at_ns > paused_at),
+                GateError::InvalidChange,
+                "unpause must be scheduled after latest pause",
+            );
+        }
         if matches!(change.kind, ChangeKind::MigrateAuthority { .. }) {
             return self.apply_migration(change_id);
         }
@@ -220,6 +228,7 @@ impl Gate {
     pub fn pause_signing(&mut self) {
         self.assert_guardian();
         self.signing_paused = true;
+        self.paused_at_ns = Some(env::block_timestamp());
         emit("signing_paused", json!({"change_id":null}));
     }
 
