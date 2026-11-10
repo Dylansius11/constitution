@@ -64,6 +64,26 @@
   margin-top: var(--space-4);
   max-width: var(--measure);
 }
+.live-surface .key-state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.live-surface .key-state__mark {
+  flex: none;
+  margin-top: 0.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.live-surface .key-state[data-tone="pass"] {
+  color: var(--pass);
+}
+.live-surface .key-state[data-tone="warning"] {
+  color: var(--pending);
+}
 .live-surface .live-observations {
   margin-top: var(--space-5);
 }

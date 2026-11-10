@@ -4,8 +4,9 @@ import RunConsole from "../live/RunConsole.astro";
 import CodeBlock from "../ui/CodeBlock.astro";
 
 /**
- * Try it (DESIGN 5 row 7): two ways to check the claims. In the browser, the attack and the honest
- * upgrade run against testnet once the gate is activated; from a checkout, the commands run today.
+ * Try it (DESIGN 5 row 7): two ways to check the claims. In the browser, read the recorded runs
+ * and the live gate (new runs are refused at rule 0 on the final gate); from a checkout, run the
+ * tests and the read-only audit and receipt commands.
  */
 ---
 
@@ -14,9 +15,9 @@ import CodeBlock from "../ui/CodeBlock.astro";
     <div class="try__head" data-reveal>
       <h2 id="try-title">Check it yourself.</h2>
       <p class="lede">
-        Two ways in. In the browser, submit the attack or the honest upgrade with a public demo key
-        and watch each stage arrive from the chain. From a checkout, run the same checks in a
-        terminal today.
+        The recorded runs cannot be replayed on this gate, so checking them means reading. In the
+        browser, read the receipts and the live gate. From a checkout, run the audit and receipt
+        commands and the test suites yourself.
       </p>
     </div>
 
@@ -29,8 +30,8 @@ import CodeBlock from "../ui/CodeBlock.astro";
       <div class="try__text" data-reveal>
         <h3 class="try__sub">From a checkout</h3>
         <p>
-          The gate tests, the contract tests and the page tests run today. Chain reads follow
-          activation.
+          The gate, contract and page tests run from a checkout, and so do the read-only audit and
+          receipt commands against the final gate.
         </p>
         <p class="muted try__agents">
           Agents get a plain-text guide at <a href="/llms.txt">/llms.txt</a>: what the system is, its

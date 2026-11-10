@@ -20,7 +20,7 @@ const { id = "timelock-queue" } = Astro.props;
   <p class="live-intro">The initialization-selected delay is immutable. No role can shorten it.</p>
   {
     site.gateAccount === null ? (
-      <StatusBadge tone="awaiting">Awaiting activation</StatusBadge>
+      <StatusBadge tone="awaiting">No gate configured</StatusBadge>
     ) : (
       <>
         <output aria-live="polite" data-queue-status>

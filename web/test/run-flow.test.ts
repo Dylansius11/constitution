@@ -120,7 +120,7 @@ describe("browser run flow", () => {
     h.getRun.mockResolvedValue(run({ proposal_id: 8, stages: [{ name: "compiling", status: "Pass", detail: "wrong proposal", elapsed_ms: 0 }] }));
     await createRunFlow("attack", config, (u) => h.updates.push(u), h.deps).start();
     expect(h.last()?.kind).toBe("error");
-    expect(JSON.parse([...h.stored.values()][0]).runId).toBeNull();
+    expect(JSON.parse([...h.stored.values()][0] ?? "null").runId).toBeNull();
     expect(h.updates.every((update) => update.view.stages.every((stage) => stage.detail !== "wrong proposal"))).toBe(true);
   });
 

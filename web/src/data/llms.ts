@@ -1,4 +1,5 @@
 import { humanCommands } from "./commands.ts";
+import { finalEvm, finalGate, finalRuns, finalVerifier, RECORDED_ON } from "./final-evidence.ts";
 
 /** Only public repository configuration affects this static, deterministic guide. */
 export interface LlmsSite {
@@ -20,27 +21,32 @@ export function buildLlmsText(site: LlmsSite): string {
   // Map: ARCHITECTURE:157-202; README:155-166. Commands cite their own source lines.
   return `# CONSTITUTION
 
-> CONSTITUTION is a testnet upgrade-control mechanism for one Base Sepolia vault proxy: a keyless NEAR gate requests a Chain Signature only for an exact executor transaction backed by an allowlisted verifier's certificate over owner-committed rules. An attested verifier is the intended private checking boundary; a private red-team AI can only veto through a reproduced counterexample. This guide records status as of 2026-11-07, not a claim of production activation or an independent audit.
+> CONSTITUTION is a testnet upgrade-control mechanism for one Base Sepolia vault proxy: a NEAR gate requests a Chain Signature only for an exact executor transaction backed by an allowlisted verifier's certificate over owner-committed rules. An attested verifier is the private checking boundary; a private red-team AI can only veto through a reproduced counterexample. This guide records status as of ${RECORDED_ON}: a deployed testnet gate with three recorded runs. It is not an independent audit, and the gate is not keyless while it holds an access key.
 
-## Mechanism (intended activated deployment)
+## Mechanism
 
 - Anyone can register a proposal binding the candidate implementation, runtime code hash, expected current implementation, initializer calldata and private-source commitment; prepaid credit and one-active-proposal limits apply.
 - The verifier receives sealed source, compiles with the pinned compiler, matches its runtime hash to the proposal and checks committed rules R1-R5.
 - NEAR AI Cloud searches privately for counterexamples. Only a deterministically reproduced violation can veto; an incomplete required AI review cannot certify.
 - The gate validates the allowlisted verifier's signed certificate and all bindings, constructs the exact EIP-1559 executor call itself and only then requests NEAR Chain Signatures. No caller supplies a hash to sign.
 - Anyone can relay the signed transaction. ConstitutionExecutor checks the derived caller, single-use certificate id, deadline, code hash and expected current implementation before ProxyAdmin.upgradeAndCall.
-- Activation requires deleting every gate access key; the gate has no code-upgrade method. Rules, verifier allowlist and authority migration require a public timelock selected at initialization (1 to 30 whole days, default 3) and immutable thereafter. The guardian may only reduce authority immediately. Ordinary rule-compliant upgrades do not wait for this delay.
+- Keyless means the gate account has no access keys, so nobody can redeploy or reconfigure it; the gate has no code-upgrade method. Rules, verifier allowlist and authority migration require a public timelock selected at initialization (1 to 30 whole days, default 3) and immutable thereafter. The guardian may only reduce authority immediately. Ordinary rule-compliant upgrades do not wait for this delay. On ${RECORDED_ON} the final gate still held one full-access key; the page's "Gate access keys" row and the NEAR RPC call view_access_key_list on ${finalGate.account} read the current count.
 - Sources: ${source("docs/PRD.md")}, ${source("docs/technical/SMART-CONTRACT.md")}.
 
-## Status as of 2026-11-07
+## Status as of ${RECORDED_ON}
 
-- Production gate: not deployed. The final protected deployment has not been activated; deployments/testnet.json intentionally does not exist yet.
-- CVM verifier: not running; final CVM attestation and appraisal are not proven. Local service images and offline checks are not CVM evidence.
-- Spike, 2026-11-03: a real NEAR MPC signature executed an honest upgrade on Base Sepolia, transaction 0xc232188629763bec4eb9a72be7fd08f66ab5690a2ad997ac6ed20697ff0729d8, receipt status 1. This used constitution-spike.testnet with no verifier in the loop, not the production gate.
+- Final gate, ${RECORDED_ON}, NEAR testnet: ${finalGate.account}, code hash ${finalGate.codeHash} (reproducible wasm sha256 ${finalGate.wasmSha256}), deploy and init transaction ${finalGate.deployTx}, governance delay ${finalGate.governanceDelayDays} days. Base Sepolia: executor ${finalEvm.executor}, proxy ${finalEvm.proxy}, ProxyAdmin ${finalEvm.proxyAdmin} (owned by the executor), MPC-derived signer ${finalEvm.derivedSigner}. Rule-set hash ${finalVerifier.ruleSetHash}. Implementations: VaultV1 ${finalEvm.vaultV1}, VaultV2Honest ${finalEvm.vaultV2Honest}, VaultV2Drain ${finalEvm.vaultV2Drain}. These are recorded values, not live reads.
+- Access keys: the gate still held one full-access key when recorded, so it is not keyless yet. The pre-deletion constitution audit passed ${finalRuns.audit.passed} checks; its single expected failure was ${finalRuns.audit.expectedFailure}, the retained key. Treat the gate as keyless only when the live key count is zero.
+- CVM verifier, ${RECORDED_ON}: ${finalVerifier.platform} confidential VM; appraisal passed (${finalVerifier.appraisal.join(", ")}). Verifier public key ${finalVerifier.publicKeyB64}, release hash ${finalVerifier.releaseHash}, CVM compose hash ${finalVerifier.composeHash}.
+- Recorded run, proposal ${finalRuns.drain.proposalId} (${finalRuns.drain.fixture}): R1 Pass, ${finalRuns.drain.ruleId} ${finalRuns.drain.ruleName} Fail (reason ${finalRuns.drain.reasonCode}), signed Reject, gate state Rejected, no signature requested, proxy implementation unchanged (VaultV1). Verifier run ${finalRuns.drain.verifierSeconds} s. NEAR transactions: propose ${finalRuns.drain.proposeTx}, verdict ${finalRuns.drain.verdictTx}.
+- Recorded run, governance change ${finalRuns.governance.changeId} (${finalRuns.governance.kind}): scheduled in ${finalRuns.governance.scheduleTx}, applicable from ${finalRuns.governance.applicableFromUtc}. An early apply_change was refused ${finalRuns.governance.refusedCode} in ${finalRuns.governance.earlyApplyTx}.
+- Recorded run, proposal ${finalRuns.honest.proposalId} (${finalRuns.honest.fixture}, ${finalRuns.honest.initCall}): R1 to R5 Pass; a private AI review through NEAR AI Cloud (provider_tee) returned ${finalRuns.honest.aiCandidates} candidates and none reproduced (${finalRuns.honest.aiSeconds} s); signed Pass certificate; gate SignRequested; NEAR MPC signature; executed on Base Sepolia, status success, block ${finalRuns.honest.block}, gas used ${finalRuns.honest.gasUsed}, sender the MPC-derived signer, nonce ${finalRuns.honest.nonce}. Run total ${finalRuns.honest.totalSeconds} s. NEAR transactions: propose ${finalRuns.honest.proposeTx}, verdict ${finalRuns.honest.verdictTx}. Base Sepolia transaction ${finalRuns.honest.baseTx}. Proxy implementation before ${finalEvm.vaultV1}, after ${finalEvm.vaultV2Honest}.
+- Live runs are closed on this gate. The proxy is now VaultV2Honest while the committed manifest's reference source is VaultV1, so a new attack or upgrade proposal is refused at rule 0 (current source runtime mismatch) before R2 runs. The page therefore offers no in-browser run and no public demo key; the recorded receipts above are the evidence. What anyone can do is read the live gate state, watch proposal ids 0 and 1, and run the audit and receipt commands below.
+- Spike, 2026-11-03: a real NEAR MPC signature executed an honest upgrade on Base Sepolia, transaction 0xc232188629763bec4eb9a72be7fd08f66ab5690a2ad997ac6ed20697ff0729d8, receipt status 1. This used constitution-spike.testnet with no verifier in the loop, not the final gate.
 - Local test, recorded 2026-11-05: gate checks passed 83 tests (58 unit, 18 property, seven sandbox/integration). This is a dated result, not a claim that tests were rerun for this guide.
 - Local test: R1-R5 are exercised locally. The committed depth-four R2 check rejects VaultV2Drain; bounded local checks are not a testnet rejection receipt.
 - AI rehearsal, 2026-11-06: real completions verified as provider_tee; one saved candidate reproduced the drain in a local replay with explicitly funded/approved prestate, not on the honest control. No general find rate, final gate certificate or real-testnet prestate is claimed.
-- Testnet only. Not independently audited. No activated production receipts, in-browser proposal submission or public demo key are available yet.
+- Testnet only. Not independently audited.
 - Status sources: ${source("docs/DESIGN.md")}, ${source("docs/BUILD-PLAN.md")}, ${source("deployments/README.md")}.
 - Spike evidence: ${source("spikes/gate-min/base-sepolia-evidence.json")}.
 - Local evidence: ${source("crates/verifier/evidence/depth/README.md")}, ${source("crates/verifier/evidence/ai/candidate-replay-2026-11-06.json")}.
@@ -51,7 +57,7 @@ export function buildLlmsText(site: LlmsSite): string {
 - G2. The gate requests a signature only for the exact executor call bound to a certificate from an allowlisted verifier over the active rule-set hash.
 - G3. Rules, verifier allowlist and authority migration change only after the public initialization-selected delay (1 to 30 whole days, default 3), immutable thereafter; guardian actions can only reduce authority. Liveness limit: EVM nonces are assigned at certification, so a certified transaction that nobody ever mines delays later ones until someone relays it (permissionless; a reverted transaction still consumes the nonce). Delay only; no signature is ever created without a certificate.
 - G4. AI output can only cause rejection, never certification.
-- Source: ${source("docs/PRD.md")}, Risks and guarantees. These are mechanism guarantees under assumptions, not evidence that activation has occurred.
+- Source: ${source("docs/PRD.md")}, Risks and guarantees. These are mechanism guarantees under assumptions; the recorded runs under Status are the evidence for this deployment.
 
 ## Trust assumptions and limits
 
@@ -92,14 +98,14 @@ export function buildLlmsText(site: LlmsSite): string {
 ## How to verify
 
 - Run from the repository root with the pinned prerequisites. Rust, Foundry and sandbox checks use Linux/WSL2; use native pnpm for web checks (Windows pnpm on Windows). These local checks do not deploy, sign or call paid inference.
-- The commands below are shared with the public page. After-activation reads require the real trusted deployment record and locally built executor artifact. Set GATE_ACCOUNT and PROPOSAL_ID from actual observed deployment/proposal values in the Linux/WSL2 shell, not spike values; select the actual RPCs via NEAR_RPC_URL and BASE_SEPOLIA_RPC_URL when necessary. The public testnet RPC defaults need no signing key.
+- The commands below are shared with the public page. Reads of the final gate use the committed deployment record (${source("deployments/testnet.json")}) and a locally built executor artifact. Set GATE_ACCOUNT=${finalGate.account} and PROPOSAL_ID=0 or 1 in the Linux/WSL2 shell, not spike values; select the actual RPCs via NEAR_RPC_URL and BASE_SEPOLIA_RPC_URL when necessary. The public testnet RPC defaults need no signing key.
 
 \`\`\`sh
 ${commands}
 \`\`\`
 
-- Inspect audit warnings and ETAs as well as the exit status. Audit uses trusted local artifacts and the committed deployment record; it is not independent CVM appraisal or proof of those inputs' provenance.
-- Appraise the verifier before sharing private source. make attack and make upgrade are write paths requiring explicit inputs and an already-appraised verifier; a funded verifier may spend inference credits. Signing, spending and deployment require separate founder authorization.
+- Inspect audit warnings and ETAs as well as the exit status. While the gate still holds an access key, audit reports gate_has_no_access_keys as a failed check. Audit uses trusted local artifacts and the committed deployment record; it is not independent CVM appraisal or proof of those inputs' provenance.
+- Appraise the verifier before sharing private source. make attack and make upgrade are write paths requiring explicit inputs and an already-appraised verifier, and a funded verifier may spend inference credits; this gate now refuses new proposals at rule 0. Signing, spending and deployment require separate founder authorization.
 - Sources: ${source("README.md")}, Local quickstart and Read public state; ${source("deployments/README.md")}; ${source("crates/cli/src/main.rs")}; ${source("Makefile")}; ${source("web/package.json")}.
 
 ## Repository map
@@ -114,7 +120,7 @@ ${commands}
 - ${source("docs/PRD.md")}: scope, R1-R5, G1-G4 and limits.
 - ${source("docs/technical/ARCHITECTURE.md")}: architecture, verifier stages and demo-runner operation.
 - ${source("docs/technical/SMART-CONTRACT.md")}: protocol interfaces, panic codes and recorded deployment evidence.
-- ${source("docs/BUILD-PLAN.md")}: dated acceptance evidence and unfinished activation/testnet work.
+- ${source("docs/BUILD-PLAN.md")}: dated acceptance evidence and remaining work.
 - Map source: ${source("docs/technical/ARCHITECTURE.md")}, Codebase structure and interfaces.
 
 ## Evidence labels
@@ -123,7 +129,7 @@ ${commands}
 - Recorded: a real receipt saved from an earlier run, labeled with its date; never replayed as live.
 - Spike: real chain evidence from the minimal spike gate, with no verifier in the loop; not a production run.
 - Local test: local unit, property, sandbox, Anvil or Docker evidence; not testnet or CVM evidence. Local time travel is not real elapsed time on testnet.
-- Awaiting activation: the real gate/CVM configuration or activation evidence is unavailable; no placeholder deployment, fake receipts, timestamps or progress are substituted.
+- No gate configured: the page was built without a gate account, so its live surfaces read nothing; no placeholder deployment, fake receipts, timestamps or progress are substituted.
 - Sources: ${source("docs/DESIGN.md")}, Today’s data reality, State matrix and Receipt anatomy.
 `;
 }

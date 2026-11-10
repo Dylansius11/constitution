@@ -120,6 +120,21 @@ export interface PendingChange {
   evm: EvmTx | null;
 }
 
+/**
+ * Number of access keys in a NEAR `view_access_key_list` result. Only the count is kept: the page
+ * never needs to show a key, and each entry must still look like a key so a malformed response is
+ * rejected rather than reported as a count.
+ */
+export function parseAccessKeyList(value: unknown, path = "access_keys"): number {
+  const keys = new Obj(value, path).arr("keys");
+  keys.forEach((entry, i) => {
+    const key = new Obj(entry, `${path}.keys[${i}]`);
+    key.str("public_key");
+    key.obj("access_key");
+  });
+  return keys.length;
+}
+
 function parsePubkeyB64(value: unknown, path: string): string {
   if (typeof value !== "string" || !/^[A-Za-z0-9+/]{43}=$/.test(value)) {
     throw new WireError(path, "expected a base64 32-byte key");

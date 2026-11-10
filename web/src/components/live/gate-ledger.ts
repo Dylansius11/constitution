@@ -1,8 +1,34 @@
 import type { ProxyRead } from "../../lib/base.ts";
+import { accessKeyState } from "../../lib/display.ts";
 import type { View } from "../../lib/gate.ts";
 import type { Config, Constitution, ListedVerifier, PendingChange } from "../../lib/gate-types.ts";
 import type { Source } from "../../lib/state.ts";
 import { hashValue, lastObserved, observe, pollVisible, timestamp } from "./runtime.ts";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** State word plus a marker shape (check or triangle) so the tone never depends on colour alone. */
+function accessKeyNode(count: number): HTMLElement {
+  const state = accessKeyState(count);
+  const node = document.createElement("span");
+  node.className = "key-state";
+  node.dataset["tone"] = state.tone;
+  node.dataset["count"] = String(count);
+  const mark = document.createElementNS(SVG_NS, "svg");
+  mark.setAttribute("viewBox", "0 0 16 16");
+  mark.setAttribute("width", "16");
+  mark.setAttribute("height", "16");
+  mark.setAttribute("aria-hidden", "true");
+  mark.setAttribute("focusable", "false");
+  mark.classList.add("key-state__mark");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", state.tone === "pass" ? "M3.5 8.4 6.6 11.3 12.5 4.9" : "M8 2 14.5 13.5H1.5ZM8 6.5v3M8 11.6v.1");
+  mark.append(path);
+  const text = document.createElement("span");
+  text.textContent = state.text;
+  node.append(mark, text);
+  return node;
+}
 
 async function initializeLedger(
   root: HTMLElement,
@@ -23,6 +49,7 @@ async function initializeLedger(
   const gate = createGateClient({ rpcUrl: nearRpc, gate: gateAccount });
   const base = createBaseClient({ rpcUrl: baseRpc });
   let config: Source<View<Config>> = { status: "idle" };
+  let accessKeys: Source<View<number>> = { status: "idle" };
   let rules: Source<View<Constitution>> = { status: "idle" };
   let verifiers: Source<View<ListedVerifier[]>> = { status: "idle" };
   let changes: Source<View<PendingChange[]>> = { status: "idle" };
@@ -74,11 +101,12 @@ async function initializeLedger(
     if (busy || document.hidden) return;
     busy = true;
     try {
-      [config, rules, verifiers, changes] = await Promise.all([
+      [config, rules, verifiers, changes, accessKeys] = await Promise.all([
         observe(config, () => gate.getConfig()),
         observe(rules, () => gate.getConstitution()),
         observe(verifiers, () => gate.listVerifiers(0, 50)),
         observe(changes, () => gate.listChanges(0, 50)),
+        observe(accessKeys, () => gate.getAccessKeyCount()),
       ]);
       if (config.status === "ok") {
         const days = config.value.value.governance_delay_days;
@@ -103,6 +131,13 @@ async function initializeLedger(
         config,
         "NEAR testnet get_config",
         () => hashValue(gateAccount, "Gate account", "near"),
+        (v) => `NEAR block ${v.blockHeight}`,
+      );
+      row(
+        "accessKeys",
+        accessKeys,
+        "NEAR testnet access keys",
+        (v) => accessKeyNode(v.value),
         (v) => `NEAR block ${v.blockHeight}`,
       );
       row(
@@ -146,7 +181,7 @@ async function initializeLedger(
         (v) => hashValue(getAddress(v.implementation), "Protected proxy implementation", "address"),
         (v) => `Base Sepolia block ${v.block}`,
       );
-      const sources: Source<unknown>[] = [config, rules, verifiers, changes, proxy];
+      const sources: Source<unknown>[] = [config, rules, verifiers, changes, proxy, accessKeys];
       const outage = sources.some((s) => s.status === "unavailable" && s.failures >= 3);
       const failure = sources.some((s) => s.status === "unavailable");
       const notice = outage
