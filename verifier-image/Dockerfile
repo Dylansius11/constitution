@@ -20,4 +20,7 @@ RUN chmod -R a+rX /opt/spike && chmod +x /opt/spike/*.sh
 USER 10001:10001
 ENV HOME=/work/home
 WORKDIR /work
+# Static Yices embeds libc cache detection affected by TDX CPUID cache reporting.
+# Keep small copies off its faulty non-temporal path; solver logic/bounds are unchanged.
+ENV GLIBC_TUNABLES=glibc.cpu.x86_non_temporal_threshold=1048576
 CMD ["/bin/sh", "/opt/spike/versions.sh"]

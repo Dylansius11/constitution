@@ -34,8 +34,12 @@ impl Gate {
             env::panic_str(DUPLICATE_AUTHORITY_CHANGE);
         }
         let now = env::block_timestamp();
+        let delay_ns = u64::from(self.config.governance_delay_days)
+            .checked_mul(86_400)
+            .and_then(s_to_ns)
+            .unwrap_or_else(|| env::panic_str(GateError::InvalidChange.code()));
         let eta_ns = now
-            .checked_add(TIMELOCK_NS)
+            .checked_add(delay_ns)
             .unwrap_or_else(|| env::panic_str(GateError::InvalidChange.code()));
         let id = self.next_change_id;
         let next = id
@@ -85,6 +89,14 @@ impl Gate {
             ));
         }
         self.validate_change(&change.kind);
+        if matches!(change.kind, ChangeKind::Unpause) {
+            check(
+                self.paused_at_ns
+                    .is_none_or(|paused_at| change.scheduled_at_ns > paused_at),
+                GateError::InvalidChange,
+                "unpause must be scheduled after latest pause",
+            );
+        }
         if matches!(change.kind, ChangeKind::MigrateAuthority { .. }) {
             return self.apply_migration(change_id);
         }
@@ -216,6 +228,7 @@ impl Gate {
     pub fn pause_signing(&mut self) {
         self.assert_guardian();
         self.signing_paused = true;
+        self.paused_at_ns = Some(env::block_timestamp());
         emit("signing_paused", json!({"change_id":null}));
     }
 

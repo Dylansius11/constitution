@@ -50,6 +50,9 @@ const IDENTITY = {
 };
 
 const RUN = {
+  gate_account: "gate.constitution.testnet",
+  proposal_id: 7,
+  boot_id: "ab".repeat(32),
   stage: "r2_solvency",
   started_at: 1_793_700_005,
   stages: [
@@ -102,7 +105,7 @@ describe("verifier client", () => {
 
   it("startRun: posts the documented body and returns the run id", async () => {
     const { client, seen } = server({
-      "POST /v1/runs": json({ run_id: 4, label: "local, not attested" }, 202),
+      "POST /v1/runs": json({ run_id: 4, gate_account: "gate.constitution.testnet", proposal_id: 7, boot_id: "ab".repeat(32), label: "local, not attested" }, 202),
     });
     const sealed = new Uint8Array(100).fill(1);
     const started = await client.startRun({
@@ -110,7 +113,7 @@ describe("verifier client", () => {
       proposalId: 7,
       sealedBundle: sealed,
     });
-    expect(started).toEqual({ runId: 4, label: "local, not attested" });
+    expect(started).toEqual({ runId: 4, gateAccount: "gate.constitution.testnet", proposalId: 7, bootId: "ab".repeat(32), label: "local, not attested" });
     expect(seen[0]?.method).toBe("POST");
     expect(seen[0]?.body).toEqual({
       gate: "gate.constitution.testnet",

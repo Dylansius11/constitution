@@ -5,6 +5,7 @@
   "type": "object",
   "required": [
     "chain_id",
+    "governance_delay_days",
     "gate",
     "gate_code_hash",
     "mpc_account",
@@ -15,6 +16,12 @@
   "properties": {
     "chain_id": {
       "$ref": "#/$defs/u64"
+    },
+    "governance_delay_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30,
+      "description": "Immutable whole-day governance delay selected at initialization, compared to the gate by audit."
     },
     "gate": {
       "$ref": "#/$defs/account"

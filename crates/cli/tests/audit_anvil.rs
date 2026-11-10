@@ -216,7 +216,7 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
     let hash = constitution_types::manifest::rule_set_hash(&manifest).unwrap();
     // Gate pins this account; the loopback relay intercepts its sole derivation view.
     let mpc = "v1.signer-prod.testnet";
-    let config = json!({"chain_id":84532,"executor":executor,"proxy":proxy,"proxy_admin":admin,"derived_eoa":"0x3b20f46860d27d81917a45221c594fc051af7e94","mpc_account":mpc,"mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0});
+    let config = json!({"chain_id":84532,"executor":executor,"proxy":proxy,"proxy_admin":admin,"derived_eoa":"0x3b20f46860d27d81917a45221c594fc051af7e94","mpc_account":mpc,"mpc_path":"constitution/base-sepolia/v1","mpc_domain_id":0,"governance_delay_days":3});
     let constitution = json!({"rule_set_hash":format!("0x{}",hex::encode(hash)),"manifest_uri":"local:rules/manifest.json","ai_required":true,"params":{"proposal_deposit":"100","proposal_ttl_s":7200,"max_cert_ttl_s":1800,"sign_validity_s":3600,"gas_limit":300000,"max_fee_per_gas":"50000000","max_priority_fee_per_gas":"1000000","fee_cap":"1000000000","sign_gas_tgas":15,"callback_gas_tgas":20}});
     let pubkey = base64::engine::general_purpose::STANDARD.encode([7; 32]);
     let release_hash = format!("0x{}", "06".repeat(32));
@@ -262,7 +262,7 @@ async fn real_gate_audit_ceremony_and_runtime_tampering() -> Result<(), Box<dyn 
         .unwrap();
     assert!(expected.status.success(), "{}", text(&expected));
     let expected_hash = String::from_utf8(expected.stdout).unwrap();
-    let mut deployment = json!({"chain_id":84532,"gate":gate.id(),"gate_code_hash":bs58::encode(Sha256::digest(&wasm)).into_string(),"mpc_account":mpc,"executor":executor,"proxy":proxy,"executor_runtime_hash":expected_hash.trim(),"verifiers":[{"pubkey":pubkey,"release_hash":release_hash}],"roles":{"governor":governor.id(),"guardian":guardian.id()}});
+    let mut deployment = json!({"chain_id":84532,"governance_delay_days":3,"gate":gate.id(),"gate_code_hash":bs58::encode(Sha256::digest(&wasm)).into_string(),"mpc_account":mpc,"executor":executor,"proxy":proxy,"executor_runtime_hash":expected_hash.trim(),"verifiers":[{"pubkey":pubkey,"release_hash":release_hash}],"roles":{"governor":governor.id(),"guardian":guardian.id()}});
     deployment_schema::validate(&deployment);
     let audit = |label: &str, d: &Value| {
         std::fs::write(&path, d.to_string()).unwrap();

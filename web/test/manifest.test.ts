@@ -29,7 +29,7 @@ describe("committed manifest facts", () => {
         model: "z-ai/glm-5.3-flash",
         signature_kind: "provider_tee",
         max_candidates: 4,
-        timeout_s: 300,
+        timeout_s: 600,
       },
       max_cert_ttl_s: 300,
     });

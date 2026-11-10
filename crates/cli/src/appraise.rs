@@ -117,6 +117,7 @@ pub fn tcb_check(status: &str) -> Check {
 struct Event {
     imr: u32,
     event_type: u32,
+    #[serde(default)]
     digest: String,
     event: String,
     event_payload: String,
@@ -180,7 +181,9 @@ fn replay(log: &[String]) -> Result<([u8; 48], [u8; 32]), String> {
             }
         };
         let digest: [u8; 48] = Sha384::digest(&preimage).into();
-        if hex_bytes(&event.digest)? != digest {
+        // dstack may omit this redundant runtime digest; the quote authenticates our
+        // independently recomputed chain. A supplied digest must still agree.
+        if !event.digest.is_empty() && hex_bytes(&event.digest)? != digest {
             return Err(format!(
                 "event {index}: digest does not bind its name/payload"
             ));
@@ -339,6 +342,14 @@ fn observe(url: &str, pccs: &str, expected: Option<Hex32>) -> Result<Vec<Check>,
                 crate::rpc::safe_error(url, e.without_url())
             )
         })?;
+    observe_identity(&identity, pccs, expected)
+}
+
+fn observe_identity(
+    identity: &Identity,
+    pccs: &str,
+    expected: Option<Hex32>,
+) -> Result<Vec<Check>, String> {
     let raw = hex_bytes(&identity.quote_hex)?;
     Quote::parse(&raw)
         .map_err(|e| format!("identity is NOT ATTESTED or quote is invalid: {e:#}"))?;
@@ -362,7 +373,42 @@ fn observe(url: &str, pccs: &str, expected: Option<Hex32>) -> Result<Vec<Check>,
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_secs();
-    Ok(evaluate(&identity, &collateral, now, expected))
+    Ok(evaluate(identity, &collateral, now, expected))
+}
+
+/// Appraise the exact identity whose transport key will be used for the bundle.
+pub fn appraised_transport_key(value: serde_json::Value) -> Result<[u8; 32], Failure> {
+    let recovery = "set EXPECT_COMPOSE_HASH to the owner-approved compose hash and PCCS_URL if needed; appraise the intended verifier before retrying";
+    let expected = std::env::var("EXPECT_COMPOSE_HASH")
+        .map_err(|_| Failure::new("owner-approved EXPECT_COMPOSE_HASH is required", recovery))?;
+    let expected = parse_compose_hash(&expected).map_err(|e| Failure::new(e, recovery))?;
+    let identity: Identity = serde_json::from_value(value)
+        .map_err(|e| Failure::new(format!("invalid verifier identity: {e}"), recovery))?;
+    let pccs = std::env::var("PCCS_URL").unwrap_or_else(|_| DEFAULT_PCCS_URL.into());
+    let checks = observe_identity(&identity, &pccs, Some(expected))
+        .map_err(|e| Failure::new(e, recovery))?;
+    if checks.iter().any(|check| !check.ok) {
+        return Err(Failure::new("verifier identity appraisal failed", recovery));
+    }
+    Ok(identity.transport_pubkey.0)
+}
+
+/// Transport key to seal a bundle to. A remote verifier must pass full appraisal of the exact
+/// identity response; only a loopback development verifier (no TEE, same machine) is accepted
+/// unappraised, with an explicit warning.
+pub fn sealing_key(verifier: &crate::rpc::Verifier) -> Result<[u8; 32], Failure> {
+    let identity = verifier.identity()?;
+    if verifier.is_loopback() {
+        println!("verifier identity NOT APPRAISED (loopback development verifier, no TEE)");
+        let key: Hex32 = serde_json::from_value(identity["transport_pubkey"].clone()).map_err(|_| {
+            Failure::new(
+                "verifier identity has no valid transport_pubkey",
+                "check --verifier/--verifier-url and fetch the current identity before retrying",
+            )
+        })?;
+        return Ok(key.0);
+    }
+    appraised_transport_key(identity)
 }
 
 pub fn appraise(url: &str, pccs: &str, expected: Option<Hex32>, json: bool) -> Result<(), Failure> {

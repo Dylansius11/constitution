@@ -1,5 +1,5 @@
-//! Governance writes (F2). Every change waits the gate's fixed 7-day timelock; the CLI only
-//! submits and reports, it cannot shorten anything.
+//! Governance writes (F2). Every change waits the delay fixed at gate initialization.
+//! The CLI only submits and reports; it cannot shorten the delay.
 use crate::failure::Failure;
 use crate::near_tx::Writer;
 use constitution_types::ChangeKind;
@@ -20,7 +20,7 @@ pub fn schedule(w: &Writer, gate: &str, kind_json: &str) -> Result<(), Failure> 
         "only the governor may schedule; check --account and the gate roles",
     )?;
     println!(
-        "scheduled change {} in tx {} (applies after the 7-day timelock)",
+        "scheduled change {} in tx {} (applies at the gate-recorded eta)",
         called.value, called.tx_hash
     );
     Ok(())
@@ -32,7 +32,7 @@ pub fn apply(w: &Writer, gate: &str, change_id: u64) -> Result<(), Failure> {
         "apply_change",
         json!({ "change_id": change_id }),
         0,
-        "E53 means the 7-day timelock has not elapsed; nobody can shorten it, apply after eta",
+        "E53 means the gate's immutable governance delay has not elapsed; apply after its recorded eta",
     )?;
     println!("applied change {change_id} in tx {}", called.tx_hash);
     Ok(())

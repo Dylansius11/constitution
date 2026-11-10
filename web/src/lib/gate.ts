@@ -5,6 +5,7 @@ import {
   type ListedVerifier,
   type PendingChange,
   type Proposal,
+  parseAccessKeyList,
   parseConfig,
   parseConstitution,
   parsePendingChange,
@@ -43,6 +44,8 @@ export interface GateClient {
   getChange(id: number): Promise<View<PendingChange | null>>;
   listChanges(fromId: number, limit: number): Promise<View<PendingChange[]>>;
   listVerifiers(fromIndex: number, limit: number): Promise<View<ListedVerifier[]>>;
+  /** Number of access keys on the gate account (NEAR `view_access_key_list`); keys are not returned. */
+  getAccessKeyCount(): Promise<View<number>>;
 }
 
 function requireId(value: number, name: string): number {
@@ -72,34 +75,39 @@ export function createGateClient(options: GateClientOptions): GateClient {
   if (!isAccountId(options.gate)) throw new InputError("gate must be a NEAR account id");
   const finality = options.finality ?? "final";
 
+  /** One NEAR JSON-RPC `query`; returns the `result` both validated as an object and untouched. */
+  async function query(params: JsonValue, label: string): Promise<{ result: Obj; raw: unknown }> {
+    const body = JSON.stringify({ jsonrpc: "2.0", id: "constitution", method: "query", params });
+    const { text } = await requestText(
+      url,
+      { method: "POST", headers: { "content-type": "application/json" }, body },
+      options,
+      `NEAR RPC (${label})`,
+    );
+    const envelope = new Obj(parseJson(text), "rpc");
+    if (envelope.has("error")) throw new RpcError(describeRpcError(envelope.raw("error")));
+    const raw = envelope.raw("result");
+    const result = new Obj(raw, "rpc.result");
+    // Older RPC nodes report a contract failure as a string in result.error instead of an error object.
+    if (result.has("error")) throw new RpcError(`${label} failed: ${String(result.raw("error"))}`);
+    return { result, raw };
+  }
+
   async function view<T>(
     method: string,
     args: JsonValue,
     parse: (value: unknown) => T,
   ): Promise<View<T>> {
-    const body = JSON.stringify({
-      jsonrpc: "2.0",
-      id: "constitution",
-      method: "query",
-      params: {
+    const { result } = await query(
+      {
         request_type: "call_function",
         finality,
         account_id: options.gate,
         method_name: method,
         args_base64: utf8Base64(args),
       },
-    });
-    const { text } = await requestText(
-      url,
-      { method: "POST", headers: { "content-type": "application/json" }, body },
-      options,
-      `NEAR RPC (${method})`,
+      method,
     );
-    const envelope = new Obj(parseJson(text), "rpc");
-    if (envelope.has("error")) throw new RpcError(describeRpcError(envelope.raw("error")));
-    const result = new Obj(envelope.raw("result"), "rpc.result");
-    // Older RPC nodes report a contract failure as a string in result.error instead of an error object.
-    if (result.has("error")) throw new RpcError(`${method} failed: ${String(result.raw("error"))}`);
     const raw = asArray(result.raw("result"), "rpc.result.result").map((byte, i) =>
       asSafeUint(byte, `rpc.result.result[${i}]`, 255),
     );
@@ -150,6 +158,17 @@ export function createGateClient(options: GateClientOptions): GateClient {
         { from_index: requireId(fromIndex, "fromIndex"), limit: requireLimit(limit) },
         (v) => parseVerifierList(v),
       ),
+    getAccessKeyCount: async () => {
+      const { result, raw } = await query(
+        { request_type: "view_access_key_list", finality, account_id: options.gate },
+        "view_access_key_list",
+      );
+      return {
+        value: parseAccessKeyList(raw),
+        blockHeight: result.safe("block_height"),
+        blockHash: result.str("block_hash"),
+      };
+    },
   };
 }
 

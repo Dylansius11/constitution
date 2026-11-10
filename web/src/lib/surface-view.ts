@@ -14,7 +14,7 @@ export const VERIFIER_LABELS = {
   queued: { label: "Queued", detail: "Waiting for the verifier to start." },
   unsealing: {
     label: "Opening the sealed bundle",
-    detail: "Unsealed inside the attested verifier. The hash must equal the commitment.",
+    detail: "The verifier reports opening the bundle. The hash must equal the commitment.",
   },
   compiling: {
     label: "Compiling",
@@ -271,7 +271,7 @@ export function surfaceView(state: SurfaceState, ctx: SurfaceContext = {}): Surf
     case "verifying":
       title = "Verifying";
       body = state.runObserved
-        ? `The attested verifier is checking ${fixture} against the committed rules. Source stays inside the enclave.`
+        ? `The verifier reports checking ${fixture} against the committed rules. This page does not appraise its key; the source is a public fixture.`
         : "The proposal is recorded on NEAR. Verifier stages are not observed by this page; a run id is needed to read them.";
       break;
     case "verifier_failed":

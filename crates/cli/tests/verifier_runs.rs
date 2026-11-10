@@ -133,7 +133,7 @@ async fn admission_refusals_explain_each_cause_and_recovery_without_credentials(
 async fn accepted_numeric_run_id_and_evicted_run_follow_the_documented_contract() {
     let (base, server) = serve(Fake {
         status: StatusCode::ACCEPTED,
-        body: r#"{"run_id":7}"#.into(),
+        body: json!({"run_id":7,"gate_account":"gate.testnet","proposal_id":0,"boot_id":"ab".repeat(32)}).to_string(),
         retry_after: None,
     })
     .await;
@@ -156,7 +156,7 @@ async fn accepted_numeric_run_id_and_evicted_run_follow_the_documented_contract(
     let failure = tokio::task::spawn_blocking(move || {
         rpc::Verifier::new(&(base + "/FAKE_PATH_KEY"))
             .unwrap()
-            .run("7")
+            .run("7", "gate.testnet", 7)
             .unwrap_err()
     })
     .await
@@ -183,7 +183,7 @@ async fn chain(Json(request): Json<Value>) -> Json<Value> {
                 "get_config" => {
                     json!({"chain_id":84532,"executor":"0x1111111111111111111111111111111111111111",
                     "proxy":"0x1111111111111111111111111111111111111111","proxy_admin":"0x2222222222222222222222222222222222222222",
-                    "derived_eoa":"0x2222222222222222222222222222222222222222","mpc_account":"mpc.testnet","mpc_path":"fake","mpc_domain_id":0})
+                    "derived_eoa":"0x2222222222222222222222222222222222222222","mpc_account":"mpc.testnet","mpc_path":"fake","mpc_domain_id":0,"governance_delay_days":3})
                 }
                 other => panic!("unexpected fake view {other}"),
             };
@@ -243,7 +243,10 @@ async fn status_watch_stops_on_failed_and_distinguishes_withheld_from_submission
         "reported separately",
         0,
     ));
-    for (run, code, explanation, recovery, exit) in cases {
+    for (mut run, code, explanation, recovery, exit) in cases {
+        run["gate_account"] = json!("gate.testnet");
+        run["proposal_id"] = json!(0);
+        run["boot_id"] = json!("ab".repeat(32));
         let (base, server) = serve(Fake {
             status: StatusCode::OK,
             body: run.to_string(),
@@ -359,7 +362,7 @@ async fn retry_command_reseals_only_the_committed_pending_bundle() {
                         .decode(request["sealed_bundle_b64"].as_str().unwrap())
                         .unwrap();
                     assert_eq!(key.unseal(&sealed).unwrap(), expected);
-                    (StatusCode::ACCEPTED, Json(json!({"run_id":7})))
+                    (StatusCode::ACCEPTED, Json(json!({"run_id":7,"gate_account":"gate.testnet","proposal_id":0,"boot_id":"ab".repeat(32)})))
                 }),
             );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

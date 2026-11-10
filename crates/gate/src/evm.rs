@@ -101,7 +101,6 @@ impl Gate {
 }
 
 #[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 struct SignatureResponse {
     scheme: Scheme,
     big_r: Point,
@@ -113,12 +112,10 @@ enum Scheme {
     Secp256k1,
 }
 #[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Point {
     affine_point: String,
 }
 #[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Scalar {
     scalar: String,
 }
@@ -126,6 +123,7 @@ struct Scalar {
 pub(crate) fn assemble_signed(
     tx: &EVMTransaction,
     response: &[u8],
+    expected_address: [u8; 20],
 ) -> Result<Vec<u8>, &'static str> {
     let response: SignatureResponse =
         serde_json::from_slice(response).map_err(|_| "invalid MPC response JSON shape")?;
@@ -159,6 +157,21 @@ pub(crate) fn assemble_signed(
         &response.s.scalar,
         "7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0",
     )?;
+    let mut r_full = [0u8; 32];
+    r_full[32 - r.len()..].copy_from_slice(&r);
+    let mut s_full = [0u8; 32];
+    s_full[32 - s.len()..].copy_from_slice(&s);
+    let signature =
+        k256::ecdsa::Signature::from_scalars(r_full, s_full).map_err(|_| "invalid signature")?;
+    let recovery = k256::ecdsa::RecoveryId::from_byte(response.recovery_id)
+        .ok_or("invalid recovery parity")?;
+    let digest = env::keccak256_array(tx.build_for_signing());
+    let key = k256::ecdsa::VerifyingKey::recover_from_prehash(&digest, &signature, recovery)
+        .map_err(|_| "invalid signature")?;
+    let point = key.to_encoded_point(false);
+    if env::keccak256_array(&point.as_bytes()[1..])[12..] != expected_address {
+        return Err("signature signer mismatch");
+    }
     Ok(
         tx.build_with_signature(&omni_transaction::evm::types::Signature {
             v: response.recovery_id.into(),

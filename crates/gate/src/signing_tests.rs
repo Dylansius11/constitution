@@ -53,6 +53,14 @@ fn submit(g: &mut Gate, c: &Certificate) {
     drop(g.submit_verdict(bytes, sig));
 }
 fn callback(g: &mut Gate, id: u64, attempt: u32, result: PromiseResult) {
+    let result = if matches!(&result, PromiseResult::Successful(bytes) if bytes.as_slice() == include_bytes!("../../../vectors/mpc-response.json"))
+        && g.config.derived_eoa == test_evm_address()
+    {
+        let tx = g.target_transaction(&SignTarget::Proposal(id)).unwrap();
+        test_mpc_response(env::keccak256_array(tx.build_for_signing()))
+    } else {
+        result
+    };
     testing_env!(
         VMContextBuilder::new()
             .current_account_id("gate.testnet".parse().unwrap())
@@ -493,6 +501,10 @@ fn stale_rule_retry_waits_past_inclusive_deadline_and_preserves_transaction() {
 }
 
 fn fixed_spike_proposal(g: &mut Gate) {
+    g.config.derived_eoa = hex::decode("8221c9477886cc456d7e1cccc0866e0401b81070")
+        .unwrap()
+        .try_into()
+        .unwrap();
     g.config.executor = [0x11; 20];
     let p = g.proposals.get_mut(&0).unwrap();
     p.certificate_hash = Some([0x22; 32]);
@@ -558,6 +570,107 @@ fn signing_preimage_matches_spike_independent_oracle_and_captured_hash() {
         hex::encode(env::keccak256_array(&actual)),
         "f4cabf1bbeafae5b1b847737b03d31ac62d5805cb3204b04faefe5e22bb750c3"
     );
+}
+#[test]
+fn mpc_extra_fields_are_accepted_for_a_valid_signature() {
+    let (mut g, _) = setup();
+    fixed_spike_proposal(&mut g);
+    let tx = g.target_transaction(&SignTarget::Proposal(0)).unwrap();
+    let mut response: serde_json::Value =
+        serde_json::from_slice(include_bytes!("../../../vectors/mpc-response.json")).unwrap();
+    response["extra"] = json!({"future": true});
+    response["big_r"]["extra"] = json!(1);
+    response["s"]["extra"] = json!("ignored");
+    let address = hex::decode("8221c9477886cc456d7e1cccc0866e0401b81070")
+        .unwrap()
+        .try_into()
+        .unwrap();
+    assert!(
+        crate::evm::assemble_signed(&tx, &serde_json::to_vec(&response).unwrap(), address).is_ok()
+    );
+}
+
+#[test]
+fn mpc_forged_malformed_and_wrong_digest_are_rejected() {
+    let (mut g, _) = setup();
+    fixed_spike_proposal(&mut g);
+    let tx = g.target_transaction(&SignTarget::Proposal(0)).unwrap();
+    let address = hex::decode("8221c9477886cc456d7e1cccc0866e0401b81070")
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let mut response: serde_json::Value =
+        serde_json::from_slice(include_bytes!("../../../vectors/mpc-response.json")).unwrap();
+    let original = response.clone();
+    response["recovery_id"] = json!(2);
+    assert!(
+        crate::evm::assemble_signed(&tx, &serde_json::to_vec(&response).unwrap(), address).is_err()
+    );
+    response = original.clone();
+    response["scheme"] = json!("Ed25519");
+    assert!(
+        crate::evm::assemble_signed(&tx, &serde_json::to_vec(&response).unwrap(), address).is_err()
+    );
+    response = original.clone();
+    response["big_r"]["affine_point"] = json!("0201");
+    assert!(
+        crate::evm::assemble_signed(&tx, &serde_json::to_vec(&response).unwrap(), address).is_err()
+    );
+    response = original;
+    response["s"]["scalar"] = json!("00".repeat(32));
+    assert!(
+        crate::evm::assemble_signed(&tx, &serde_json::to_vec(&response).unwrap(), address).is_err()
+    );
+    response["s"]["scalar"] = json!("01".repeat(32));
+    assert!(
+        crate::evm::assemble_signed(&tx, &serde_json::to_vec(&response).unwrap(), address).is_err()
+    );
+    g.proposals.get_mut(&0).unwrap().new_impl = [0x34; 20];
+    let wrong_tx = g.target_transaction(&SignTarget::Proposal(0)).unwrap();
+    assert!(
+        crate::evm::assemble_signed(
+            &wrong_tx,
+            include_bytes!("../../../vectors/mpc-response.json"),
+            address
+        )
+        .is_err()
+    );
+}
+#[test]
+fn callback_accepts_extra_fields_and_rejects_forged_or_wrong_digest() {
+    let (mut g, c) = setup();
+    submit(&mut g, &c);
+    let digest = g
+        .get_proposal(0)
+        .unwrap()
+        .evm
+        .as_ref()
+        .unwrap()
+        .signing_hash;
+    let PromiseResult::Successful(bytes) = test_mpc_response(digest) else {
+        unreachable!()
+    };
+    let mut response: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    response["future"] = json!(true);
+    response["big_r"]["future"] = json!(true);
+    response["s"]["future"] = json!(true);
+    let valid = serde_json::to_vec(&response).unwrap();
+    response["s"]["scalar"] = json!("01".repeat(32));
+    callback(
+        &mut g,
+        0,
+        1,
+        PromiseResult::Successful(serde_json::to_vec(&response).unwrap()),
+    );
+    assert_eq!(g.get_proposal(0).unwrap().state, ProposalState::SignFailed);
+    context("relay.testnet", 1_000_000_000, 0);
+    drop(g.retry_sign(0));
+    callback(&mut g, 0, 2, test_mpc_response([9; 32]));
+    assert_eq!(g.get_proposal(0).unwrap().state, ProposalState::SignFailed);
+    context("relay.testnet", 1_000_000_000, 0);
+    drop(g.retry_sign(0));
+    callback(&mut g, 0, 3, PromiseResult::Successful(valid));
+    assert_eq!(g.get_proposal(0).unwrap().state, ProposalState::Signed);
 }
 
 #[test]
@@ -656,7 +769,7 @@ fn migration_signs_rotate_signer_and_retries_failed_request_without_new_nonce() 
         near_sdk::test_vm_config(),
         near_sdk::RuntimeFeesConfig::test(),
         Default::default(),
-        vec![captured()]
+        vec![test_mpc_response(retried.signing_hash)]
     );
     g.on_signed(SignTarget::Change(id), 2);
     assert!(
@@ -734,6 +847,7 @@ fn migration_fee_bump_preserves_nonce_deadline_and_calldata_and_caps() {
     );
     context("relay.testnet", 604_801_000_000_000, 0);
     drop(g.apply_change(id));
+    let digest = g.get_change(id).unwrap().evm.as_ref().unwrap().signing_hash;
     testing_env!(
         VMContextBuilder::new()
             .current_account_id("gate.testnet".parse().unwrap())
@@ -743,7 +857,7 @@ fn migration_fee_bump_preserves_nonce_deadline_and_calldata_and_caps() {
         near_sdk::test_vm_config(),
         near_sdk::RuntimeFeesConfig::test(),
         Default::default(),
-        vec![captured()]
+        vec![test_mpc_response(digest)]
     );
     g.on_signed(SignTarget::Change(id), 1);
     let before = g.get_change(id).unwrap().evm.clone().unwrap();
@@ -789,6 +903,13 @@ fn signed_max_calldata_storage_measurement() {
     propose_fee(&mut g, a);
     submit(&mut g, &c);
     let usage = env::storage_usage();
+    let digest = g
+        .get_proposal(0)
+        .unwrap()
+        .evm
+        .as_ref()
+        .unwrap()
+        .signing_hash;
     testing_env!(
         VMContextBuilder::new()
             .current_account_id("gate.testnet".parse().unwrap())
@@ -799,7 +920,7 @@ fn signed_max_calldata_storage_measurement() {
         near_sdk::test_vm_config(),
         near_sdk::RuntimeFeesConfig::test(),
         Default::default(),
-        vec![captured()]
+        vec![test_mpc_response(digest)]
     );
     g.on_signed(SignTarget::Proposal(0), 1);
     g.flush_storage();
