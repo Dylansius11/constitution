@@ -31,7 +31,7 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D14 | Gas, fee caps and funding amounts | founder (funding), lead (caps) | open | P1.4 | Set from observed Base Sepolia fees in spike |
 | D15 | Rust toolchain pin | lead | resolved 2026-10-26, confirm in spike | P1.1 | Host 1.99.1; gate via cargo-near reproducible image |
 | D16 | Organizer questions | founder | open | before submission | Draft below, not sent |
-| D17 | Demo key exposure model | lead | design resolved; public try-it not delivered | P3.3 | Restricted governor function-call key created and exercised on testnet, then deleted unpublished; no QR |
+| D17 | Demo key exposure model | lead | design resolved; public try-it removed from scope by the founder 2026-11-10 | P3.3 | Restricted governor function-call key created and exercised on testnet, then deleted unpublished; no QR |
 | D18 | Verifier key lifetime vs CVM budget | founder (budget), lead (design) | final CVM deployed; budget open | P4.7 | Ephemeral key; final CVM must remain up through 2026-11-18T23:59:00Z |
 | D19 | EVM target for contracts and the rule-set manifest | lead | resolved 2026-11-02 | P1.3, P2.5 | `prague` everywhere; Halmos 0.3.3 cannot execute Osaka CLZ |
 | D20 | Deployment-selected governance delay | founder | resolved and deployed 2026-11-10 | P2.1, P2.4, P2.7, P2.8, P3.5, F11 | 1–30 whole days at initialization, default 3, immutable; final gate uses 3 days |
@@ -40,7 +40,7 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D23 | Guardian liveness risk (F3) | founder | accepted 2026-11-10 | P2.8 | Hostile or compromised guardian can permanently halt signing and block replacement; custody remains open |
 | D24 | Guardian key custody and monitoring | founder | open | P4.7 | Key file is on the lead's machine; founder decides custody and who watches through 2026-11-18 |
 | D25 | Public hosting deploy access | founder | resolved 2026-11-11 | P3.6 | Project `constitution-gate` lives in the founder's student Cloudflare account (not the wrangler login); the founder enabled the relay for that Chrome profile and the lead uploaded the build through the dashboard's direct-upload page |
-| D26 | License | founder | open | P4.3 | Founder chooses; public visibility alone is not a license |
+| D26 | License | founder | resolved 2026-11-10: Apache-2.0 | P4.3 | `LICENSE` and the workspace `license` field added; the gate wasm already on testnet predates the declaration |
 | D27 | Standby verifier CVM | founder | open; none added | P4.7 | Lead leans no; replacing a verifier requires a three-day `AddVerifier` |
 
 ### D1. Technology stack
@@ -165,7 +165,7 @@ Official channel per EVENT.md: https://discord.com/invite/nearprotocol. Founder 
 
 ### D17. Demo key exposure model (lead)
 
-Original design [I]: the QR "take it" key would be a restricted governor function-call key for `propose`, `schedule_change` and `apply_change`; it could not cancel guardian actions or transfer NEAR. [V, exercised on testnet 2026-11-10] The key was created, its restrictions exercised and then deleted without publishing its secret; no QR or public live try-it shipped. The final proxy's V2 state and V1-specific rule set prevent repeating the upgrade under the same rules. P3.3 remains open pending founder approval of any scope change.
+Original design [I]: the QR "take it" key would be a restricted governor function-call key for `propose`, `schedule_change` and `apply_change`; it could not cancel guardian actions or transfer NEAR. [V, exercised on testnet 2026-11-10] The key was created, its restrictions exercised and then deleted without publishing its secret; no QR or public live try-it shipped. The final proxy's V2 state and V1-specific rule set prevent repeating the upgrade under the same rules. Founder decision [V, chat 2026-11-10]: remove P3.3 (public key, QR, live try-it) from scope; recorded receipts are the demo evidence.
 
 ### D18. Verifier key lifetime vs CVM budget
 
@@ -224,7 +224,7 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B9 | Local Docker Desktop Linux engine and Ubuntu WSL integration for the compiler regression | founder (Desktop/WSL settings), lead (focused rerun) | resolved 2026-11-05: Docker server 28.5.1 available from Ubuntu; focused `proposal_compilation_error_remains_a_signed_reject` rerun passed (1 passed, 0 failed) after the founder enabled integration | Split-RPC PR merge verification, P4.1 | Merge blocker cleared; no code/test changes, R2/solver, image build or full-suite rerun |
 | B10 | Guardian key custody and judging monitoring (D24) | founder | open | P4.7 | Key file is on lead's machine; founder decides custody and who watches through 2026-11-18 |
 | B11 | Cloudflare Pages deploy path (D25) | founder | resolved 2026-11-11 | P3.6, P4.6 | Dashboard direct upload via the student-account relay profile; redo it for any later page change |
-| B12 | License (D26) | founder | open | P4.3, P4.6 | Founder chooses a license |
+| B12 | License (D26) | founder | resolved 2026-11-10: Apache-2.0 | P4.3, P4.6 | Done |
 
 ### B1. NEAR testnet accounts
 

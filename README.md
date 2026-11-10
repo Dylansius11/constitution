@@ -248,8 +248,8 @@ The full guarantee boundaries and residual risks are in [PRD](docs/PRD.md#risks-
 | `docs/technical/SMART-CONTRACT.md` | Protocol interfaces and recorded local/spike deployment evidence |
 | `docs/BUILD-PLAN.md`, `docs/OPEN-DECISIONS.md` | Acceptance evidence, remaining work and founder gates |
 
-The recorded testnet results and current limitations are above. Recording the video, publishing the X post, the license decision and submission require founder action; do not infer their completion from the hosted page.
+The recorded testnet results and current limitations are above. Recording the video, publishing the X post and submission require founder action; do not infer their completion from the hosted page.
 
 **AI-tool disclosure:** AI coding assistants have been used for planning, code, documentation and scoped review. Named checks and observed receipts, not model assurances, support the recorded results. Project-side private inference is separately provided by NEAR AI Cloud as described above.
 
-**License:** the workspace currently declares `UNLICENSED`; the founder has not selected a project-wide license. Some source files and dependencies carry their own license notices. Repository visibility alone grants no project-wide open-source license.
+**License:** [Apache-2.0](LICENSE) (founder decision, 2026-11-10), declared as `license = "Apache-2.0"` in the Cargo workspace. The gate wasm deployed on testnet was built before this declaration; the license applies to this repository's source from the commit that adds `LICENSE`. Some source files and dependencies carry their own license notices.
