@@ -2,7 +2,7 @@
 # Image references are immutable GHCR digests, preloaded by the pre-launch script.
 services:
   verifier:
-    image: ghcr.io/dylansius11/constitution-verifier-service@sha256:0e528a8567df25613e219d57f941e74559cb42ad672d987442271225f8d2c171
+    image: ghcr.io/dylansius11/constitution-verifier-service@sha256:62c16ac244ca8f6ce1508492b1ca42094c8c7c26756e8d82763b01cfed5c551c
     platform: linux/amd64
     pull_policy: never
     user: "10001:10001"

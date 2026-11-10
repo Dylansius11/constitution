@@ -5,7 +5,7 @@ set +x
 set -euo pipefail
 umask 077
 
-VERIFIER_SERVICE_IMAGE=ghcr.io/dylansius11/constitution-verifier-service@sha256:0e528a8567df25613e219d57f941e74559cb42ad672d987442271225f8d2c171
+VERIFIER_SERVICE_IMAGE=ghcr.io/dylansius11/constitution-verifier-service@sha256:62c16ac244ca8f6ce1508492b1ca42094c8c7c26756e8d82763b01cfed5c551c
 VERIFIER_TOOL_IMAGE=ghcr.io/dylansius11/constitution-verifier-tool@sha256:4e733a569d80f739bc7939be24817265e1caed4ab1558f449c3ec5f618a7e2f3
 : "${DSTACK_DOCKER_USERNAME:?missing pull-only registry username}"
 : "${DSTACK_DOCKER_PASSWORD:?missing pull-only registry credential}"
