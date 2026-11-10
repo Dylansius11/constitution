@@ -64,10 +64,10 @@ export interface AccessKeyState {
 /** Plain-language reading of the gate's live access key count; never claims keyless unless it is 0. */
 export function accessKeyState(count: number): AccessKeyState {
   if (count === 0) {
-    return { tone: "pass", text: "No access keys: nobody can redeploy or reconfigure this gate" };
+    return { tone: "pass", text: "No access keys: nobody can redeploy this gate or add a key to it" };
   }
   return {
     tone: "warning",
-    text: `${count} access key(s) still present: this gate can still be redeployed. Not keyless yet.`,
+    text: `${count} access key(s) present: this gate can be redeployed. Not keyless.`,
   };
 }

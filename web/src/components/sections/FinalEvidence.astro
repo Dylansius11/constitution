@@ -20,7 +20,7 @@ import StatusBadge from "../ui/StatusBadge.astro";
  * 2026-11-10 and shown as constants. Nothing here is read by the page; the live ledger beside it
  * is the `Observed` source. Explorer links go to the recorded hashes and say so.
  */
-const { drain, governance, honest, audit } = finalRuns;
+const { drain, governance, honest, preDeletionAudit, keyDeletion, keylessAudit } = finalRuns;
 const near = (hash: string) => nearTxUrl(site.nearExplorer, hash);
 const base = (hash: string) => baseTxUrl(site.baseExplorer, hash);
 
@@ -65,6 +65,7 @@ const implementations = [
 const eta = governance.applicableFromUtc;
 const etaText = `${eta.slice(0, 10)} ${eta.slice(11, 19)} UTC`;
 const appraisal = finalVerifier.appraisal.join(", ");
+const keyDeletedAt = `${keyDeletion.timeUtc.slice(0, 10)} ${keyDeletion.timeUtc.slice(11, 23)} UTC`;
 ---
 
 <article id="receipt-final" class="live-surface final" aria-labelledby="final-title">
@@ -75,9 +76,9 @@ const appraisal = finalVerifier.appraisal.join(", ");
   <p class="live-intro">
     These are saved values from the final testnet run, written into this page as constants. This
     page did not read them; the live ledger further down is the observed source. On{" "}
-    <time datetime={RECORDED_ON}>{RECORDED_ON}</time>{" "}the gate still held one full-access key, so
-    this deployment is not keyless until the chain says zero keys. The <strong>Gate access
-    keys</strong> row reads that now.
+    <time datetime={RECORDED_ON}>{RECORDED_ON}</time>{" "}the gate's only access key was deleted, and
+    the recorded audit then reported zero access keys. The <strong>Gate access keys</strong> row
+    in the live ledger is the authority: zero keys means the gate is keyless.
   </p>
 
   <dl aria-label="Recorded deployment facts">
@@ -91,6 +92,24 @@ const appraisal = finalVerifier.appraisal.join(", ");
         </div>
       ))
     }
+    <div class="live-row">
+      <dt>Gate access key deletion transaction</dt>
+      <dd>
+        <HashText value={keyDeletion.tx} kind="near" label="Gate access key deletion transaction" href={near(keyDeletion.tx)} />
+        <span class="live-meta">
+          DeleteKey of the gate's only access key, a full-access key · block {keyDeletion.block.toLocaleString("en-US")} · <time datetime={keyDeletion.timeUtc}>{keyDeletedAt}</time> · {keyDeletion.keysAfter} keys afterwards at final finality
+        </span>
+      </dd>
+    </div>
+    <div class="live-row">
+      <dt>Demo governor key deletion transaction</dt>
+      <dd>
+        <HashText value={keyDeletion.demoGovernorKeyDeletionTx} kind="near" label="Demo governor key deletion transaction" href={near(keyDeletion.demoGovernorKeyDeletionTx)} />
+        <span class="live-meta">
+          Function-call key on constitution-governor.testnet; its secret was never published
+        </span>
+      </dd>
+    </div>
     <div class="live-row">
       <dt>Governance delay</dt>
       <dd>{finalGate.governanceDelayDays} days, fixed at initialization</dd>
@@ -270,9 +289,11 @@ const appraisal = finalVerifier.appraisal.join(", ");
   </ol>
 
   <p class="live-meta final__audit">
-    Pre-deletion audit, recorded: <span class="mono">constitution audit</span> passed
-    {audit.passed} checks. Its one expected failure was <span class="mono">{audit.expectedFailure}</span>,
-    the retained access key.
+    Keyless audit, recorded: <span class="mono">constitution audit</span> exited{" "}
+    {keylessAudit.exitCode} with {keylessAudit.lines} lines, including{" "}
+    <span class="mono">{keylessAudit.check}</span> {keylessAudit.result} (0 access keys). Before the
+    key was deleted, the same audit passed {preDeletionAudit.passed} checks with one expected
+    failure, <span class="mono">{preDeletionAudit.expectedFailure}</span>.
   </p>
 </article>
 

@@ -20,7 +20,7 @@ describe("judge command guide", () => {
     expect(text).toContain("constitution-gate.testnet");
     expect(text).toContain("0xe323d9b9c0169174e2b3895b8bdc41dc81e8e83c1e8cb62fcd51e8f708601da2");
     expect(text).toContain("E53_TIMELOCK_NOT_ELAPSED");
-    expect(text).toContain("the gate still held one full-access key");
+    expect(text).toContain("the final gate's only access key was deleted");
     expect(text).toContain("refused at rule 0 (current source runtime mismatch)");
     expect(text).toContain("appraisal passed");
     expect(text).not.toMatch(/not deployed|does not exist yet|awaiting activation|after activation/i);

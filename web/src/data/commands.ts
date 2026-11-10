@@ -14,7 +14,7 @@ export const humanCommands: CodeLine[] = [
   { note: "Read the final gate (record: deployments/testnet.json). Build contracts first, set GATE_ACCOUNT=constitution-gate.testnet, and PROPOSAL_ID=0 (refused drain) or 1 (executed upgrade). See README.md." },
   // crates/cli/src/main.rs:96-122 (record/artifact and both public RPCs have defaults).
   { cmd: "cargo run -p constitution-cli -- audit --deployment deployments/testnet.json" },
-  { note: "While the gate still holds an access key, audit reports gate_has_no_access_keys as its failed check; read every check, not only the exit code." },
+  { note: "On 2026-11-10 the audit exited 0 with gate_has_no_access_keys passing; state can change, so read every check, not only the exit code." },
   // crates/cli/src/main.rs:60-69,211-235; README.md:101-106 (actual id and gate required).
   { cmd: 'cargo run -p constitution-cli -- status "$PROPOSAL_ID" --gate "$GATE_ACCOUNT"' },
   // crates/cli/src/main.rs:70-79,211-235; README.md:108-110 (read-only JSON receipt).

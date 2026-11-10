@@ -11,7 +11,7 @@ Labels: [V] verified with a dated source, [I] design inference, [U] unverified.
 - **Signature moment:** the pinned story. One scroll walks a drain disguised as a fee update to a refusal on the night ground (`PROPOSED · CHECKED · REFUSED`), then the ground turns lavender for an honest upgrade to execution (`CERTIFIED · SIGNED · EXECUTED`). It is labeled an illustration of the flow, never chain data.
 - **Entrance (founder request 2026-11-07):** once per browser session the page opens on a short night curtain: the mark assembles, the wordmark rises, the certified line crosses and splits the ground onto the hero. It is skippable, bounded and never a loader (section 4).
 - **Honesty rules hold everywhere:** pending items never show fake links or fake progress; hashes, links and timestamps appear only once observed; local, spike and rehearsal evidence is always labeled; stale data never looks live; the AI is shown as veto-only; no claim beyond PRD guarantees G1 to G4.
-- **Today's data reality (2026-11-11):** the final gate `constitution-gate.testnet` and its CVM verifier are deployed on testnet and exercised by three runs recorded 2026-11-10 (drain refused at R2, early governance apply refused E53, honest upgrade executed on Base Sepolia). The page shows them as `Testnet, recorded` receipts built from constants (`web/src/data/final-evidence.ts`), reads the gate live in the ledger with the `Observed` label, and re-reads the spike's Base Sepolia transaction on request. The gate still held one full-access key when recorded, so nothing claims it is keyless unless the live `Gate access keys` row reads zero. The in-browser run cards are closed: the proxy is already upgraded and the committed manifest's reference source is VaultV1, so a new proposal is refused at rule 0 (`current source runtime mismatch`).
+- **Today's data reality (2026-11-11):** the final gate `constitution-gate.testnet` and its CVM verifier are deployed on testnet and exercised by three runs recorded 2026-11-10 (drain refused at R2, early governance apply refused E53, honest upgrade executed on Base Sepolia). The page shows them as `Testnet, recorded` receipts built from constants (`web/src/data/final-evidence.ts`), reads the gate live in the ledger with the `Observed` label, and re-reads the spike's Base Sepolia transaction on request. The gate's only access key was deleted on 2026-11-10 (DeleteKey transaction recorded in the final deployment card, with the keyless audit result), but the page still claims keyless only through the live `Gate access keys` row, which must read zero. The in-browser run cards are closed: the proxy is already upgraded and the committed manifest's reference source is VaultV1, so a new proposal is refused at rule 0 (`current source runtime mismatch`).
 
 ## 1. Thesis
 
@@ -340,11 +340,11 @@ A live ledger row `Gate access keys` reads the gate account's key list through N
 
 | State | Treatment and copy |
 | --- | --- |
-| Zero keys | Check marker, pass tone: `No access keys: nobody can redeploy or reconfigure this gate` |
-| One or more | Triangle marker, `--pending` warning tone: `{n} access key(s) still present: this gate can still be redeployed. Not keyless yet.` |
+| Zero keys | Check marker, pass tone: `No access keys: nobody can redeploy this gate or add a key to it` |
+| One or more | Triangle marker, `--pending` warning tone: `{n} access key(s) present: this gate can be redeployed. Not keyless.` |
 | Cannot read or malformed response | The standard row failure: `Cannot read NEAR testnet access keys.`; `Not live.` after three failures; the last observed value is kept with `Last observed {time} UTC` |
 
-The row carries the usual `Observed {time} UTC · NEAR block {n}` stamp. Recorded copy elsewhere about keys is dated past tense (`when this was recorded the gate still held one full-access key`) and points at this row.
+The row carries the usual `Observed {time} UTC · NEAR block {n}` stamp. Recorded copy elsewhere about keys is dated (`on 2026-11-10 the gate's only access key was deleted`) and points at this row as the authority.
 
 ## 7. Receipt anatomy
 

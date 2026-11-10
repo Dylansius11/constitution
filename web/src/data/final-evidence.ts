@@ -72,9 +72,22 @@ export const finalRuns = {
     gasUsed: 105099,
     nonce: 0,
   },
-  audit: {
+  preDeletionAudit: {
     passed: 15,
     expectedFailure: "gate_has_no_access_keys",
+  },
+  keyDeletion: {
+    tx: "FugUyo9Xa8VLTm9qM5vovYUpJU5DAqNjTUriYkmKEhn8",
+    block: 277098815,
+    timeUtc: "2026-11-10T17:35:22.910Z",
+    keysAfter: 0,
+    demoGovernorKeyDeletionTx: "45cZx1zvDCdSqrDFBgdnkpa9Wo35SfZrFEGWyqePVSGg",
+  },
+  keylessAudit: {
+    exitCode: 0,
+    lines: 16,
+    check: "gate_has_no_access_keys",
+    result: "PASS",
   },
 } as const;
 

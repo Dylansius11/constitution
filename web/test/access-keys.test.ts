@@ -106,18 +106,18 @@ describe("gate access key count", () => {
 });
 
 describe("gate access key state copy", () => {
-  it("zero keys: nobody can redeploy or reconfigure the gate", () => {
+  it("zero keys: nobody can redeploy the gate or add a key to it", () => {
     expect(accessKeyState(0)).toEqual({
       tone: "pass",
-      text: "No access keys: nobody can redeploy or reconfigure this gate",
+      text: "No access keys: nobody can redeploy this gate or add a key to it",
     });
   });
 
   it("one or more keys: a warning that names the count and says not keyless", () => {
     expect(accessKeyState(1)).toEqual({
       tone: "warning",
-      text: "1 access key(s) still present: this gate can still be redeployed. Not keyless yet.",
+      text: "1 access key(s) present: this gate can be redeployed. Not keyless.",
     });
-    expect(accessKeyState(3).text).toMatch(/^3 access key\(s\) still present/);
+    expect(accessKeyState(3).text).toMatch(/^3 access key\(s\) present/);
   });
 });
