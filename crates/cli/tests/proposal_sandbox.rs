@@ -151,6 +151,7 @@ struct Stub {
     recovery: Arc<Mutex<Option<PathBuf>>>,
     refuse_start: Arc<AtomicBool>,
     identity_calls: Arc<std::sync::atomic::AtomicUsize>,
+    last_proposal: Arc<std::sync::atomic::AtomicU64>,
 }
 async fn identity(State(stub): State<Stub>) -> Json<Value> {
     stub.identity_calls.fetch_add(1, Ordering::SeqCst);
@@ -174,7 +175,13 @@ async fn submit(State(stub): State<Stub>, Json(request): Json<Value>) -> axum::r
         .decode(request["sealed_bundle_b64"].as_str().unwrap())
         .unwrap();
     *stub.bundle.lock().unwrap() = Some(stub.key.unseal(&sealed).unwrap());
-    (axum::http::StatusCode::ACCEPTED, Json(json!({"run_id":7}))).into_response()
+    stub.last_proposal
+        .store(request["proposal_id"].as_u64().unwrap(), Ordering::SeqCst);
+    (
+        axum::http::StatusCode::ACCEPTED,
+        Json(json!({"run_id":7,"gate_account":stub.gate,"proposal_id":request["proposal_id"],"boot_id":"ab".repeat(32)})),
+    )
+        .into_response()
 }
 async fn run_status(State(stub): State<Stub>) -> Json<Value> {
     let stage = if stub.recovery.lock().unwrap().is_some() {
@@ -182,7 +189,9 @@ async fn run_status(State(stub): State<Stub>) -> Json<Value> {
     } else {
         "queued"
     };
-    Json(json!({"stage":stage, "started_at":1, "stages":[]}))
+    Json(
+        json!({"stage":stage, "started_at":1, "stages":[], "gate_account":stub.gate, "proposal_id":stub.last_proposal.load(Ordering::SeqCst), "boot_id":"ab".repeat(32)}),
+    )
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -237,6 +246,7 @@ async fn propose_seals_the_onchain_commitment_and_reads_pending_receipt()
         recovery: Arc::new(Mutex::new(None)),
         refuse_start: Arc::new(AtomicBool::new(false)),
         identity_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        last_proposal: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     };
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let verifier = format!("http://{}", listener.local_addr()?);

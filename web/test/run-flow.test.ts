@@ -74,7 +74,7 @@ function harness() {
   const readImplementation = vi.fn(async () => proxyRead(OLD_IMPL, 1));
   const readTransaction = vi.fn(async (): Promise<TxObservation> => ({ status: "not_found" }));
   const relay = vi.fn(async () => SIGNED_TX_HASH);
-  const startRun = vi.fn(async () => ({ runId: 9, label: null }));
+  const startRun = vi.fn(async () => ({ runId: 9, gateAccount: "gate.testnet", proposalId: 7, bootId: "ab".repeat(32), label: null }));
   const deps: Partial<RunFlowDeps> = {
     storage,
     gate: { getConfig: async () => view(gateConfig), getProposal },
@@ -115,6 +115,15 @@ function harness() {
 afterEach(() => vi.useRealTimers());
 
 describe("browser run flow", () => {
+  it("drops a verifier run bound to another proposal", async () => {
+    const h = harness();
+    h.getRun.mockResolvedValue(run({ proposal_id: 8, stages: [{ name: "compiling", status: "Pass", detail: "wrong proposal", elapsed_ms: 0 }] }));
+    await createRunFlow("attack", config, (u) => h.updates.push(u), h.deps).start();
+    expect(h.last()?.kind).toBe("error");
+    expect(JSON.parse([...h.stored.values()][0]).runId).toBeNull();
+    expect(h.updates.every((update) => update.view.stages.every((stage) => stage.detail !== "wrong proposal"))).toBe(true);
+  });
+
   it("ends attack only on gate Rejected, without requesting or broadcasting a signature", async () => {
     const h = harness();
     h.getProposal.mockResolvedValue(

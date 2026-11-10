@@ -234,7 +234,7 @@ fn wait(
     let start = Instant::now();
     loop {
         let proposal = receipt::read_proposal(near, &args.gate, id)?;
-        let run = verifier.run(run_id)?;
+        let run = verifier.run(run_id, &args.gate, id)?;
         match next(args.scenario, &proposal.state, &run)? {
             Next::Rejected => return Ok(()),
             Next::Relay => {

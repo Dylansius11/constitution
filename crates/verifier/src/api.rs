@@ -49,6 +49,7 @@ struct Cooldown {
 #[derive(Default)]
 struct Admission {
     runs: BTreeMap<u64, SubmittedRun>,
+    bindings: BTreeMap<u64, ProposalKey>,
     finished: VecDeque<u64>,
     next_id: u64,
     active: Option<ProposalKey>,
@@ -242,6 +243,7 @@ impl Admission {
         while self.finished.len() > FINISHED_RUNS {
             if let Some(oldest) = self.finished.pop_front() {
                 self.runs.remove(&oldest);
+                self.bindings.remove(&oldest);
             }
         }
     }
@@ -335,6 +337,7 @@ pub struct Service {
     pub canary: CanaryPolicy,
     pub canary_health: pipeline::CanaryHealth,
     submitter: Option<Box<dyn VerdictSubmitter>>,
+    boot_id: String,
     state: Mutex<Admission>,
     /// Bounds the unauthenticated `get_proposal` RPC.
     preauth: Arc<tokio::sync::Semaphore>,
@@ -369,6 +372,7 @@ impl Service {
         submitter: Option<Box<dyn VerdictSubmitter>>,
     ) -> Result<Arc<Self>, String> {
         constitution_types::manifest::validate_rule_set(&manifest)?;
+        let boot_id = hex::encode(identity.boot_nonce);
         Ok(Arc::new(Self {
             identity,
             manifest,
@@ -379,6 +383,7 @@ impl Service {
             canary: CanaryPolicy::default(),
             canary_health: pipeline::CanaryHealth::default(),
             submitter,
+            boot_id,
             state: Mutex::new(Admission::default()),
             preauth: Arc::new(tokio::sync::Semaphore::new(PREAUTH_RPC_SLOTS)),
             trusted_proxy_header: None,
@@ -572,8 +577,12 @@ async fn start(
         *attempt += 1;
         let attempt = *attempt;
         state.runs.insert(id, Run::queued().into());
+        state.bindings.insert(id, key.clone());
         (id, attempt, prior_failed_runs)
     };
+    let response = serde_json::json!({
+        "run_id": id, "gate_account": key.0, "proposal_id": key.1, "boot_id": s.boot_id
+    });
     guard.id = Some(id);
     tokio::task::spawn_blocking(move || {
         let _guard = guard;
@@ -632,22 +641,30 @@ async fn start(
         };
         lock(&s.state).runs.insert(id, result);
     });
-    Ok((StatusCode::ACCEPTED, Json(serde_json::json!({"run_id":id}))))
+    Ok((StatusCode::ACCEPTED, Json(response)))
 }
 async fn status(
     State(s): State<Arc<Service>>,
     ConnectInfo(socket): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<u64>,
-) -> Result<Json<SubmittedRun>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     let mut state = lock(&s.state);
     state.read_limit(s.peer(socket, &headers)?, Instant::now())?;
-    state
+    let run = state
         .runs
         .get(&id)
-        .cloned()
-        .map(Json)
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "evicted"))
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "evicted"))?;
+    let (gate, proposal_id) = state
+        .bindings
+        .get(&id)
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "evicted"))?;
+    let mut value = serde_json::to_value(run)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "serialization_error"))?;
+    value["gate_account"] = serde_json::json!(gate);
+    value["proposal_id"] = serde_json::json!(proposal_id);
+    value["boot_id"] = serde_json::json!(s.boot_id);
+    Ok(Json(value))
 }
 async fn evidence(
     State(s): State<Arc<Service>>,
@@ -731,6 +748,8 @@ mod tests {
             chain_id: 84532,
             proxy: Hex20([1; 20]),
             executor: Hex20([2; 20]),
+            proxy_admin: Hex20([10; 20]),
+            derived_eoa: Hex20([11; 20]),
             expected_current_impl: Hex20([3; 20]),
             observed_current_impl: Hex20([4; 20]),
             current_impl_codehash: Hex32([5; 32]),
@@ -821,6 +840,33 @@ mod tests {
     fn key(id: u64) -> ProposalKey {
         ("gate.testnet".parse().unwrap(), id)
     }
+    #[tokio::test]
+    async fn runs_bind_proposal_and_distinguish_verifier_boots() {
+        let (first, bytes, _) = setup();
+        let (second, other_bytes, _) = setup();
+        let a = call(&first, 1, request(&first, &bytes, 1))
+            .await
+            .unwrap()
+            .1
+            .0;
+        let b = call(&second, 2, request(&second, &other_bytes, 2))
+            .await
+            .unwrap()
+            .1
+            .0;
+        assert_eq!(a["gate_account"], "gate.testnet");
+        assert_eq!(a["proposal_id"], 1);
+        assert_ne!(a["boot_id"], b["boot_id"]);
+        let id = a["run_id"].as_u64().unwrap();
+        let observed = status(State(first), peer(3), HeaderMap::new(), Path(id))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(observed["gate_account"], a["gate_account"]);
+        assert_eq!(observed["proposal_id"], a["proposal_id"]);
+        assert_eq!(observed["boot_id"], a["boot_id"]);
+    }
+
     #[tokio::test]
     async fn mismatch_and_unseal_errors_never_create_runs_or_attempts() {
         let (s, bytes, reads) = setup();
@@ -1289,6 +1335,8 @@ mod tests {
             chain_id: 84532,
             proxy: Hex20([1; 20]),
             executor: Hex20([2; 20]),
+            proxy_admin: Hex20([10; 20]),
+            derived_eoa: Hex20([11; 20]),
             expected_current_impl: Hex20([3; 20]),
             observed_current_impl: Hex20([3; 20]),
             current_impl_codehash: code_hash,

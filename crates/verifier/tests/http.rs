@@ -103,6 +103,8 @@ async fn http_registry_prechecks_cors_and_no_caller_supplied_hashes() {
         chain_id: 84532,
         proxy: Hex20([1; 20]),
         executor: Hex20([2; 20]),
+        proxy_admin: Hex20([10; 20]),
+        derived_eoa: Hex20([11; 20]),
         expected_current_impl: Hex20([3; 20]),
         observed_current_impl: Hex20([3; 20]),
         current_impl_codehash: Hex32([0; 32]),

@@ -362,6 +362,18 @@ impl Verifier {
         self.get("/v1/identity")
     }
 
+    /// True only for a verifier on this machine (`localhost` or a loopback IP).
+    pub fn is_loopback(&self) -> bool {
+        reqwest::Url::parse(&self.url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.trim_matches(['[', ']']).to_owned()))
+            .is_some_and(|h| {
+                h == "localhost"
+                    || h.parse::<std::net::IpAddr>()
+                        .is_ok_and(|ip| ip.is_loopback())
+            })
+    }
+
     fn get(&self, path: &str) -> Result<Value, crate::failure::Failure> {
         let response = self
             .client
@@ -380,7 +392,12 @@ impl Verifier {
             .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))
     }
 
-    pub fn run(&self, id: &str) -> Result<Value, crate::failure::Failure> {
+    pub fn run(
+        &self,
+        id: &str,
+        gate: &str,
+        proposal_id: u64,
+    ) -> Result<Value, crate::failure::Failure> {
         if id.is_empty()
             || !id
                 .bytes()
@@ -397,6 +414,18 @@ impl Verifier {
         {
             return Err(Self::failure(
                 "run response lacks stage, started_at or stages".into(),
+            ));
+        }
+        if value["gate_account"].as_str() != Some(gate)
+            || value["proposal_id"].as_u64() != Some(proposal_id)
+            || !value["boot_id"].as_str().is_some_and(|s| {
+                s.len() == 64
+                    && s.bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
+        {
+            return Err(Self::failure(
+                "run response binding does not match the requested proposal".into(),
             ));
         }
         Ok(value)
@@ -499,6 +528,18 @@ impl Verifier {
         let value: Value = response
             .json()
             .map_err(|e| Self::failure(safe_error(&self.url, e.without_url())))?;
+        if value["gate_account"].as_str() != Some(gate)
+            || value["proposal_id"].as_u64() != Some(proposal_id)
+            || !value["boot_id"].as_str().is_some_and(|s| {
+                s.len() == 64
+                    && s.bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
+        {
+            return Err(Self::failure(
+                "run creation response binding does not match the proposal".into(),
+            ));
+        }
         value["run_id"]
             .as_u64()
             .map(|id| id.to_string())
@@ -543,5 +584,29 @@ mod tests {
         word[0] = 1;
         assert!(word_address(&word, "x").is_err());
         assert!(word_address(&[0u8; 31], "x").is_err());
+    }
+}
+
+#[cfg(test)]
+mod loopback_tests {
+    use super::Verifier;
+
+    #[test]
+    fn only_this_machine_may_skip_identity_appraisal() {
+        for url in [
+            "http://127.0.0.1:8787",
+            "http://localhost:8787/",
+            "http://[::1]:9",
+        ] {
+            assert!(Verifier::new(url).unwrap().is_loopback(), "{url}");
+        }
+        for url in [
+            "https://abc-8787.dstack-pha1-prod9.phala.network",
+            "http://10.0.0.5:8787",
+            "http://127.0.0.1.evil.example:8787",
+            "http://localhost.evil.example",
+        ] {
+            assert!(!Verifier::new(url).unwrap().is_loopback(), "{url}");
+        }
     }
 }

@@ -220,6 +220,8 @@ impl GateSource {
             chain_id: config.chain_id,
             proxy: Hex20(config.proxy),
             executor: Hex20(config.executor),
+            proxy_admin: Hex20(config.proxy_admin),
+            derived_eoa: Hex20(config.derived_eoa),
             expected_current_impl: Hex20(p.expected_current_impl),
             observed_current_impl: Hex20(address),
             current_impl_codehash: Hex32(keccak(&code.0)),

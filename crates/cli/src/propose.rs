@@ -152,18 +152,8 @@ pub fn verifier_run(
             "use exactly the original canonical source bundle and contract selection; do not change the existing proposal",
         ));
     }
-    let identity = verifier.identity()?;
-    let key: Hex32 =
-        serde_json::from_value(identity["transport_pubkey"].clone()).map_err(|_| {
-            Failure::new(
-                "verifier identity has no valid transport_pubkey",
-                "check --verifier-url/VERIFIER_URL and fetch the current identity before retrying",
-            )
-        })?;
-    println!(
-        "verifier identity NOT APPRAISED by this command; use constitution verifier appraise (D5)"
-    );
-    let run_id = verifier.start(gate, id, &seal(&bytes, key.0)?)?;
+    let key = crate::appraise::sealing_key(verifier)?;
+    let run_id = verifier.start(gate, id, &seal(&bytes, key)?)?;
     println!("verifier run: {run_id}");
     println!(
         "next: constitution status {id} --run {run_id} --watch 2100 (use the same --gate, --near-rpc and --verifier)"
@@ -246,20 +236,8 @@ pub fn propose(
         init_calldata: init,
         source_commitment: Hex32(constitution_types::certificate_hash(bytes)),
     };
-    let identity = verifier.identity()?;
-    let key: Hex32 = serde_json::from_value(
-        identity
-            .get("transport_pubkey")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
-    )
-    .map_err(|e| {
-        Failure::new(
-            format!("verifier transport_pubkey: {e}"),
-            "check --verifier / VERIFIER_URL; nothing was written on chain",
-        )
-    })?;
-    let sealed = seal(bytes, key.0)?;
+    let key = crate::appraise::sealing_key(verifier)?;
+    let sealed = seal(bytes, key)?;
     let credit: U128Str = near
         .view(gate, "get_credit", json!({"account": input.account}))
         .map_err(read_error)?;
@@ -315,9 +293,6 @@ pub fn propose(
     })?;
     println!("proposal {id}");
     println!("NEAR propose tx: {}", called.tx_hash);
-    println!(
-        "verifier identity NOT APPRAISED by this command; use constitution verifier appraise (D5)"
-    );
     Ok(Registered {
         id,
         tx_hash: called.tx_hash,
