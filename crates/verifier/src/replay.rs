@@ -419,6 +419,8 @@ struct Rpc {
 }
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const RPC_RETRY_PAUSE: Duration = Duration::from_millis(250);
+const RPC_RATE_LIMIT_ATTEMPTS: u32 = 7;
+const RPC_RATE_LIMIT_MAX_PAUSE: Duration = Duration::from_secs(8);
 impl Rpc {
     fn new(url: &str, deadline: Instant) -> Result<Self, Incomplete> {
         Ok(Self {
@@ -431,16 +433,28 @@ impl Rpc {
         })
     }
     /// Every read is attempted twice: a lagging or load-balanced provider often serves a
-    /// null/error for a fresh block and the correct value moments later. A second failure is
-    /// reported as the provider's fault, never as a fact about the proposal.
+    /// null/error for a fresh block and the correct value moments later. A rate-limited read
+    /// backs off exponentially (bounded by the run deadline) because free proof providers
+    /// throttle bursts and a proof read is idempotent. A final failure is reported as the
+    /// provider's fault, never as a fact about the proposal.
     fn call(&self, method: &str, params: Value) -> Result<Value, Incomplete> {
-        match self.call_once(method, &params) {
-            Ok(value) => Ok(value),
-            Err(_) if Instant::now() + RPC_RETRY_PAUSE < self.deadline => {
-                std::thread::sleep(RPC_RETRY_PAUSE);
-                self.call_once(method, &params)
+        let mut pause = RPC_RETRY_PAUSE;
+        let mut attempt = 1;
+        loop {
+            let error = match self.call_once(method, &params) {
+                Ok(value) => return Ok(value),
+                Err(error) => error,
+            };
+            let limited = matches!(error.reason, IncompleteReason::RpcRateLimited);
+            let attempts = if limited { RPC_RATE_LIMIT_ATTEMPTS } else { 2 };
+            if attempt >= attempts || Instant::now() + pause >= self.deadline {
+                return Err(error);
             }
-            Err(error) => Err(error),
+            std::thread::sleep(pause);
+            if limited {
+                pause = (pause * 2).min(RPC_RATE_LIMIT_MAX_PAUSE);
+            }
+            attempt += 1;
         }
     }
     fn call_once(&self, method: &str, params: &Value) -> Result<Value, Incomplete> {
@@ -503,7 +517,12 @@ impl Rpc {
                 .unwrap_or("")
                 .to_ascii_lowercase();
             let mut error = incomplete(&format!("{method}: RPC error"));
-            error.reason = if code == Some(-32005) || message.contains("rate limit") {
+            error.reason = if code == Some(-32005)
+                || code == Some(-32011)
+                || message.contains("rate limit")
+                || message.contains("request limit")
+                || message.contains("too many requests")
+            {
                 IncompleteReason::RpcRateLimited
             } else if method == "eth_getProof" && message.contains("proof window") {
                 IncompleteReason::ProofWindowExceeded
@@ -1828,6 +1847,76 @@ mod attribution_tests {
             }
             server.join().unwrap();
         }
+    }
+
+    #[test]
+    fn rate_limited_reads_back_off_then_succeed_and_respect_the_deadline() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let serve = |responses: Vec<(&'static str, &'static str)>| {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let handle = std::thread::spawn(move || {
+                for (status, body) in responses {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut buf = [0u8; 4096];
+                    let _ = stream.read(&mut buf);
+                    write!(
+                        stream,
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .unwrap();
+                }
+            });
+            (url, handle)
+        };
+        // Two throttled answers, one provider-style JSON-RPC limit, then success.
+        let (url, handle) = serve(vec![
+            ("429 Too Many Requests", "slow down"),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32011,"message":"request limit reached"}}"#,
+            ),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32000,"message":"Rate limit exceeded"}}"#,
+            ),
+            ("200 OK", r#"{"result":"0x14a34"}"#),
+        ]);
+        let rpc = Rpc::new(&url, Instant::now() + Duration::from_secs(30)).unwrap();
+        assert_eq!(
+            rpc.call("eth_chainId", json!([])).unwrap(),
+            json!("0x14a34")
+        );
+        handle.join().unwrap();
+        // A non-throttle failure still gets exactly two attempts, not the long backoff.
+        let (url, handle) = serve(vec![
+            ("200 OK", r#"{"error":{"code":-32000,"message":"boom"}}"#),
+            ("200 OK", r#"{"error":{"code":-32000,"message":"boom"}}"#),
+        ]);
+        let rpc = Rpc::new(&url, Instant::now() + Duration::from_secs(30)).unwrap();
+        assert_eq!(
+            rpc.call("eth_chainId", json!([]))
+                .unwrap_err()
+                .reason
+                .code(),
+            "rpc_error"
+        );
+        handle.join().unwrap();
+        // A throttled provider cannot hold the run past its deadline.
+        let (url, handle) = serve(vec![("429 Too Many Requests", "x"); 3]);
+        let started = Instant::now();
+        let rpc = Rpc::new(&url, started + Duration::from_millis(900)).unwrap();
+        assert_eq!(
+            rpc.call("eth_chainId", json!([]))
+                .unwrap_err()
+                .reason
+                .code(),
+            "rpc_rate_limited"
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        handle.join().unwrap();
     }
 
     #[test]
