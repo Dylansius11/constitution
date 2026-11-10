@@ -4,6 +4,12 @@ Read the headlines before work. Record actual surprises only. Newest first. Each
 
 Entries dated 2026-10-26 come from the planning session (research only, no code); later entries come from the build.
 
+### 2026-11-10: Recompute dstack runtime digests before authenticating the event chain
+
+- [V, actual production Phala CVM] Intel DCAP signature-chain and `UpToDate` checks passed, but appraisal rejected event 20 because dstack 0.5.12 returned an empty redundant runtime `digest`. The official `TdxEvent::digest()` derives runtime digests from event content; the signed RTMR3, not a separately supplied digest string, authenticates the chain.
+- Root cause: the local simulator always populated digests, so the parser treated an optional redundant field as mandatory. Empty/absent digest regression failed before the correction; afterwards it passed while altered content still failed the quote binding. The actual CLI appraisal then passed all seven checks for expected compose `b18c4e5b41c902266bcbe8adbdcc1ae0627ae5fefb1315f16e17224e5a6a1ed9`.
+- Rule: independently derive canonical v1/v2 event digests, reject a mismatching supplied digest, and always compare the complete recomputed chain to the signed register. Keep Intel production trust, `UpToDate`, expected compose and key/nonce/release bindings unchanged. A later CVM restart requires fresh identity appraisal.
+
 ### 2026-11-05: Prepaid proposal credit must include storage for restricted NEAR keys
 
 - [V, local] A fresh review found that `propose` still required an attached storage fee although D17 exposes only a function-call key. The old prepaid-credit regression failed at the attached-fee check. After cutover, the actual CLI successfully registered a proposal in near-sandbox using a genuine method-restricted key; forbidden credit withdrawal and NEAR transfer remained refused.

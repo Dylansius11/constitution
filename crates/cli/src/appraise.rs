@@ -117,6 +117,7 @@ pub fn tcb_check(status: &str) -> Check {
 struct Event {
     imr: u32,
     event_type: u32,
+    #[serde(default)]
     digest: String,
     event: String,
     event_payload: String,
@@ -180,7 +181,9 @@ fn replay(log: &[String]) -> Result<([u8; 48], [u8; 32]), String> {
             }
         };
         let digest: [u8; 48] = Sha384::digest(&preimage).into();
-        if hex_bytes(&event.digest)? != digest {
+        // dstack may omit this redundant runtime digest; the quote authenticates our
+        // independently recomputed chain. A supplied digest must still agree.
+        if !event.digest.is_empty() && hex_bytes(&event.digest)? != digest {
             return Err(format!(
                 "event {index}: digest does not bind its name/payload"
             ));

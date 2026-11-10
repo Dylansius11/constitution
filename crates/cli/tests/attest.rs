@@ -114,6 +114,33 @@ fn attest_simulator_positive_full_key_preimage_rtmr3_compose_release_binding() {
     assert!(checks.iter().all(|check| check.ok), "{checks:?}");
 }
 
+#[test]
+fn attest_runtime_events_without_redundant_digests_still_bind_to_quote() {
+    for omit_field in [false, true] {
+        let (mut identity, report) = simulator();
+        for line in &mut identity.event_log {
+            let mut event: serde_json::Value = serde_json::from_str(line).unwrap();
+            if omit_field {
+                event.as_object_mut().unwrap().remove("digest");
+            } else {
+                event["digest"] = serde_json::json!("");
+            }
+            *line = event.to_string();
+        }
+        let checks = appraise::bindings(&identity, &report, identity.compose_hash);
+        assert!(checks.iter().all(|check| check.ok), "{checks:?}");
+
+        // With no supplied digest, altered content must still fail the signed RTMR3 binding.
+        let mut event: serde_json::Value = serde_json::from_str(&identity.event_log[0]).unwrap();
+        event["event_payload"] = serde_json::json!("11".repeat(32));
+        identity.event_log[0] = event.to_string();
+        assert_fails(
+            &appraise::bindings(&identity, &report, identity.compose_hash),
+            "rtmr3_replay",
+        );
+    }
+}
+
 fn assert_fails(checks: &[appraise::Check], name: &str) {
     let check = checks.iter().find(|check| check.name == name).unwrap();
     assert!(!check.ok, "{checks:?}");

@@ -78,6 +78,10 @@ Agent steps: confirm exact subcommands with `near account --help` on 0.30.1 befo
 
 Verification: account summary shows a non-zero balance. Expected error: faucet exhausted; stop and tell the founder.
 
+For gate initialization, select `Config.governance_delay_days` as 1–30 whole days (omission defaults to 3); 0 and 31 are invalid. The duration is immutable, including through `SetParams`; a later change needs a new gate and the existing timelocked authority migration. The deployment record must explicitly commit the expected duration for audit comparison against `get_config`. Ordinary certified vault upgrades do not wait for this governance delay.
+
+The D21 ceremony requires a labeled user-facing E2E rehearsal and audit before irreversible deletion, then fresh founder authorization, followed by final audit and essential live checks. Retained-key staging is not keyless proof. See [`scripts/activate.md`](../../scripts/activate.md); the old 2026-11-07 internal milestone for seven-day maturation is stale, not evidence of a matured change.
+
 ### 2. Chain Signatures and the derived EOA (P1.2)
 
 Docs: https://docs.near.org/chain-abstraction/chain-signatures/implementation ; near/mpc `crates/contract` (checked 2026-10-26).
@@ -124,7 +128,7 @@ Human steps (founder):
 
 Agent steps (P1.6, with approval): build `verifier-image/` with digest-pinned base image and tool binaries; deploy the compose; read `GET /v1/identity`; run `constitution verifier appraise <url>`; record `release_hash`, compose hash, image digest, instance size, observed hourly cost. The certificate key is ephemeral (D18); do not use `GetKey` for it.
 
-Verification: appraisal passes DCAP chain, TCB `UpToDate`, RTMR3 replay equals compose hash, `report_data` matches published keys. Errors: credit missing (escalate D2 fallback decision), tier too small (escalate D18).
+Verification: appraisal passes the Intel production DCAP chain and strict TCB `UpToDate`; independently recomputed runtime-event digests replay to the quote's RTMR3; the unique measured compose hash matches the expected deployment; `report_data` binds the published keys and boot nonce. dstack may leave runtime-event `digest` empty or absent: compute it from canonical content, still reject any supplied mismatching digest, and never skip the signed-register comparison. Official format: [pinned `TdxEvent::digest`](https://github.com/Dstack-TEE/dstack/blob/dad8326f89a76e60e5d4b61c424a3329c92f60e9/dstack/cc-eventlog/src/tdx.rs). Errors: credit missing (escalate D2 fallback decision), tier too small (escalate D18).
 
 Fallback (only after a new founder decision): OutLayer, docs https://app.outlayer.ai/docs/getting-started ; live `outlayer.testnet.get_max_limits` returned `[500000000000,180,300]` on 2026-10-26.
 
