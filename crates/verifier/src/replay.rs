@@ -45,11 +45,63 @@ pub enum IncompleteKind {
     /// deterministic replay) that the proposal cannot satisfy.
     Contradiction,
 }
+
+/// Closed, non-secret categories for operator-visible environmental failures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IncompleteReason {
+    RpcTransport,
+    Timeout,
+    RpcRateLimited,
+    RpcHttp4xx,
+    RpcHttp5xx,
+    RpcHttpOther,
+    RpcMethodUnsupported,
+    ProofWindowExceeded,
+    RpcError,
+    MalformedResponse,
+    HeaderMismatch,
+    StateProofMismatch,
+    CodeMismatch,
+    InsufficientConfirmations,
+    SenderCodeUnexpected,
+    SenderNonceUnexpected,
+    SenderInsufficientBalance,
+    EvmTransactionInvalid,
+    EvmHeaderInvalid,
+    ReplayIncomplete,
+}
+impl IncompleteReason {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::RpcTransport => "rpc_transport",
+            Self::Timeout => "timeout",
+            Self::RpcRateLimited => "rpc_rate_limited",
+            Self::RpcHttp4xx => "rpc_http_4xx",
+            Self::RpcHttp5xx => "rpc_http_5xx",
+            Self::RpcHttpOther => "rpc_http_other",
+            Self::RpcMethodUnsupported => "rpc_method_unsupported",
+            Self::ProofWindowExceeded => "proof_window_exceeded",
+            Self::RpcError => "rpc_error",
+            Self::MalformedResponse => "malformed_response",
+            Self::HeaderMismatch => "header_mismatch",
+            Self::StateProofMismatch => "state_proof_mismatch",
+            Self::CodeMismatch => "code_mismatch",
+            Self::InsufficientConfirmations => "insufficient_confirmations",
+            Self::SenderCodeUnexpected => "sender_code_unexpected",
+            Self::SenderNonceUnexpected => "sender_nonce_unexpected",
+            Self::SenderInsufficientBalance => "sender_insufficient_balance",
+            Self::EvmTransactionInvalid => "evm_transaction_invalid",
+            Self::EvmHeaderInvalid => "evm_header_invalid",
+            Self::ReplayIncomplete => "replay_incomplete",
+        }
+    }
+}
 /// A diagnostic never includes an RPC URL or response body (URLs may contain keys).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Incomplete {
     pub message: String,
     pub kind: IncompleteKind,
+    pub reason: IncompleteReason,
     pub rpc_transport: bool,
 }
 impl fmt::Display for Incomplete {
@@ -64,6 +116,24 @@ fn incomplete(message: &str) -> Incomplete {
     Incomplete {
         message: message.into(),
         kind: IncompleteKind::Environment,
+        reason: match message {
+            "run deadline exceeded" => IncompleteReason::Timeout,
+            "evidence block mismatch"
+            | "execution header hash mismatch"
+            | "evidence block reorged during fetch"
+            | "proof evidence block reorged during fetch" => IncompleteReason::HeaderMismatch,
+            "account does not match state-root proof"
+            | "storage value does not match proof"
+            | "absent account has nonempty state"
+            | "absent storage is nonzero" => IncompleteReason::StateProofMismatch,
+            "proof code hash mismatch"
+            | "candidate code changed during witness fetch"
+            | "candidate runtime does not match proposal code hash" => {
+                IncompleteReason::CodeMismatch
+            }
+            "insufficient confirmations" => IncompleteReason::InsufficientConfirmations,
+            _ => IncompleteReason::ReplayIncomplete,
+        },
         rpc_transport: false,
     }
 }
@@ -71,6 +141,7 @@ fn contradiction(message: &str) -> Incomplete {
     Incomplete {
         message: message.into(),
         kind: IncompleteKind::Contradiction,
+        reason: IncompleteReason::ReplayIncomplete,
         rpc_transport: false,
     }
 }
@@ -332,15 +403,31 @@ impl Rpc {
             .timeout(remaining.min(RPC_TIMEOUT))
             .json(&json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}))
             .send()
-            .map_err(|_| Incomplete {
+            .map_err(|error| Incomplete {
                 message: format!("{method}: transport failure"),
                 kind: IncompleteKind::Environment,
+                reason: if error.is_timeout() {
+                    IncompleteReason::Timeout
+                } else {
+                    IncompleteReason::RpcTransport
+                },
                 rpc_transport: true,
             })?;
-        require(
-            response.status().is_success(),
-            &format!("{method}: HTTP failure"),
-        )?;
+        let status = response.status();
+        if !status.is_success() {
+            let reason = if status.as_u16() == 429 {
+                IncompleteReason::RpcRateLimited
+            } else if status.is_client_error() {
+                IncompleteReason::RpcHttp4xx
+            } else if status.is_server_error() {
+                IncompleteReason::RpcHttp5xx
+            } else {
+                IncompleteReason::RpcHttpOther
+            };
+            let mut error = incomplete(&format!("{method}: HTTP {}", status.as_u16()));
+            error.reason = reason;
+            return Err(error);
+        }
         // Bound hostile provider output before JSON allocation; no silent truncation.
         use std::io::Read;
         let mut buffer = Vec::new();
@@ -352,12 +439,29 @@ impl Rpc {
             buffer.len() <= 16 * 1024 * 1024,
             "RPC response exceeds bound",
         )?;
-        let value: Value = serde_json::from_slice(&buffer)
-            .map_err(|_| incomplete(&format!("{method}: invalid JSON")))?;
-        require(
-            value.get("error").is_none(),
-            &format!("{method}: RPC error"),
-        )?;
+        let value: Value = serde_json::from_slice(&buffer).map_err(|_| {
+            let mut error = incomplete(&format!("{method}: invalid JSON"));
+            error.reason = IncompleteReason::MalformedResponse;
+            error
+        })?;
+        if let Some(rpc_error) = value.get("error") {
+            let code = rpc_error["code"].as_i64();
+            let message = rpc_error["message"]
+                .as_str()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let mut error = incomplete(&format!("{method}: RPC error"));
+            error.reason = if code == Some(-32005) || message.contains("rate limit") {
+                IncompleteReason::RpcRateLimited
+            } else if method == "eth_getProof" && message.contains("proof window") {
+                IncompleteReason::ProofWindowExceeded
+            } else if code == Some(-32601) {
+                IncompleteReason::RpcMethodUnsupported
+            } else {
+                IncompleteReason::RpcError
+            };
+            return Err(error);
+        }
         value
             .get("result")
             .filter(|v| !v.is_null())
@@ -565,7 +669,10 @@ fn fetch_witness_inner(
     )?;
     // Different providers are allowed, different evidence blocks are not.
     let proof_header = proof_rpc.call("eth_getBlockByNumber", json!([tag, false]))?;
-    verified_header(&proof_header, block)?;
+    verified_header(&proof_header, block).map_err(|mut error| {
+        error.message = format!("proof provider: {}", error.message);
+        error
+    })?;
     // A second provider node may be a block behind the one that served the header; read the
     // tip once more before concluding it is too shallow. Either outcome is environmental.
     let mut deep_enough = false;
@@ -966,6 +1073,29 @@ struct Observation {
     output: Bytes,
     logs: Vec<Log>,
 }
+fn evm_incomplete(error: revm::context_interface::result::EVMError<Incomplete>) -> Incomplete {
+    use revm::context_interface::result::{EVMError, InvalidTransaction};
+    let reason = match error {
+        EVMError::Database(error) => return error,
+        EVMError::Transaction(InvalidTransaction::RejectCallerWithCode) => {
+            IncompleteReason::SenderCodeUnexpected
+        }
+        EVMError::Transaction(
+            InvalidTransaction::NonceOverflowInTransaction
+            | InvalidTransaction::NonceTooHigh { .. }
+            | InvalidTransaction::NonceTooLow { .. },
+        ) => IncompleteReason::SenderNonceUnexpected,
+        EVMError::Transaction(InvalidTransaction::LackOfFundForMaxFee { .. }) => {
+            IncompleteReason::SenderInsufficientBalance
+        }
+        EVMError::Transaction(_) => IncompleteReason::EvmTransactionInvalid,
+        EVMError::Header(_) => IncompleteReason::EvmHeaderInvalid,
+        EVMError::Custom(_) | EVMError::CustomAny(_) => IncompleteReason::ReplayIncomplete,
+    };
+    let mut error = incomplete("EVM execution incomplete");
+    error.reason = reason;
+    error
+}
 fn execute(
     db: &mut StrictDb,
     environment: &BlockEnv,
@@ -1001,7 +1131,7 @@ fn execute(
         })
         .build_mainnet()
         .transact(tx)
-        .map_err(|_| incomplete("EVM execution incomplete"))?;
+        .map_err(evm_incomplete)?;
     require_contradiction(
         !matches!(result.result, ExecutionResult::Halt { .. }),
         "EVM halted",
@@ -1370,6 +1500,82 @@ impl CandidateReplay {
 #[cfg(test)]
 mod attribution_tests {
     use super::*;
+
+    #[test]
+    fn evm_errors_keep_safe_witness_and_sender_validation_reasons() {
+        use revm::context_interface::result::{EVMError, InvalidTransaction};
+        let missing = evm_incomplete(EVMError::Database(incomplete("unwitnessed account read")));
+        assert_eq!(missing.message, "unwitnessed account read");
+        let code = evm_incomplete(EVMError::Transaction(
+            InvalidTransaction::RejectCallerWithCode,
+        ));
+        assert_eq!(code.reason.code(), "sender_code_unexpected");
+        let nonce = evm_incomplete(EVMError::Transaction(
+            InvalidTransaction::NonceOverflowInTransaction,
+        ));
+        assert_eq!(nonce.reason.code(), "sender_nonce_unexpected");
+    }
+
+    #[test]
+    fn rpc_failures_are_classified_without_response_secrets() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        for (status, body, expected) in [
+            ("429 Too Many Requests", "secret", "rpc_rate_limited"),
+            ("403 Forbidden", "secret", "rpc_http_4xx"),
+            ("503 Service Unavailable", "secret", "rpc_http_5xx"),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32601,"message":"secret"}}"#,
+                "rpc_method_unsupported",
+            ),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32602,"message":"distance to target block exceeds maximum proof window secret"}}"#,
+                "proof_window_exceeded",
+            ),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32005,"message":"secret"}}"#,
+                "rpc_rate_limited",
+            ),
+            (
+                "200 OK",
+                r#"{"error":{"code":-32000,"message":"secret"}}"#,
+                "rpc_error",
+            ),
+            ("200 OK", "secret", "malformed_response"),
+            ("200 OK", r#"{"result":"0x14a34"}"#, "success"),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!(
+                "http://{}/secret?token=secret",
+                listener.local_addr().unwrap()
+            );
+            let body = body.to_owned();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            });
+            let rpc = Rpc::new(&url, Instant::now() + Duration::from_secs(5)).unwrap();
+            let result = rpc.call_once("eth_getProof", &json!([]));
+            if expected == "success" {
+                assert_eq!(result.unwrap(), json!("0x14a34"));
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.reason.code(), expected);
+                assert!(!format!("{error}").contains("secret"));
+            }
+            server.join().unwrap();
+        }
+    }
 
     #[test]
     fn candidate_incomplete_and_discovery_bounds_are_contradictions() {

@@ -118,3 +118,57 @@ fn local_fake_missing_or_malformed_signed_receipt_is_incomplete() {
         assert!(report.verdict().is_none());
     }
 }
+
+#[test]
+fn incomplete_reason_is_closed_and_visible_without_untrusted_text() {
+    for reason in [
+        "timeout",
+        "finish_reason_length",
+        "receipt_verification_failed",
+        "invalid_json",
+        "schema_invalid",
+        "empty_choices",
+        "upstream_http_4xx",
+        "upstream_http_5xx",
+        "client_error",
+    ] {
+        let mut data = response("provider_tee");
+        data["status"] = json!("incomplete");
+        data["reason"] = json!(reason);
+        let fake = LocalProtocolFake(serde_json::to_vec(&data).unwrap());
+        let report = ai::review(&fake, &request(), |_| panic!("incomplete must not replay"));
+        assert_eq!(report.status, StageStatus::Incomplete);
+        assert!(report.detail.contains(reason));
+        assert!(report.verdict().is_none());
+    }
+    let mut data = response("provider_tee");
+    data["reason"] = json!("secret untrusted text");
+    let report = ai::review(
+        &LocalProtocolFake(serde_json::to_vec(&data).unwrap()),
+        &request(),
+        |_| panic!("unknown reason"),
+    );
+    assert_eq!(report.status, StageStatus::Incomplete);
+    assert!(!report.detail.contains("secret"));
+}
+
+#[test]
+fn timeout_bound_is_enforced_before_transport() {
+    let fake = LocalProtocolFake(serde_json::to_vec(&response("provider_tee")).unwrap());
+    for timeout in [1, 600] {
+        let mut req = request();
+        req.timeout_s = timeout;
+        assert!(matches!(
+            ai::review(&fake, &req, |_| Ok(false)).review,
+            AiReview::Clean { .. }
+        ));
+    }
+    for timeout in [0, 601] {
+        let mut req = request();
+        req.timeout_s = timeout;
+        assert_eq!(
+            ai::review(&fake, &req, |_| Ok(false)).status,
+            StageStatus::Incomplete
+        );
+    }
+}

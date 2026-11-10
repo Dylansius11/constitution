@@ -166,7 +166,7 @@ pub fn verifier_run(
     let run_id = verifier.start(gate, id, &seal(&bytes, key.0)?)?;
     println!("verifier run: {run_id}");
     println!(
-        "next: constitution status {id} --run {run_id} --watch 600 (use the same --gate, --near-rpc and --verifier)"
+        "next: constitution status {id} --run {run_id} --watch 2100 (use the same --gate, --near-rpc and --verifier)"
     );
     Ok(())
 }

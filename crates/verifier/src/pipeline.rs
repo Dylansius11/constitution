@@ -14,7 +14,7 @@ use std::{
 /// Whole-run wall clock covering sandbox stages, replay RPCs and AI candidates. It stays
 /// well below the gate's proposal TTL and the 2 h default so a stalled provider cannot pin
 /// the single worker; exceeding it ends the run `failed` with `infrastructure_timeout`.
-pub const RUN_DEADLINE: Duration = Duration::from_secs(20 * 60);
+pub const RUN_DEADLINE: Duration = Duration::from_secs(30 * 60);
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Stage {
     pub name: String,
@@ -908,6 +908,10 @@ fn run_stages(
             run.record("r5_replay", StageStatus::Incomplete, code, start);
             return Err(code);
         }
+        ReplayOutcome::DetailedFault(code, detail) => {
+            run.record("r5_replay", StageStatus::Incomplete, detail, start);
+            return Err(code);
+        }
         ReplayOutcome::Evidence(evidence, detail) => {
             let code = evidence.detail_code;
             run.record("r5_replay", evidence.status, detail, start);
@@ -958,7 +962,7 @@ fn ai_evidence(
     if m.ai.model != crate::ai::MODEL
         || m.ai.signature_kind != "provider_tee"
         || !(1..=16).contains(&m.ai.max_candidates)
-        || !(1..=300).contains(&m.ai.timeout_s)
+        || !(1..=600).contains(&m.ai.timeout_s)
     {
         return crate::ai::Report::incomplete("AI incomplete; unsupported committed policy");
     }
@@ -1039,6 +1043,7 @@ fn ai_evidence(
 enum ReplayOutcome {
     Evidence(RuleEvidence, String),
     Fault(&'static str),
+    DetailedFault(&'static str, String),
 }
 /// One witness fetch plus pure replay.
 enum ReplayAttempt {
@@ -1059,17 +1064,31 @@ fn replay_stage(
 ) -> ReplayOutcome {
     use crate::replay::{Corpus, EvidenceBlock, IncompleteKind, fetch_witness, replay_detailed};
     let Some(rpc) = ctx.archive_rpc else {
-        return ReplayOutcome::Fault("rpc_unavailable");
+        return ReplayOutcome::DetailedFault("rpc_unavailable", "archive_rpc_missing".into());
     };
     let Some(proof_rpc) = ctx.proof_rpc else {
-        return ReplayOutcome::Fault("rpc_unavailable");
+        return ReplayOutcome::DetailedFault("rpc_unavailable", "proof_rpc_missing".into());
     };
     let Ok(bytes) = std::fs::read(repo.join("rules/r5/corpus.json")) else {
-        return ReplayOutcome::Fault("committed_data_unavailable");
+        return ReplayOutcome::DetailedFault(
+            "committed_data_unavailable",
+            "corpus_read_failed".into(),
+        );
     };
     let corpus = match Corpus::from_json(&bytes, m.r5.max_txs, m.r5.confirmations) {
         Ok(corpus) if corpus.sha256 == m.r5.corpus_sha256.0 => corpus,
-        _ => return ReplayOutcome::Fault("committed_data_unavailable"),
+        Ok(_) => {
+            return ReplayOutcome::DetailedFault(
+                "committed_data_unavailable",
+                "corpus_mismatch".into(),
+            );
+        }
+        Err(_) => {
+            return ReplayOutcome::DetailedFault(
+                "committed_data_unavailable",
+                "corpus_invalid".into(),
+            );
+        }
     };
     let attempt = || {
         let witness = match fetch_witness(
@@ -1114,39 +1133,49 @@ fn replay_stage(
                 );
             }
             ReplayAttempt::Unencodable => {
-                return ReplayOutcome::Fault("committed_data_unavailable");
+                return ReplayOutcome::DetailedFault(
+                    "committed_data_unavailable",
+                    "witness_serialization_failed".into(),
+                );
             }
             ReplayAttempt::Incomplete(error) => {
                 if ctx.expired() {
                     return ReplayOutcome::Fault("infrastructure_timeout");
                 }
                 if error.kind == IncompleteKind::Environment {
-                    return ReplayOutcome::Fault(if error.rpc_transport {
+                    let code = if error.rpc_transport {
                         "rpc_unavailable"
                     } else {
                         "replay_unavailable"
-                    });
+                    };
+                    return ReplayOutcome::DetailedFault(
+                        code,
+                        format!("{}; {}; {}", code, error.reason.code(), error.message),
+                    );
                 }
                 if confirmed
                     .as_ref()
                     .is_some_and(|previous: &crate::replay::Incomplete| {
-                        previous.message != error.message
+                        previous.message != error.message || previous.reason != error.reason
                     })
                 {
-                    return ReplayOutcome::Fault("rpc_unavailable");
+                    return ReplayOutcome::DetailedFault(
+                        "rpc_unavailable",
+                        "contradiction_changed_between_fetches".into(),
+                    );
                 }
                 confirmed = Some(error);
             }
         }
     }
-    let error = confirmed.map_or_else(String::new, |e| e.message);
+    let error = confirmed.expect("two incomplete replay attempts");
     ReplayOutcome::Evidence(
         RuleEvidence {
             status: StageStatus::Incomplete,
             detail_code: 51,
-            artifact_sha256: Hex32(sha256(error.as_bytes())),
+            artifact_sha256: Hex32(sha256(error.message.as_bytes())),
         },
-        format!("reason 51; {error}"),
+        format!("reason 51; {}; {}", error.reason.code(), error.message),
     )
 }
 
@@ -1243,6 +1272,7 @@ mod replay_stage_tests {
     fn fault(repo: &Path, m: &RuleSetManifest, rpc: Option<&str>) -> &'static str {
         match outcome(repo, m, &proposal(), rpc, later()) {
             ReplayOutcome::Fault(code) => code,
+            ReplayOutcome::DetailedFault(code, _) => code,
             ReplayOutcome::Evidence(_, detail) => panic!("expected a fault, got {detail}"),
         }
     }
@@ -1416,7 +1446,9 @@ mod replay_stage_tests {
         let m = committed_manifest();
         let (stub, p) = chain_stub(100, |_| 1, |_| "0x");
         let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
+        assert!(
+            matches!(result, ReplayOutcome::DetailedFault("replay_unavailable", detail) if detail.contains("insufficient_confirmations"))
+        );
         assert_eq!(stub.count("eth_blockNumber"), 2);
         assert_eq!(stub.count("eth_getCode"), 0);
         // A node that catches up on the second read lets the run continue to the code read.
@@ -1429,11 +1461,16 @@ mod replay_stage_tests {
         let m = committed_manifest();
         let (stub, p) = chain_stub(100, |_| 5, |_| "0x");
         let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
+        assert!(
+            matches!(result, ReplayOutcome::DetailedFault("replay_unavailable", detail) if detail.contains("code_mismatch"))
+        );
         // A later response changing cannot turn the first unauthenticated read into a verdict.
         let (stub, p) = chain_stub(100, |_| 5, |nth| if nth == 1 { "0x" } else { "0x6001" });
         let result = outcome(&repo_root(), &m, &p, Some(&stub.url), later());
-        assert!(matches!(result, ReplayOutcome::Fault("replay_unavailable")));
+        assert!(matches!(
+            result,
+            ReplayOutcome::DetailedFault("replay_unavailable", _)
+        ));
     }
     #[test]
     fn slow_provider_hits_the_run_deadline_not_a_witness_reject() {

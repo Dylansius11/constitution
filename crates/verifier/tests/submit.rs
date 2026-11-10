@@ -45,3 +45,33 @@ fn no_certificate_is_never_submitted() {
     assert_eq!(relay.0.load(Ordering::SeqCst), 0);
     assert!(result.near_tx_hash.is_none());
 }
+
+#[test]
+fn confirmed_submission_records_transaction_hash() {
+    struct Accepted;
+    impl VerdictSubmitter for Accepted {
+        fn submit(
+            &self,
+            _: &constitution_types::AccountId,
+            _: &Base64Bytes,
+            _: &Base64<64>,
+        ) -> Result<String, String> {
+            Ok("observed-hash".into())
+        }
+    }
+    let mut run = Run::queued();
+    run.certificate_b64 = Some(Base64Bytes(vec![1, 2]));
+    run.signature_b64 = Some(Base64([3; 64]));
+    let result = SubmittedRun::submit(run, &"gate.testnet".parse().unwrap(), &Accepted);
+    assert_eq!(result.near_tx_hash.as_deref(), Some("observed-hash"));
+    assert_eq!(
+        result
+            .run
+            .stages
+            .iter()
+            .find(|s| s.name == "submit")
+            .unwrap()
+            .status,
+        StageStatus::Pass
+    );
+}

@@ -230,9 +230,10 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 
 [I] The R3 list is **exactly eight ordered 32-byte values**, with Foundry `0x7109709ecfa91a80626ff3989d68f67f5b1dd12d` and Halmos `0xf3993a62377bcd56ae39d773740a5390411e8bc9` zero-padded to 32 bytes. Numeric PUSH immediates are compared (including Solidity's PUSH20 addresses); both ERC-1967 ASCII labels are rejected anywhere in runtime. Shared `validate_rule_set` enforces the list, so CLI and verifier accept identical inputs. Borsh field order, `Vec<Hex32>` encoding and manifest version 1 are unchanged; this revised supported list and harness produce a new rule-set commitment, not a serialization-format fork. G1 assumes implementations cannot write arbitrary storage: a runtime computing its SSTORE slot from calldata can evade R3, as documented by the filter-limit test. Computed cheatcode addresses, environment fingerprinting beyond chain id, and entry points not explored by R2 remain limits. Filters are filters, not proofs.
 
-[V, local CLI, 2026-11-06; AI review deadline updated to 300 s] Current rule-set hash:
-`0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`
-(`cargo run -p constitution-cli -- rules hash rules/manifest.json`).
+[V, local CLI, 2026-11-06] The previous 300 s manifest hash was
+`0xa8a4bfb14f17a60b8dac20aaba63dfda2f89152fe7b7d4829f9d33edbb2cbf93`.
+[I] The 600 s manifest changes that commitment; recompute with
+`cargo run -p constitution-cli -- rules hash rules/manifest.json` before activation.
 
 ### Evidence manifest
 
@@ -260,7 +261,7 @@ P1.6 remains required. Operator steps and resource limits:
 ### AI review
 
 - Sidecar uses `new InferenceClient({ baseUrl: "https://cloud-api.near.ai/v1", apiKey, e2ee: true, gatewayVerification: {policy: {acceptedTcbStatuses: ["UpToDate"]}}, modelVerification: {policy: {acceptedTcbStatuses: ["UpToDate"]}} })` [V option names from the JS SDK doc]; header `x-no-aliasing: true`; model `z-ai/glm-5.3-flash`.
-- Review sends `max_tokens: 45000` and `thinking_token_budget: null` under the committed 300 s maximum; reasoning counts inside completion usage. Candidate JSON remains bounded at 64 KiB independently of this model-work ceiling. SDK setup and response verification are inside the review deadline; the Rust caller has 2 s transport grace and the enclosing verifier run retains its 20-minute deadline. No inference retries or certificate-TTL changes follow. S1 repair is separately planned at 100,000 completion tokens and a 30-minute whole-job deadline; production repair is not implemented.
+- [I] Review sends `max_tokens: 100000` and `thinking_token_budget: null` under the committed 600 s maximum; reasoning counts inside completion usage. [U] The model's provider-side maximum output tokens has not been verified. Candidate JSON remains bounded at 64 KiB. SDK setup and response verification are inside the review deadline; the Rust caller has 2 s transport grace. The 30-minute enclosing run deadline can expire during review if earlier stages consume the available budget. No inference retries or certificate-TTL changes follow. S1 repair remains unimplemented.
 - Output contract requested from the model: JSON `{candidates: [{rule: "R2", rationale, steps: [{from: "attacker"|"victim"|"0x..", call: "<function signature>", args: [...], value: "0"}]}]}`, at most `max_candidates`.
 - After the stream completes: `receipt = await client.verifyResponse(completion.id)`; require `receipt.signatureKind === "provider_tee"`; otherwise AI review is `incomplete`.
 - The verifier replays each candidate in revm on the evidence-block fork with the new implementation. Only a reproduced R2 violation creates `Reject{2,22}`. Prompt text and model output are untrusted data: nothing from them is executed except as EVM transactions inside the sandboxed replay.
@@ -374,7 +375,7 @@ Transitions are the state machine in SMART-CONTRACT. No database exists; receipt
 | Authenticated (commitment matched) rate exceeded or worker busy | admission after the commitment check | `429 rate_limited` / `429 queue_full` with `Retry-After`; same active proposal otherwise 409; a busy refusal charges no limiter | Retry after indicated seconds; per proposal one/10 s, global 10/1 s | admission boundary/recovery and no-burn tests |
 | Proposal not Pending / unsupported rule set / chain not ready | `get_proposal` and Base reads | `409 proposal_not_pending`, `400 unsupported_proposal`, `409 not_ready` (never `502`) | Terminal for the proposal, or retry later for `not_ready` | typed chain-error tests |
 | Failed or withheld run without certificate | outcome-based per-proposal history | `429 cooling_down` with `Retry-After` | 10, 20, 40 min, capped at 1 h; verifier-owned sandbox, panic and RPC transport faults and RPC/AI deadline overruns do not count | cool-down tests |
-| Run exceeds the 20 minute deadline | pipeline checks between stages and before signing; replay RPCs use remaining time | Run `failed`/`infrastructure_timeout` | No certificate; Pending, retryable. Blocking sandbox/sidecar calls can overrun the deadline until their own timeouts | deadline tests; hard wall-clock bound unproven |
+| Run exceeds the 30 minute deadline | pipeline checks between stages and before signing; replay RPCs use remaining time | Run `failed`/`infrastructure_timeout` | No certificate; Pending, retryable. Blocking sandbox/sidecar calls can overrun the deadline until their own timeouts | deadline tests; hard wall-clock bound unproven |
 | Verifier lacks dstack socket without explicit offline flag | startup identity policy | `attestation_required`; refuses chain mode | Restore socket; `--insecure-dev-identity` only selects local registry/no submitter | startup mode tests |
 | Sandbox/Docker unavailable, tempdir/disk failure, missing tools | tool execution boundary | Run `failed` with stable error code | No certificate; sandbox_unavailable is exempt from cooldown; storage_error and tool_unavailable count | infrastructure classification tests |
 | Tool wall timeout/OOM (exit 124/137) or malformed tool artifacts, unavailable committed harness | tool execution and output validation | Run `failed`/`infrastructure_timeout` or `tool_output_invalid` | No certificate/verdict; Pending, retryable until the canary rule above applies | classification and canary tests |

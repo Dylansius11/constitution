@@ -56,7 +56,7 @@ pub struct DemoArgs {
     #[arg(long)]
     pub output: PathBuf,
     /// Maximum polling time per gate/relay stage, not an HTTP or transaction deadline.
-    #[arg(long, default_value_t = 600)]
+    #[arg(long, default_value_t = 2100)]
     pub watch: u64,
 }
 
