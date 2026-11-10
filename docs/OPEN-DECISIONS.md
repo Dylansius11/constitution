@@ -39,7 +39,7 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D22 | KMS encryption-key freshness during disposable validation | founder (risk acceptance), lead (verification) | resolved for bounded validation 2026-11-10; final deployment policy open | P1.6, P2.8 | Official legacy signature with independently pinned root and app binding; local receipt time is not signed KMS freshness |
 | D23 | Guardian liveness risk (F3) | founder | accepted 2026-11-10 | P2.8 | Hostile or compromised guardian can permanently halt signing and block replacement; custody remains open |
 | D24 | Guardian key custody and monitoring | founder | open | P4.7 | Key file is on the lead's machine; founder decides custody and who watches through 2026-11-18 |
-| D25 | Public hosting deploy access | founder | open | P3.6 | `constitution-gate` Pages project is not visible to the lead's wrangler login; founder supplies the deploy path |
+| D25 | Public hosting deploy access | founder | resolved 2026-11-11 | P3.6 | Project `constitution-gate` lives in the founder's student Cloudflare account (not the wrangler login); the founder enabled the relay for that Chrome profile and the lead uploaded the build through the dashboard's direct-upload page |
 | D26 | License | founder | open | P4.3 | Founder chooses; public visibility alone is not a license |
 | D27 | Standby verifier CVM | founder | open; none added | P4.7 | Lead leans no; replacing a verifier requires a three-day `AddVerifier` |
 
@@ -223,7 +223,7 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B8 | Visual direction | founder | resolved 2026-11-07 (D7) | P3.4 | Brand and reference supplied in `asset/` |
 | B9 | Local Docker Desktop Linux engine and Ubuntu WSL integration for the compiler regression | founder (Desktop/WSL settings), lead (focused rerun) | resolved 2026-11-05: Docker server 28.5.1 available from Ubuntu; focused `proposal_compilation_error_remains_a_signed_reject` rerun passed (1 passed, 0 failed) after the founder enabled integration | Split-RPC PR merge verification, P4.1 | Merge blocker cleared; no code/test changes, R2/solver, image build or full-suite rerun |
 | B10 | Guardian key custody and judging monitoring (D24) | founder | open | P4.7 | Key file is on lead's machine; founder decides custody and who watches through 2026-11-18 |
-| B11 | Cloudflare Pages deploy path (D25) | founder | open | P3.6, P4.6 | `constitution-gate` is not visible in lead's wrangler login; founder supplies the deploy path |
+| B11 | Cloudflare Pages deploy path (D25) | founder | resolved 2026-11-11 | P3.6, P4.6 | Dashboard direct upload via the student-account relay profile; redo it for any later page change |
 | B12 | License (D26) | founder | open | P4.3, P4.6 | Founder chooses a license |
 
 ### B1. NEAR testnet accounts
