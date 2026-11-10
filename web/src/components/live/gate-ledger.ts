@@ -80,6 +80,14 @@ async function initializeLedger(
         observe(verifiers, () => gate.listVerifiers(0, 50)),
         observe(changes, () => gate.listChanges(0, 50)),
       ]);
+      if (config.status === "ok") {
+        const days = config.value.value.governance_delay_days;
+        const timelock = document.querySelector<HTMLElement>("#timelock");
+        if (timelock) timelock.dataset["governanceDelayDays"] = String(days);
+        document.dispatchEvent(new CustomEvent("gate-config-observed", {
+          detail: { governance_delay_days: days },
+        }));
+      }
       const cfg = lastObserved(config)?.value.value;
       if (cfg)
         proxy = await observe(proxy, () => {

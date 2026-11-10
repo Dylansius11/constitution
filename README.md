@@ -2,7 +2,7 @@
 
 **An upgrade authority governed by committed rules, not an admin's approval.**
 
-CONSTITUTION protects one upgradeable vault on Base Sepolia. A keyless NEAR gate controls its EVM upgrade authority through Chain Signatures. The gate requests a signature only for an exact upgrade transaction backed by an allowlisted verifier's certificate. Rule and authority changes require a public seven-day timelock.
+CONSTITUTION is designed to protect one upgradeable vault on Base Sepolia. A keyless NEAR gate controls its EVM upgrade authority through Chain Signatures. The gate requests a signature only for an exact upgrade transaction backed by an allowlisted verifier's certificate. Rule and authority changes require a public deployment-selected, immutable delay of 1–30 whole days (default 3); ordinary certified vault upgrades do not wait for it.
 
 The intended verifier runs deterministic checks inside an attested TEE. NEAR AI Cloud privately searches for counterexamples. AI can veto through a reproduced counterexample; it cannot authorize an upgrade.
 
@@ -16,7 +16,7 @@ This is a hackathon project, **testnet only, not independently audited**. The fi
 | Chain Signatures | Real NEAR MPC signatures executed upgrades in a Base Sepolia **spike** | Final gate/executor ceremony, not reuse of the spike |
 | Private AI | Verified `provider_tee` responses and a saved candidate replay exercised locally | Completed production-policy drain rehearsals, measured find rate and actual campaign cost; new paid calls need approval |
 | Verifier hosting | Local service/tool images built; offline isolation and fail-closed paths exercised | Real CVM appraisal, isolation checks, resource measurements and uptime budget |
-| Public page | Implemented and checked locally; attack and honest run cards remain locked pending activation | Browser flows against the final testnet deployment, demo key and hosting |
+| Public page | Hosted on [Cloudflare Pages Free](https://constitution-gate.pages.dev); 390/1280, keyboard and motion/static paths exercised; write cards remain locked pending activation | Browser flows against the final testnet deployment and demo key |
 | Optional proposal repair | Approved stretch scope, not implemented | Core gate completion before S1 implementation |
 
 The authoritative progress and evidence are in [BUILD-PLAN](docs/BUILD-PLAN.md). Local tests are not CVM evidence. A spike transaction is not proof that the final gate is keyless or activated. There is intentionally no `deployments/testnet.json` until the ceremony records observed values.
@@ -36,7 +36,7 @@ flowchart LR
     E -->|Deadline, code hash, current implementation and replay checks| P[ProxyAdmin and vault proxy]
 ```
 
-The governor can schedule changes, not bypass the delay. The guardian can pause signing, cancel pending changes or remove a verifier, but cannot immediately add authority. The gate has no code-upgrade method; activation requires deleting every access key on its account.
+The governor can schedule changes, not bypass the delay. The guardian can pause signing, cancel pending changes or remove a verifier, but cannot immediately add authority. The gate has no code-upgrade method; changing the selected delay requires a new gate and the existing timelocked authority migration. Activation requires deleting every access key on its account, after E2E and audit rehearsal and fresh founder authorization.
 
 A rejection leaves the proxy unchanged. An honest upgrade still needs all committed checks, the required verified AI review, a valid certificate, MPC signing and successful EVM execution. A timeout or unavailable service is incomplete, never a pass.
 
@@ -131,7 +131,7 @@ For local networks, pass their loopback RPCs and `--network local`. The network 
 
 To include verifier stages and evidence, add `--verifier "$VERIFIER_URL" --run "$RUN_ID"` to status/receipt. A requested but unavailable or mismatched evidence manifest fails rather than silently dropping evidence. The receipt is an observation assembled from public state, not a replacement for independently checking the certificate and deployment.
 
-Audit exits nonzero on failed preconditions. Governance warnings alone can exit zero: inspect the named warnings and ETAs, not just the exit status. Audit compares observed state with **trusted local build artifacts and the committed deployment record**; it does not appraise the CVM or independently establish those inputs' provenance.
+Audit exits nonzero on failed preconditions. Governance warnings alone can exit zero: inspect the named warnings and ETAs, not just the exit status. The deployment record must explicitly commit `governance_delay_days`; audit compares it with the observed gate config. Audit compares observed state with **trusted local build artifacts and the committed deployment record**; it does not appraise the CVM or independently establish those inputs' provenance. Retained-key staging is not keyless proof; final audit and essential live checks follow authorized key deletion.
 
 ## Run an attack or honest-upgrade demonstration
 
@@ -161,7 +161,7 @@ Important limits:
 - R2 is bounded aggregate solvency plus implementation-slot preservation, not full formal verification or per-depositor withdrawability. R3 literal filters are not a general storage-write proof. Rules do not cover every possible bug or entry point.
 - Chain Signatures, TEE vendors, provider attestation and the declared rule coverage remain trust assumptions. Proxy storage can change between verification and execution.
 - Pausing or removing a verifier does not revoke an already signed EVM transaction. Its executor deadline remains load-bearing.
-- The certificate key is ephemeral. Restarting the activated CVM loses that key; a replacement normally needs the seven-day verifier registration delay. Demo-only uptime is not equivalent to the planned judging service.
+- The certificate key is ephemeral. Restarting the activated CVM loses that key; a replacement normally needs the selected governance delay for verifier registration. Demo-only uptime is not equivalent to the planned judging service.
 - The trusted service's Docker socket is root-equivalent host access. The untrusted compilation/tool sandbox must not receive that socket, the dstack socket or signing keys. Running the service on a VPS does not reproduce CVM isolation.
 - Repair is optional planned stretch work for a **rejected proposal**, with explicit developer approval before resubmission. It is not active-vault repair and is not implemented yet.
 

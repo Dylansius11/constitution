@@ -30,6 +30,7 @@ export interface Config {
   mpc_account: string;
   mpc_path: string;
   mpc_domain_id: number;
+  governance_delay_days: number;
 }
 
 export interface Params {
@@ -128,6 +129,8 @@ function parsePubkeyB64(value: unknown, path: string): string {
 
 export function parseConfig(value: unknown, path = "config"): Config {
   const o = new Obj(value, path);
+  const delay = o.safe("governance_delay_days", 30);
+  if (delay < 1) throw new WireError(o.at("governance_delay_days"), "expected 1 to 30 days");
   return {
     chain_id: o.safe("chain_id"),
     executor: o.hex("executor", 20),
@@ -137,6 +140,7 @@ export function parseConfig(value: unknown, path = "config"): Config {
     mpc_account: o.account("mpc_account"),
     mpc_path: o.str("mpc_path"),
     mpc_domain_id: o.safe("mpc_domain_id", 0xffff_ffff),
+    governance_delay_days: delay,
   };
 }
 

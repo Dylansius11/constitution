@@ -29,7 +29,7 @@ export function buildLlmsText(site: LlmsSite): string {
 - NEAR AI Cloud searches privately for counterexamples. Only a deterministically reproduced violation can veto; an incomplete required AI review cannot certify.
 - The gate validates the allowlisted verifier's signed certificate and all bindings, constructs the exact EIP-1559 executor call itself and only then requests NEAR Chain Signatures. No caller supplies a hash to sign.
 - Anyone can relay the signed transaction. ConstitutionExecutor checks the derived caller, single-use certificate id, deadline, code hash and expected current implementation before ProxyAdmin.upgradeAndCall.
-- Activation requires deleting every gate access key; the gate has no code-upgrade method. Rules, verifier allowlist and authority migration require a public seven-day timelock. The guardian may only reduce authority immediately. Ordinary rule-compliant upgrades do not wait seven days.
+- Activation requires deleting every gate access key; the gate has no code-upgrade method. Rules, verifier allowlist and authority migration require a public timelock selected at initialization (1 to 30 whole days, default 3) and immutable thereafter. The guardian may only reduce authority immediately. Ordinary rule-compliant upgrades do not wait for this delay.
 - Sources: ${source("docs/PRD.md")}, ${source("docs/technical/SMART-CONTRACT.md")}.
 
 ## Status as of 2026-11-07
@@ -49,7 +49,7 @@ export function buildLlmsText(site: LlmsSite): string {
 
 - G1. Against implementations that cannot write arbitrary proxy storage, the proxy changes implementation only through ConstitutionExecutor, which only accepts transactions signed for the gate's derived EOA. This is conditional: an implementation capable of computed-slot SSTORE can bypass that upgrade path; the executor's tracker is not an on-chain storage-write guard.
 - G2. The gate requests a signature only for the exact executor call bound to a certificate from an allowlisted verifier over the active rule-set hash.
-- G3. Rules, verifier allowlist and authority migration change only after a public seven-day delay; guardian actions can only reduce authority. Liveness limit: EVM nonces are assigned at certification, so a certified transaction that nobody ever mines delays later ones until someone relays it (permissionless; a reverted transaction still consumes the nonce). Delay only; no signature is ever created without a certificate.
+- G3. Rules, verifier allowlist and authority migration change only after the public initialization-selected delay (1 to 30 whole days, default 3), immutable thereafter; guardian actions can only reduce authority. Liveness limit: EVM nonces are assigned at certification, so a certified transaction that nobody ever mines delays later ones until someone relays it (permissionless; a reverted transaction still consumes the nonce). Delay only; no signature is ever created without a certificate.
 - G4. AI output can only cause rejection, never certification.
 - Source: ${source("docs/PRD.md")}, Risks and guarantees. These are mechanism guarantees under assumptions, not evidence that activation has occurred.
 
@@ -86,7 +86,7 @@ export function buildLlmsText(site: LlmsSite): string {
 - Stage order: queued, unsealing, compiling, r1_layout, r2_solvency, r3_filter, r4_initializer, r5_replay, ai_review, reproducing, signing, submitting, done.
 - The first deterministic Fail stops later stages (Skipped); AI review runs only after all deterministic checks pass, otherwise NotRun. Incomplete results fail closed.
 - Here signing means signing the verifier verdict; it is not the later Chain Signature requested by the gate.
-- E53_TIMELOCK_NOT_ELAPSED means apply_change was attempted before the immutable seven-day eta. No role can apply early; the governor schedules, the guardian can cancel, and anyone may apply after eta. It is not a seven-day wait on ordinary certified upgrades.
+- E53_TIMELOCK_NOT_ELAPSED means apply_change was attempted before the scheduled eta calculated from the immutable initialization-selected delay. No role can apply early; the governor schedules, the guardian can cancel, and anyone may apply after eta. Ordinary certified upgrades do not wait for this governance delay.
 - Sources: ${source("docs/technical/ARCHITECTURE.md")}, Verifier HTTP API; ${source("docs/technical/SMART-CONTRACT.md")}, Governance and Panic-code table; ${source("docs/DESIGN.md")}, State matrix.
 
 ## How to verify
@@ -122,7 +122,7 @@ ${commands}
 - Observed: data the page itself has read from the chain; only then may it show an explorer link. A saved hash alone is not a fresh observation.
 - Recorded: a real receipt saved from an earlier run, labeled with its date; never replayed as live.
 - Spike: real chain evidence from the minimal spike gate, with no verifier in the loop; not a production run.
-- Local test: local unit, property, sandbox, Anvil or Docker evidence; not testnet or CVM evidence. Local time travel is not seven real days on testnet.
+- Local test: local unit, property, sandbox, Anvil or Docker evidence; not testnet or CVM evidence. Local time travel is not real elapsed time on testnet.
 - Awaiting activation: the real gate/CVM configuration or activation evidence is unavailable; no placeholder deployment, fake receipts, timestamps or progress are substituted.
 - Sources: ${source("docs/DESIGN.md")}, Today’s data reality, State matrix and Receipt anatomy.
 `;

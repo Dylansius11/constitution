@@ -52,6 +52,7 @@ const gateConfig = {
   mpc_account: "v1.signer-prod.testnet",
   mpc_path: "constitution/base-sepolia/v1",
   mpc_domain_id: 0,
+  governance_delay_days: 3,
 };
 const view = <T>(value: T) => ({ value, blockHeight: 1, blockHash: "block" });
 function harness() {
