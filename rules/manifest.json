@@ -63,7 +63,7 @@
     "allow_empty": true
   },
   "r5": {
-    "corpus_sha256": "0x8ee8b040243abe7eddb3f6af99f67cdfa2a9af445b17f87c60f5295869cfacc4",
+    "corpus_sha256": "0x9534a4b731515547e2e4321b6c13f937e76159cdfde51c2ca5e531ebe13a8aee",
     "max_txs": 7,
     "confirmations": 2
   },

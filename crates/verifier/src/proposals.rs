@@ -10,6 +10,8 @@ pub struct LocalProposal {
     pub chain_id: u64,
     pub proxy: Hex20,
     pub executor: Hex20,
+    pub proxy_admin: Hex20,
+    pub derived_eoa: Hex20,
     pub expected_current_impl: Hex20,
     pub observed_current_impl: Hex20,
     pub current_impl_codehash: Hex32,

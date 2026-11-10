@@ -378,11 +378,19 @@ pub fn candidate_corpus(
                 to: "proxy".into(),
                 value: "0".into(),
                 data: data.into(),
+                expect: replay::Expect::Success,
                 label: "AI candidate (untrusted)".into(),
             })
         })
         .collect::<Result<Vec<_>, &str>>()?;
     Ok(Corpus {
+        preconditions: replay::Preconditions {
+            actor,
+            min_token_balance: "0".into(),
+            min_allowance: "0".into(),
+            min_vault_balance: "0".into(),
+            max_vault_balance: "0".into(),
+        },
         calls,
         max_txs: MAX_STEPS as u32,
         confirmations,
