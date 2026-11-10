@@ -1,0 +1,42 @@
+{
+  "chain_id": 84532,
+  "governance_delay_days": 3,
+  "gate": "constitution-gate.testnet",
+  "gate_code_hash": "GjPz45TdYvvuVX5k2NtSKDm8gdBt3gvdF7WpUJXZvLGP",
+  "mpc_account": "v1.signer-prod.testnet",
+  "executor": "0xf997a78d8c84dd07637409bfaf46b627d35ab67b",
+  "executor_runtime_hash": "0x146f314b34d542adac94a0fdc7fe8ccf702d5be655e00583bbce6cd668f3a8fc",
+  "proxy": "0x0b54b582dc5486677622c6fde431716767165e74",
+  "verifiers": [
+    {
+      "pubkey": "8oZcQEC13CJkXPXs+iP1wh4/EgeEtHvUGSXi76tqKIE=",
+      "release_hash": "0x0bf3f730e77f94ac0aebb6bf5b02c606b235e87fa8864c6c87b0189966bdc98a"
+    }
+  ],
+  "roles": {
+    "governor": "constitution-governor.testnet",
+    "guardian": "constitution-guardian.testnet"
+  },
+  "planned_changes": [
+    {
+      "id": 0,
+      "kind": {
+        "SetParams": {
+          "params": {
+            "proposal_deposit": "100000000000000000000000",
+            "proposal_ttl_s": 3600,
+            "max_cert_ttl_s": 300,
+            "sign_validity_s": 300,
+            "gas_limit": 300000,
+            "max_fee_per_gas": "50000000",
+            "max_priority_fee_per_gas": "1000000",
+            "fee_cap": "1000000000",
+            "sign_gas_tgas": 15,
+            "callback_gas_tgas": 20
+          }
+        }
+      },
+      "eta_ns": 1794588961716352022
+    }
+  ]
+}

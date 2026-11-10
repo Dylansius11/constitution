@@ -1,6 +1,6 @@
 # Audit deployment records
 
-[I] Activation is planned, not run. There is deliberately **no `testnet.json`**: no production gate/executor deployment has been activated. Never copy spike addresses or the CLI's local sample into an activation record.
+[V, 2026-11-10] `testnet.json` is the pre-deletion record of the retained-key final-gate candidate `constitution-gate.testnet`: every value was observed on testnet (see SMART-CONTRACT "Deployment and measured costs"). It is not keyless evidence until the gate's last access key is deleted and the audit is repeated with exit 0. Never copy spike or staging (`constitution-validation-1110`) addresses into it.
 
 `testnet.schema.json` describes the JSON consumed by `Deployment`, `DeployedVerifier` and `PlannedChange` in `crates/cli/src/audit.rs`. The CLI does not fetch or execute the schema; it deserializes with the canonical Rust types. Unknown fields are rejected at these three record envelopes. The schema uses JSON Schema draft 2020-12; preserve integer precision (not JavaScript floating-point numbers) when editing nanosecond timestamps.
 
