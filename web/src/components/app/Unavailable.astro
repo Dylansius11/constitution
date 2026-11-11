@@ -1,0 +1,47 @@
+---
+import StatusBadge from "../ui/StatusBadge.astro";
+
+/** Shown when the demo gate is not configured in this build. Nothing here is a live read. */
+interface Props {
+  missing: readonly string[];
+  invalid: string | null;
+}
+
+const { missing, invalid } = Astro.props;
+---
+
+<section class="app-unavailable" aria-labelledby="unavailable-title">
+  <StatusBadge tone="awaiting">Not live</StatusBadge>
+  <h2 id="unavailable-title">Demo gate not deployed yet</h2>
+  <p>
+    This page runs live attacks against a separate demo gate on NEAR testnet. That gate is not part
+    of this build, so nothing here can run and nothing is shown as live.
+  </p>
+  <p>When it is deployed, this page will have:</p>
+  <ul>
+    <li>A wallet connection and a one-time credit deposit, with a session key so runs do not nag.</li>
+    <li>Several malicious upgrades, each refused by a different rule, repeatable without limit.</li>
+    <li>The attested verifier's stages, live, and the recorded verdict with its rule and reason.</li>
+    <li>The demo gate's ledger, its timelock queue and a watcher for any proposal id.</li>
+  </ul>
+  <p>
+    Meanwhile the recorded runs of the final gate are on <a href="/#evidence">the home page</a>, and
+    every claim can be checked from a terminal with <a href="/#try">the CLI commands</a>.
+  </p>
+  <details>
+    <summary>Build inputs</summary>
+    {
+      invalid !== null && <p>Present but refused: {invalid}.</p>
+    }
+    {
+      missing.length > 0 && (
+        <>
+          <p>Missing:</p>
+          <ul>
+            {missing.map((name) => <li><code>{name}</code></li>)}
+          </ul>
+        </>
+      )
+    }
+  </details>
+</section>

@@ -1,0 +1,104 @@
+---
+import { site } from "../../data/site.ts";
+import { reasonText, ruleLabel } from "../../lib/reasons.ts";
+import { surfaceView } from "../../lib/surface-view.ts";
+import StageLadder from "../ui/StageLadder.astro";
+import StatusBadge from "../ui/StatusBadge.astro";
+
+/**
+ * One attack of the gallery. Server-rendered idle; `app.ts` runs it and fills the live part.
+ * Everything shown here comes from the gallery file and the sources it names.
+ */
+interface Props {
+  index: number;
+  id: string;
+  title: string;
+  summary: string;
+  contract: string;
+  expectedRule: number;
+  expectedReason: number;
+  initCalldata: string;
+  snippet: string[];
+  observed: { proposalId: number; nearTx: string; observedAt: string } | null;
+}
+
+const { index, id, title, summary, contract, expectedRule, expectedReason, initCalldata, snippet, observed } =
+  Astro.props;
+const idle = surfaceView({ kind: "idle" }, { fixture: contract.split(":")[1] ?? contract });
+const reason = reasonText(expectedReason);
+const initBytes = (initCalldata.length - 2) / 2;
+const selector = initBytes >= 4 ? initCalldata.slice(0, 10) : null;
+---
+
+<article
+  class="app-attack"
+  data-attack={id}
+  data-state="idle"
+  data-tone="neutral"
+  data-expected-rule={expectedRule}
+  data-expected-reason={expectedReason}
+  aria-labelledby={`attack-${id}-title`}
+>
+  <div class="app-attack__top">
+    <p class="app-attack__rule mono">Attack {index + 1} · {ruleLabel(expectedRule)}</p>
+    {
+      observed !== null && (
+        <StatusBadge tone="recorded">Recorded on testnet</StatusBadge>
+      )
+    }
+  </div>
+
+  <div>
+    <h3 id={`attack-${id}-title`}>{title}</h3>
+    <p class="app-attack__summary">{summary}</p>
+  </div>
+
+  <details class="app-attack__code">
+    <summary>The change</summary>
+    <pre class="app-code" tabindex="0" aria-label={`Source added by ${title}`}><code>{snippet.map((line) => <span class="app-code__add">{line}</span>)}</code>{
+      selector !== null && (
+        <span class="app-code__note">Initializer call: {selector}… ({initBytes} bytes)</span>
+      )
+    }</pre>
+  </details>
+
+  <div class="app-attack__expect">
+    <p>
+      Expected: refused by {ruleLabel(expectedRule)}{reason !== null && <>. {reason}</>}
+    </p>
+    {
+      observed !== null && (
+        <p class="app-attack__recorded">
+          Seen before: proposal {observed.proposalId},{" "}
+          <a href={`${site.nearExplorer}/txns/${observed.nearTx}`} rel="noopener">
+            propose transaction on NEAR testnet
+          </a>
+          .
+        </p>
+      )
+    }
+  </div>
+
+  <div class="app-attack__run">
+    <div class="app-attack__live" data-live hidden>
+      <p class="app-attack__state" data-run-title aria-live="polite">Ready</p>
+      <p class="app-attack__detail" data-run-body>{idle.body}</p>
+      <p class="app-attack__detail" data-run-wait hidden></p>
+      <details class="app-attack__stages" open>
+        <summary>Stages</summary>
+        <StageLadder stages={idle.stages} label={`${title}: stages`} compact />
+      </details>
+      <div class="app-result" data-result hidden>
+        <strong data-result-title></strong>
+        <span data-result-reason></span>
+        <span data-result-match></span>
+      </div>
+      <div class="app-attack__links">
+        <a data-run-near hidden rel="noopener">Propose transaction on NEAR</a>
+        <a data-run-watch hidden href="#watch">Watch this proposal</a>
+      </div>
+    </div>
+    <button type="button" class="app-btn" data-run aria-disabled="true">Run live</button>
+    <p class="app-attack__hint" data-run-hint>Connect a wallet to run this attack.</p>
+  </div>
+</article>

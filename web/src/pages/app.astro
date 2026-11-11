@@ -1,0 +1,192 @@
+---
+import Account from "../components/app/Account.astro";
+import AttackCard from "../components/app/AttackCard.astro";
+import ByoCli from "../components/app/ByoCli.astro";
+import RulePanel from "../components/app/RulePanel.astro";
+import Unavailable from "../components/app/Unavailable.astro";
+import Footer from "../components/layout/Footer.astro";
+import Header from "../components/layout/Header.astro";
+import GateLedger from "../components/live/GateLedger.astro";
+import ProposalWatch from "../components/live/ProposalWatch.astro";
+import TimelockQueue from "../components/live/TimelockQueue.astro";
+import StatusBadge from "../components/ui/StatusBadge.astro";
+import { site } from "../data/site.ts";
+import { changeSnippet } from "../lib/attack-snippet.ts";
+import { resolveDemoState } from "../lib/demo-config.ts";
+import { formatNear } from "../lib/standing.ts";
+import { SESSION_ALLOWANCE_YOCTO } from "../lib/session-key.ts";
+import Base from "../layouts/Base.astro";
+import "../components/app/app.css";
+
+/**
+ * /app: judges connect a NEAR wallet and run live attacks against a separate demo gate. The gate,
+ * verifier and gallery are build inputs (`PUBLIC_DEMO_*`, `deployments/demo-gallery.json`); without
+ * them the page says so and offers nothing runnable. The final gate never appears here as a result.
+ */
+const env = Object.fromEntries(
+  Object.entries(import.meta.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+);
+const json = import.meta.glob("../../../deployments/demo*.json", { eager: true, import: "default" });
+const contracts = import.meta.glob("../../../contracts/src/**/*.sol", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}) as Record<string, string>;
+const pick = (name: string): unknown | null => {
+  const entry = Object.entries(json).find(([path]) => path.endsWith(`/deployments/${name}`));
+  return entry === undefined ? null : entry[1];
+};
+const sources = Object.fromEntries(
+  Object.entries(contracts).map(([path, content]) => [path.slice(path.indexOf("contracts/") + "contracts/".length), content]),
+);
+const demo = resolveDemoState({
+  env,
+  nearRpc: site.nearRpc,
+  baseRpc: site.baseRpc,
+  gallery: pick("demo-gallery.json"),
+  deployment: pick("demo.json"),
+  sources,
+});
+const config = demo.status === "ready" ? demo.config : null;
+const runtime =
+  config === null
+    ? null
+    : {
+        gate: config.gate,
+        proxy: config.proxy,
+        verifierUrl: config.verifierUrl,
+        nearRpc: config.nearRpc,
+        baseRpc: config.baseRpc,
+        explorer: site.nearExplorer,
+        attacks: config.attacks.map((attack) => ({
+          id: attack.id,
+          title: attack.title,
+          contract: attack.contract,
+          impl: attack.impl,
+          codehash: attack.codehash,
+          initCalldata: attack.initCalldata,
+          expectedRule: attack.expectedRule,
+          expectedReason: attack.expectedReason,
+          files: attack.files,
+        })),
+      };
+const ruleCount = config === null ? 0 : new Set(config.attacks.map((attack) => attack.expectedRule)).size;
+---
+
+<Base
+  title="Live demo gate: try to break the rules"
+  description="Connect a NEAR wallet and run live attacks against a demo gate on NEAR testnet. Each one is refused by a different rule."
+>
+  <Header slot="header" app />
+  <div class="app container" id="top">
+    <header class="app-head">
+      <p class="app-eyebrow">
+        <StatusBadge tone={config === null ? "awaiting" : "observed"}>Live demo gate</StatusBadge>
+        <span>NEAR testnet · Not the final gate</span>
+      </p>
+      <h1>Try to break the rules.</h1>
+      <p class="lede">
+        Connect a NEAR wallet and send malicious upgrades to a demo gate. Each one is refused by a
+        different rule, and you can run them as often as you like.
+      </p>
+      <p class="app-head__note">
+        The final gate's recorded evidence stays on the home page, untouched. Nothing you run here
+        appears there, and nothing there is replayed here.
+      </p>
+      {
+        config !== null && (
+          <p class="app-verifier" data-verifier-state="checking" data-verifier>
+            <span class="app-verifier__state">
+              <span class="app-dot" aria-hidden="true" />
+              <span data-verifier-label>Checking the demo verifier</span>
+            </span>
+            <span class="muted" data-verifier-detail>One run at a time.</span>
+            <button type="button" class="app-btn app-btn--quiet app-btn--inline" data-verifier-retry hidden>
+              Check again
+            </button>
+          </p>
+        )
+      }
+    </header>
+
+    {
+      config === null && demo.status === "unavailable" ? (
+        <Unavailable missing={demo.missing} invalid={demo.invalid} />
+      ) : (
+        config !== null && (
+          <>
+            <div class="app-layout">
+              <Account gate={config.gate} allowanceNear={formatNear(SESSION_ALLOWANCE_YOCTO)} />
+
+              <section class="app-gallery" id="attacks" aria-labelledby="gallery-title">
+                <h2 id="gallery-title">
+                  {config.attacks.length} attacks{ruleCount > 1 && `, ${ruleCount} different rules`}
+                </h2>
+                <p class="app-section-lede">
+                  Each card proposes a real upgrade to <span class="mono">{config.gate}</span>. The
+                  verifier compiles it, runs the rules inside its enclave and records a verdict on
+                  NEAR. A refusal means the gate never asks the MPC network to sign anything.
+                </p>
+                <div class="app-cards">
+                  {
+                    config.attacks.map((attack, index) => (
+                      <AttackCard
+                        index={index}
+                        id={attack.id}
+                        title={attack.title}
+                        summary={attack.summary}
+                        contract={attack.contract}
+                        expectedRule={attack.expectedRule}
+                        expectedReason={attack.expectedReason}
+                        initCalldata={attack.initCalldata}
+                        snippet={changeSnippet(attack.files, attack.contract)}
+                        observed={attack.observed}
+                      />
+                    ))
+                  }
+                </div>
+              </section>
+            </div>
+
+            <section class="app-panels" aria-labelledby="panels-title">
+              <h2 id="panels-title">The demo gate, read live</h2>
+              <div class="app-panels__grid">
+                <RulePanel />
+                <div class="app-panel">
+                  <h3>Demo gate ledger</h3>
+                  <GateLedger
+                    id="demo-ledger"
+                    gate={config.gate}
+                    label="Live demo gate status"
+                    omit={["accessKeys", "verifiers"]}
+                  />
+                </div>
+                <div class="app-panel">
+                  <h3>Timelock queue</h3>
+                  <TimelockQueue id="demo-timelock" gate={config.gate} />
+                </div>
+                <div class="app-panel" id="watch">
+                  <h3>Look up a proposal</h3>
+                  <ProposalWatch id="demo-watch" gate={config.gate} verifier={config.verifierUrl} />
+                </div>
+              </div>
+            </section>
+
+            <ByoCli gate={config.gate} verifierUrl={config.verifierUrl} />
+          </>
+        )
+      )
+    }
+  </div>
+  <Footer slot="footer" />
+  {
+    runtime !== null && (
+      <script
+        type="application/json"
+        id="app-data"
+        set:html={JSON.stringify(runtime).replace(/</g, "\\u003c")}
+      />
+    )
+  }
+  {runtime !== null && <script>import "../components/app/app.ts";</script>}
+</Base>
