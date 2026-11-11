@@ -238,6 +238,51 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 
 [V, exercised on testnet 2026-11-10] The deployed rule-set hash is `0x1efe635ac3eb0eb59b0df0d56c7243b2728922898b55487bc5cf8063db94a410`, matching the committed manifest in the final audit (SMART-CONTRACT).
 
+#### Version 2: committed current-reference lineage
+
+[I, implemented for the separate live demo; not testnet evidence] `RuleSetManifest`
+dispatches on the existing numeric `version`. V1 retains exactly its original Borsh
+fields and JSON; no enum discriminant is added. V2 serializes those same fields with
+`version = 2`, followed by `reference_lineage: Vec<Reference>`. Its hash is
+`sha256(borsh(v2))`; the leading little-endian u32 separates the version domains.
+JSON keeps the existing policy fields and adds `reference_lineage`. The nonempty,
+ordered lineage must start with `reference`; empty references, duplicate contract
+names, unknown versions and unsupported policy/tool values are refused.
+
+[I] `rules/demo/manifest.json` commits VaultV1, VaultV2Honest and VaultV3Honest.
+`VERIFIER_MANIFEST` selects a repository-relative file (default `rules/manifest.json`);
+absolute paths, traversal and canonicalized symlink escapes are refused. Rule 0
+reproduces reference runtimes in committed order and selects the first whose keccak
+equals the observed current runtime; no match is `Reject(0,4)`. All lineage source
+pins are checked before compilation; omitted trusted reference files are supplied
+from compiled-in bytes, never arbitrary checkout files. The selected reference
+drives R1, current-side R5 replay and the explicit AI current-reference context.
+The final gate and its original v1 manifest are unchanged.
+
+[I] The unchanged R2 harness directly deploys the candidate behind an ERC1967Proxy,
+initializes its token and V2 cap, then explores bounded deposits/withdrawals. It
+does not execute a V1-to-candidate migration. V3 inherits V2 without new storage or
+changes to existing functions; its read-only `remainingCapacity()` therefore uses
+the same R2 harness and preserves all committed R5 calls, return data, logs and
+state. R1/R5 separately check the actual current-state upgrade path. These bounded
+checks are not a proof of arbitrary migration states or untested entry points.
+
+[I] Lineage is an allowlist of reproducible *current* implementations, not a
+forward-only version rule. With empty init, same-version proposals and V3-to-V2
+can satisfy deterministic rules (the capacity-preview feature is outside R5's
+corpus); V2/V3-to-V1 removes `depositCap` and fails R1. AI Clean remains required
+for any Pass certificate. Judges cannot select an uncommitted reference or bypass
+the first-failing-rule order by naming a lineage entry in a bundle.
+
+[V, locally computed 2026-11-11] The demo v2 manifest hash is
+`0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8`.
+The local lineage integration passed honest V1-to-V2 and V2-to-V3 through R1–R5
+(AI withheld), and all four gallery first-failure rules at V3. Exact local
+commands, durations and non-attestation limits are in LOCAL.md. No demo gate
+deployment or service-image build is claimed.
+
+
+
 ### Evidence manifest
 
 `EvidenceManifest { certificate_fields_digest, compile: {solc, settings_hash, runtime_hash}, current: {address, runtime_hash, reproduced: bool}, r1..r5: {status: Pass|Fail|Incomplete, artifact_sha256, detail_code}, ai: {model, completion_id, request_sha256, response_sha256, signature_kind, signature, preflight_digest, candidates: [{sha256, reproduced}]}, evidence_block: {number, hash}, archive_provider }`. `evidence_root = sha256(borsh(manifest))`.

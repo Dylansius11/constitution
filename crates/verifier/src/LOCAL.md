@@ -183,6 +183,22 @@ VERIFIER_RELAY_KEY_FILE=<near-cli-legacy-credential.json>
 cargo run -p constitution-verifier
 ```
 
+[I] `VERIFIER_MANIFEST` selects a manifest relative to the repository root/current
+working directory; omission serves `rules/manifest.json`. For the separate live
+demo use `VERIFIER_MANIFEST=rules/demo/manifest.json` in the private Compose
+environment file, or as the Phala Compose interpolation variable. Empty, absolute,
+traversing and canonicalized symlink-escape paths refuse startup.
+
+V1 JSON/Borsh and its final-gate hash are unchanged. V2 retains the policy fields
+and appends `reference_lineage` (VaultV1, VaultV2Honest, VaultV3Honest); its first
+entry equals `reference`. SHA-256 covers the complete Borsh v2 struct, beginning
+with u32 version 2 and without an enum tag. Rule 0 validates lineage source pins
+and picks the first compiled runtime matching the observed current codehash;
+no match is (0,4). R1, R5 and AI then use that current reference.
+The image allowlist already includes `rules/**` and `contracts/src/demo/*.sol`;
+the service Dockerfile copies both trees at build and runtime. No service image
+build or CVM deployment follows from this source change.
+
 `BASE_SEPOLIA_ARCHIVE_RPC_URL`, when nonempty, takes precedence over
 `BASE_SEPOLIA_RPC_URL` for observation, code/storage and trace calls.
 `BASE_SEPOLIA_PROOF_RPC_URL` is required in chain mode; use the same Anvil URL
@@ -370,6 +386,79 @@ The suite uses the shared local dstack socket simulator solely to obtain a
 nonzero release hash for the gate's strict initialization checks. The fixture
 quote is rebound to local ephemeral keys and is **not cryptographically valid
 DCAP evidence**; this does not turn the test into an attested deployment.
+
+### Demo reference-lineage check
+
+[V, locally tested 2026-11-11; requires a working WSL Docker engine/tool image]
+The test reused the existing gate wasm byte-for-byte. Do not rebuild or modify the
+final gate. Serialize heavy checks across workers:
+
+```sh
+VERIFIER_MANIFEST=rules/demo/manifest.json CARGO_BUILD_JOBS=1 \
+  flock --close /tmp/constitution-e2e.lock cargo test -p constitution-verifier \
+  --test lineage_e2e -- --nocapture --test-threads=1
+```
+
+Use `--close` so a daemonized sandbox cannot inherit and retain the lock if its
+test process is interrupted.
+
+The new test reads real proposals from a local NEAR sandbox and proof-authenticated
+Anvil state, then runs the production sealed-bundle pipeline and real tool image.
+It checks drain (2,20) at V1, honest V1-to-V2 and V2-to-V3 R1–R5 Pass with AI
+Incomplete, then all four attack rules at V3. An unavailable AI transport prevents
+paid inference and Pass issuance. Between honest checks it explicitly impersonates
+the local Anvil executor signer to advance the proxy; this is **not** a gate/MPC
+approved upgrade, attestation, testnet transaction or bypass of the real gate.
+No fabricated verdict is submitted to NEAR. Local case/stage durations are printed.
+
+[I] V3 adds only a capacity-preview view and inherits V2 storage and existing
+behavior. The committed R2 harness directly initializes the candidate proxy and
+its V2 cap; it does not migrate from V1. This unchanged harness remains applicable
+to V3's unchanged deposit/withdraw logic within its existing bounds. The unchanged
+R5 corpus observes exactly V2-compatible calls. Empty-init V3-to-V3 and V3-to-V2
+are not forbidden by lineage: lineage selects supported current code, not a
+forward-only upgrade policy. V2/V3-to-V1 removes the cap field and fails R1.
+
+[V, locally exercised 2026-11-11] The serialized lineage test passed in 490.91 s
+(490,862 ms internal total). Case durations include proposal registration and the
+real pipeline:
+
+| Current proxy | Proposal | Observed result | Duration ms |
+| --- | --- | --- | --- |
+| V1 | Drain | Reject (2,20), R1 Pass | 67,151 |
+| V1 | Honest V2 | R1–R5 Pass; AI Incomplete; no certificate | 84,565 |
+| V2 | Honest V3 | R1–R5 Pass; AI Incomplete; no certificate | 83,070 |
+| V3 | Drain | Reject (2,20), R1 Pass | 59,858 |
+| V3 | Storage shuffle | Reject (1,10) | 4,310 |
+| V3 | Self-destruct | Reject (3,30), R1/R2 Pass | 76,727 |
+| V3 | Forbidden initializer | Reject (4,41), R1–R3 Pass | 77,650 |
+
+Every local NEAR proposal remained Pending: the test does not submit its
+unattested rejection certificates. The two local-only executor transactions
+advanced Anvil to V3; final reads found 100 token units in the vault and capacity
+999,900. The actual invocation used `flock` without `--close` and took
+39m53.555s including queue/lock wait and compilation; the safer documented command
+above closes the inherited lock descriptor. This is local deterministic evidence,
+not a real AI completion, CVM appraisal, MPC signature or testnet evidence.
+
+
+[V, locally tested 2026-11-11] Final focused regression commands:
+`cargo test -p constitution-types -- --test-threads=1` (31 passed);
+`cargo test -p constitution-cli rules::tests -- --test-threads=1` (4 passed, 0.05 s);
+`forge test --root contracts --offline --match-contract VaultV3Test`
+(2 passed, 8.75 ms suite; existing forge-std compiler warnings remain); and
+`flock /tmp/constitution-e2e.lock cargo test -p constitution-verifier --lib -- --test-threads=1`
+(71 passed, 1 existing ignored real-R2 canary, 17.50 s).
+An earlier run failed while Docker was unavailable; after the lead restored it,
+all five Docker-dependent regressions passed in this final run.
+
+`cargo run -p constitution-cli -- rules hash rules/manifest.json` returned
+`0x1efe635ac3eb0eb59b0df0d56c7243b2728922898b55487bc5cf8063db94a410`
+both before and after the changes. The demo manifest command,
+`cargo run -p constitution-cli -- rules hash rules/demo/manifest.json`, returned
+`0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8`.
+
+
 
 ## R5 replay stage
 

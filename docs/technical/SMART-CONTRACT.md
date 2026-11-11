@@ -356,6 +356,21 @@ Rule ids and reason codes (shared enum in `constitution-types`):
 | 5 | R5 differential replay | 50 behavior diverged, 51 witness incomplete (fails closed) |
 | 6 | AI review | none on-chain: an incomplete required review is not a rejection; the verifier emits no certificate and the proposal stays `Pending` until retried or expired |
 
+[I, separate live-demo verifier format; no gate ABI change] V1 manifest bytes and
+the final gate's rule-set commitment remain unchanged. V2 appends an ordered
+`reference_lineage` after the v1 policy fields with `version = 2`; the first
+entry must equal the retained `reference` harness baseline. The complete v2
+Borsh bytes, including lineage names and source digests, are hashed by SHA-256.
+See ARCHITECTURE "Version 2: committed current-reference lineage" for exact format
+and bounded-policy limits. `VERIFIER_MANIFEST` is repo-relative and defaults to
+`rules/manifest.json`; paths escaping the repository are refused at startup.
+Rule 0 checks committed reference sources and selects the first reproduced
+lineage runtime matching the observed current implementation, otherwise (0,4).
+R1/R5/AI use that selected current reference; no proposal supplies a trusted
+reference name or runtime hash. The demo manifest additionally supports a proxy
+currently at V2 or V3 without changing the existing immutable gate wasm.
+
+
 ## Exact EVM transaction
 
 The gate builds, never accepts, every byte. omni-transaction 0.5.0, EVM feature only [V API names]:
