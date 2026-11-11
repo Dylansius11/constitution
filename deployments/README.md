@@ -70,13 +70,35 @@ An unplanned `MigrateAuthority`, `AddVerifier`, `RemoveVerifier`, `SetRuleSet`, 
 
 ## Separate live demo deployment
 
-[I] This is an ordered **future testnet procedure**, not authorization to spend,
-create accounts, deploy a CVM, sign, or delete keys. It never changes the permanent
-`constitution-gate.testnet`, `testnet.json`, the final manifest/corpus, or gate wasm.
-The separate gate is `constitution-demo.testnet`, with a fresh executor/proxy,
-an independently appraised demo CVM, and `rules/demo/manifest.json`. Its immutable
-delay is **1 day**, the current `constitution_types::MIN_GOVERNANCE_DELAY_DAYS`.
-The original `Deploy.s.sol` and its E2E interface are untouched.
+[V, exercised on testnet 2026-11-11] The separate gate `constitution-demo.testnet`
+is deployed with a fresh executor/proxy, independently appraised Phala
+`tdx.small` CVM `cvm_VKZRaXKr`, `rules/demo/manifest.json` v2 lineage and an
+immutable **1-day** delay. [`demo.json`](demo.json) is the observed audit record;
+[`demo-gallery.json`](demo-gallery.json) contains real candidate addresses,
+four rejection observations and evidence roots; [`demo-receipts/`](demo-receipts/)
+retains the attack receipts. Both honest upgrade observations remain null.
+The [README comparison](../README.md#live-demo-gate) holds addresses, commitments
+and result details; do not duplicate or confuse them with final-gate evidence.
+
+[V, identity fetched and appraised 2026-11-11] Demo verifier endpoint:
+`https://db06dd366642c074483472e3afcb330ff72e4954-8787.dstack-pha1-prod5.phala.network`
+(Phala app `db06dd366642c074483472e3afcb330ff72e4954`, **prod5**, not final prod9).
+Verifier public key: `0x2411cb1631e76179c75595679127843dd6f74877ac14f00acfc924bcad698af1`;
+release hash: `0xfe5ca64ccd11b9ecfd29d0a2ba5553bafd6d642d7f7fc8db4528117daaacea5b`.
+Expected demo compose hash:
+`0xf7571e2688238dd87217f2210789e395c505e3e8eecb3ef026c62051feebe79e`
+from [`compose.phala.demo.yaml`](../verifier-image/compose.phala.demo.yaml).
+Appraisal passed Intel chain, TCB `UpToDate`, RTMR3 replay, compose, report-data
+and release binding. Recheck availability and identity before private-source use.
+
+[V, exercised on testnet 2026-11-11] The pre-deletion demo audit FAILs only
+`gate_has_no_access_keys`; its key is intentionally retained for founder testing.
+[I, planned] Founder wallet rehearsal, recorded honest V1→V2→V3, fresh deletion
+authorization, key deletion and keyless demo audit are still pending (P3.7).
+The following ceremony documents operator steps, **not new authorization**.
+It never changes permanent `constitution-gate.testnet`, `testnet.json`, its
+manifest/corpus, gate wasm or final CVM/compose. Final CVM deletion requires
+founder re-confirmation (D28); the original `Deploy.s.sol` interface is untouched.
 
 ### 1. Derive, deploy and seed EVM state (lead, after authorization)
 
@@ -137,11 +159,15 @@ It then:
    before filling **only** catalogue `proxy` and `attacks[].impl`.
 
 Keep the broadcast files and scratch record privately as operational evidence.
-If any step fails, stop and inspect confirmed receipts; this is not a resumable
-transaction engine and has no automatic retry. An existing output path is
-refused to prevent accidental redeployment. Do not rerun with a different path
-without reconciling earlier transactions. A new token/proxy ensures seeding
-does not alter the final vault even though the R5 actor account is shared.
+[V, source inspected 2026-11-11] `deploy --resume` (through
+`bash scripts/demo/deploy.sh --resume` with the same arguments and `--output`)
+reuses a persisted bootstrap and already-recorded implementation deployments;
+without that flag an existing output is refused. It is not a fully idempotent
+transaction engine: funding and seeding are not automatically skipped, and an
+uncertain transaction may have landed without being recorded. Stop and reconcile
+receipts/state before resuming; do not switch output paths to redeploy blindly.
+The script's Python JSON-RPC requests include `User-Agent: constitution-demo/1`.
+A new token/proxy isolates seeding from the final vault despite the shared R5 actor.
 
 ### 2. Appraise the separate CVM and initialize NEAR (lead, after authorization)
 
@@ -259,11 +285,12 @@ cargo run -p constitution-cli -- audit --deployment deployments/demo.json \
 Finalization checks every gate config field against the EVM record and the
 expected demo binding, checks the independent wasm commitment, requires a
 nonempty observed verifier allowlist, and records real roles. It is **not**
-an attestation appraisal or full audit. Before deletion, the only expected audit
-FAIL is `gate_has_no_access_keys`; all other FAILs/unexpected WARNs stop the
-ceremony. Rehearse the four rejections, both honest upgrades and recovery
-against this separate gate, per D21, without presenting retained-key staging
-as keyless evidence.
+an attestation appraisal or full audit. [V, exercised on testnet 2026-11-11]
+Before deletion, the observed sole FAIL is `gate_has_no_access_keys`; all other
+FAILs/unexpected WARNs stop the ceremony. Four CLI rejections have been rehearsed;
+both honest testnet upgrades and the founder wallet flow remain planned.
+Finish the applicable D21/D28 acceptance without presenting retained-key testing
+as keyless evidence; use the [founder recording flow](../docs/DEMO-SCRIPT.md#live-demo-gate-recording-flow).
 
 Only after review and **fresh founder authorization for irreversible deletion**:
 
@@ -294,8 +321,9 @@ impersonates the **committed** R5 actor locally only, and runs the same deploy
 procedure. No project keystore is opened. Its schema-only `demo.json` uses the
 unchanged local wasm commitment with an explicitly empty verifier list: it is
 not an observed NEAR account, appraised verifier, full audit or testnet evidence.
-All local addresses stay in scratch/broadcast; committed catalogue fields stay
-unfilled until the authorized real deployment.
+All local addresses stay in scratch/broadcast. [V, exercised on testnet 2026-11-11]
+The committed catalogue is now filled from the separate authorized live deployment;
+the local dry run did not produce those live observations.
 
 The script sums confirmed receipt `gasUsed` for the bootstrap, all unique
 candidates, two ETH transfers, mint, approve and deposit. That is a local EVM

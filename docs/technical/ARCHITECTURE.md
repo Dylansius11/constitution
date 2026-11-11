@@ -240,7 +240,7 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 
 #### Version 2: committed current-reference lineage
 
-[I, implemented for the separate live demo; not testnet evidence] `RuleSetManifest`
+[I, implemented for the separate live demo; deployment evidence below] `RuleSetManifest`
 dispatches on the existing numeric `version`. V1 retains exactly its original Borsh
 fields and JSON; no enum discriminant is added. V2 serializes those same fields with
 `version = 2`, followed by `reference_lineage: Vec<Reference>`. Its hash is
@@ -278,8 +278,17 @@ the first-failing-rule order by naming a lineage entry in a bundle.
 `0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8`.
 The local lineage integration passed honest V1-to-V2 and V2-to-V3 through R1–R5
 (AI withheld), and all four gallery first-failure rules at V3. Exact local
-commands, durations and non-attestation limits are in LOCAL.md. No demo gate
-deployment or service-image build is claimed.
+commands, durations and non-attestation limits are in LOCAL.md. These local
+checks did not prove testnet honest upgrades or AI certification.
+
+[V, exercised on testnet 2026-11-11] The separate `constitution-demo.testnet`
+deployment now uses this v2 manifest and the same immutable gate wasm as the
+final gate, with demo CVM `cvm_VKZRaXKr` and its own service image/compose.
+Four CLI attacks were rejected by R2/20, R1/10, R3/30 and R4/41 without signing
+or changing the demo proxy. Honest V1→V2→V3 testnet upgrades and the keyless
+demo audit remain planned; the retained-key audit FAILs only the key check.
+See the [live-demo evidence](../../README.md#live-demo-gate). The final gate,
+manifest and CVM/compose remain unchanged.
 
 
 

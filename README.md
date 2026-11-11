@@ -2,7 +2,7 @@
 
 **An upgrade authority governed by committed rules, not an admin's approval.**
 
-CONSTITUTION protects one upgradeable vault on Base Sepolia with a NEAR gate and Chain Signatures. The gate is designed to request a signature only for an exact upgrade transaction backed by an allowlisted verifier's certificate. Rule and authority changes require a public deployment-selected, immutable delay of 1–30 whole days (3 on this deployment); ordinary certified vault upgrades do not wait for it.
+CONSTITUTION protects upgradeable vaults on Base Sepolia with a NEAR gate and Chain Signatures. Each gate is designed to request a signature only for an exact upgrade transaction backed by an allowlisted verifier's certificate. Rule and authority changes require a public deployment-selected, immutable delay of 1–30 whole days (3 on the final gate, 1 on the separate demo gate); ordinary certified vault upgrades do not wait for it.
 
 The verifier runs deterministic checks inside an attested TEE. NEAR AI Cloud privately searches for counterexamples using encrypted inference and a verified `provider_tee` response. This review is bounded and nondeterministic: reproduced counterexamples can veto, but AI cannot authorize an upgrade.
 
@@ -10,11 +10,56 @@ The verifier runs deterministic checks inside an attested TEE. NEAR AI Cloud pri
 
 **Testnet only; not independently audited.** [V, exercised on testnet 2026-11-10] The final gate, `constitution-gate.testnet`, had its only access key deleted in [transaction `FugUyo9Xa8VLTm9qM5vovYUpJU5DAqNjTUriYkmKEhn8`](https://testnet.nearblocks.io/txns/FugUyo9Xa8VLTm9qM5vovYUpJU5DAqNjTUriYkmKEhn8), block 277098815, at 2026-11-10T17:35:22.910Z. The final-finality access-key list returned 0 keys.
 
-The [public page](https://constitution-gate.pages.dev) is hosted on Cloudflare Pages Free; its initially deployed build predates the final deployment, so inspect what it actually displays rather than assuming its live data has been updated. The [build plan](docs/BUILD-PLAN.md) tracks remaining work. Optional proposal repair is not implemented.
+[V, deployed 2026-11-11] The [public page](https://constitution-gate.pages.dev) now includes a separate [live attack app](https://constitution-gate.pages.dev/app) (PR #25). The [build plan](docs/BUILD-PLAN.md) tracks remaining work. Optional proposal repair is not implemented.
 
-### Final deployment and recorded results
+### Live demo gate
 
-Observed on NEAR testnet and Base Sepolia on 2026-11-10; these are historical observations, not a promise of current service availability:
+[V, exercised on testnet 2026-11-11] **This is a separate deployment, not the final gate's permanent evidence.** The lead ran all four gallery attacks from the CLI against `constitution-demo.testnet`; each was rejected by a different deterministic rule, with no signing record and no proxy implementation change:
+
+| Attack | Demo proposal | Refusal | Receipt |
+| --- | --- | --- | --- |
+| Hidden drain | 0 | R2, reason 20 | [JSON](deployments/demo-receipts/attack-drain.json) |
+| Storage shuffle | 1 | R1, reason 10 | [JSON](deployments/demo-receipts/attack-storage-shuffle.json) |
+| Self-destruct | 2 | R3, reason 30 | [JSON](deployments/demo-receipts/attack-self-destruct.json) |
+| Forbidden initializer | 3 | R4, reason 41 | [JSON](deployments/demo-receipts/attack-forbidden-init.json) |
+
+[I, delivered interaction; founder wallet rehearsal pending] Open [/app](https://constitution-gate.pages.dev/app), connect a **NEAR testnet wallet**, then approve one confirmation that deposits credit and adds a `propose`-only session key. Select an attack and inspect the actual rejection and receipts; the four attacks are repeatable. [U, 2026-11-11] The founder has not yet exercised these wallet flows against the live demo gate. The CLI observations above do not prove the browser wallet path. Runs took 35–117 s on one warm CVM; this is historical latency, not a promise. AI runs only after R1–R5 pass, so these four attacks never call NEAR AI.
+
+[V, exercised on testnet 2026-11-10/11] Deployment identities and purposes:
+
+| Property | Final gate | Live demo gate |
+| --- | --- | --- |
+| Account | `constitution-gate.testnet` | `constitution-demo.testnet` |
+| Manifest | [v1](rules/manifest.json) | [v2 lineage](rules/demo/manifest.json) |
+| Manifest hash | `0x1efe635ac3eb0eb59b0df0d56c7243b2728922898b55487bc5cf8063db94a410` | `0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8` |
+| Governance delay | 3 days | 1 day |
+| CVM | `cvm_2eakrQwn` | `cvm_VKZRaXKr` |
+| Verifier URL | [Final CVM (prod9)](https://d72d204232fe1d3a56c6b4a1b1f83d33cc867168-8787.dstack-pha1-prod9.phala.network) | [Demo CVM (prod5)](https://db06dd366642c074483472e3afcb330ff72e4954-8787.dstack-pha1-prod5.phala.network) |
+| CVM compose hash | `0x0fa62de4b208959b1acb02efc04949d6495046d9bd1905280d49cdd244f9d81a` | `0xf7571e2688238dd87217f2210789e395c505e3e8eecb3ef026c62051feebe79e` |
+| Purpose | Permanent recorded proofs; keyless audit passed | Repeatable judge attacks; gate key still retained |
+
+[V, exercised on testnet 2026-11-11] Demo Base Sepolia proxy: `0xc24a9b7b139af4e458df40a2644229a4ca5fec91`; executor: `0xd1a7633669f6f1a08a168479798d04a40e0f2483`; derived signer: `0x6e6568bc88e937b84d739c94a1127304d1160132`. The demo Phala `tdx.small` CVM passed Intel-chain, TCB `UpToDate`, RTMR3 replay, compose, report-data and release-hash appraisal. Its [compose file](verifier-image/compose.phala.demo.yaml) selects `VERIFIER_MANIFEST=rules/demo/manifest.json`; service image: `sha256:ec1f56b018840430ff02977d928e71f218d2d2587073e4134e03465828ec1f3a`. **Both gates use identical gate wasm** (`GjPz45TdYvvuVX5k2NtSKDm8gdBt3gvdF7WpUJXZvLGP`); lineage is verifier policy data, not new gate code. The final CVM and its compose files are unchanged.
+
+[V, identity fetched and appraised 2026-11-11] The demo endpoint above belongs to Phala app `db06dd366642c074483472e3afcb330ff72e4954`; verifier public key `0x2411cb1631e76179c75595679127843dd6f74877ac14f00acfc924bcad698af1`, release hash `0xfe5ca64ccd11b9ecfd29d0a2ba5553bafd6d642d7f7fc8db4528117daaacea5b`. Endpoint availability and identity must be rechecked before private-source submission; a historical appraisal is not an uptime promise.
+
+Read-only demo audit, after the [local quickstart](#local-quickstart), from the repository root:
+
+```sh
+./target/debug/constitution audit \
+  --deployment deployments/demo.json --manifest rules/demo/manifest.json \
+  --executor-artifact contracts/out/ConstitutionExecutor.sol/ConstitutionExecutor.json \
+  --near-rpc https://test.rpc.fastnear.com --evm-rpc https://sepolia.base.org
+```
+
+[V, exercised on testnet 2026-11-11] The pre-deletion demo audit currently **FAILs only `gate_has_no_access_keys`**: the key is intentionally retained during founder testing. [I, planned] Delete it only with fresh founder authorization, then record zero keys and a passing keyless demo audit. Do not borrow the final gate's exit-0 result. Audit compares public state with trusted local records/artifacts; it does not appraise the CVM. [Deployment ceremony](deployments/README.md#separate-live-demo-deployment) and [gallery observations](deployments/demo-gallery.json) retain the operational evidence.
+
+[I, planned testnet recording] The founder records honest V1→V2→V3 upgrades **from the CLI**, not a web upgrade button; neither upgrade has yet run on this demo gate. Only local lineage checks passed. The manifest recognizes those current implementations so attacks can still be checked after upgrades; post-upgrade attack coverage is locally tested, not yet testnet evidence. Anyone can submit honest upgrades via the permissionless CLI and consume a demo version; free demo credit and available versions can be burned. See the [recording flow](docs/DEMO-SCRIPT.md#live-demo-gate-recording-flow).
+
+**Roadmap — [I, planned, not built]:** rule-pack presets and a rule-pack builder. The only active rule set is **Vault pack**. There is no TUI.
+
+### Final gate, permanent evidence
+
+[V] Observed on NEAR testnet and Base Sepolia on 2026-11-10; these are historical final-gate observations, not demo-gate results or a promise of current service availability:
 
 | Item | Observed value |
 | --- | --- |
@@ -39,9 +84,11 @@ The single verifier instance was a Phala `tdx.small` CVM. Its appraisal passed t
 
 [V, exercised on testnet 2026-11-10] The post-deletion audit exited 0 with 16 named check/information lines, including `gate_has_no_access_keys` PASS (0 access keys). This is not an independent security audit.
 
-**The live attack cannot be repeated on this proxy under the current rule set.** The manifest references VaultV1, but the proxy now runs honest V2: a new proposal encounters rule 0 `current source runtime mismatch` before R2. Use the recorded drain receipts, not a new run, to inspect the R2 refusal. A subsequent upgrade needs a new rule set and verifier release through governance.
+**The live attack cannot be repeated on this final proxy under the current rule set.** The final manifest references VaultV1, but that proxy now runs honest V2: a new proposal encounters rule 0 `current source runtime mismatch` before R2. Use its recorded drain receipts, not a new final-gate run, to inspect the R2 refusal. A subsequent final-gate upgrade needs a new rule set and verifier release through governance. The separate demo gate above uses a different manifest and proxy.
 
 ## Verify it yourself
+
+**Final gate only:** the commands below inspect `deployments/testnet.json`, not the separate live demo.
 
 These are read-only commands, run from the repository root in Linux or WSL2 after the [local quickstart](#local-quickstart) builds the CLI and executor artifact. They require reachable public RPCs, not a signing key or paid AI inference. If an RPC fails or rate-limits, select another trusted testnet endpoint; do not treat an unavailable observation as a pass.
 
@@ -203,7 +250,7 @@ Audit exits nonzero on failed preconditions. Governance warnings alone can exit 
 
 ## Run an attack or honest-upgrade demonstration
 
-**These are write paths, not setup tests.** On the recorded final deployment, the current rule-set reference no longer matches the upgraded proxy, so these commands cannot reproduce the recorded R2 attack or honest upgrade. They require an appropriate deployed implementation, gate, executor and selected verifier. A funded verifier may spend inference credits. Testnet signing, spending and deployment need the founder's separate authorization.
+**These are write paths, not setup tests.** On the recorded final deployment, the current rule-set reference no longer matches the upgraded proxy, so these commands cannot reproduce the recorded R2 attack or honest upgrade there. Use the separate [live demo gate](#live-demo-gate) for judge attacks and the [founder CLI recording flow](docs/DEMO-SCRIPT.md#live-demo-gate-recording-flow) for its planned honest upgrades. Write paths require an appropriate deployed implementation, gate, executor and selected verifier. A funded verifier may spend inference credits. Testnet signing, spending and deployment need the founder's separate authorization.
 
 The [demo runner instructions](docs/technical/ARCHITECTURE.md#demo-runner-operation) define all required inputs for `make attack` and `make upgrade`. The runner:
 
@@ -215,7 +262,7 @@ The [demo runner instructions](docs/technical/ARCHITECTURE.md#demo-runner-operat
 
 Proposal storage is paid from prepaid credit, not an attached deposit. Fund at least the refundable reservation plus `get_proposal_fee` (and the entry fee for a new credit account). The CLI can top up with an authorized full-access account; a method-restricted demo key must already have sufficient credit and never needs transfer permission.
 
-**Appraise the verifier before sharing private source.** `propose`, `verifier run` and the demo runner fetch its transport key but do not perform DCAP appraisal automatically. Use `constitution verifier appraise` with the independently committed expected compose hash; the [activation checklist](scripts/activate.md) is the authority for registration and key deletion. Merely sealing source to an endpoint does not establish that the endpoint is trusted.
+**Appraise the verifier before sharing private source.** The [current CLI contract](docs/technical/ARCHITECTURE.md#demo-runner-operation) requires `EXPECT_COMPOSE_HASH` pinned to the owner-approved compose before proposing or retrying and appraises the exact identity used for sealing. Use `constitution verifier appraise` for an explicit inspection; the [activation checklist](scripts/activate.md) remains the authority for registration and key deletion. Merely fetching a transport key or sealing source to an endpoint does not establish trust.
 
 ## Verifier deployment and trust limits
 
@@ -229,7 +276,7 @@ Important limits:
 - R2 is bounded aggregate solvency plus implementation-slot preservation, not full formal verification or per-depositor withdrawability. R3 literal filters are not a general storage-write proof. Rules do not cover every possible bug or entry point.
 - Chain Signatures, TEE vendors, provider attestation and the declared rule coverage remain trust assumptions. Proxy storage can change between verification and execution.
 - Pausing or removing a verifier does not revoke an already signed EVM transaction. Its executor deadline remains load-bearing.
-- There is one verifier CVM instance, with an ephemeral certificate key. Restarting it changes the key; registering the replacement needs a three-day timelocked `AddVerifier` on this gate. Uptime through judging is not established.
+- Each gate has one verifier CVM with an ephemeral certificate key. Restarting it changes the key; registering a replacement needs a timelocked `AddVerifier` (three days on the final gate, one on the demo gate). Continued availability through judging is not established; deleting the final CVM requires founder re-confirmation, not an inference from the separate demo deployment.
 - The trusted service's Docker socket is root-equivalent host access. The untrusted compilation/tool sandbox must not receive that socket, the dstack socket or signing keys. Running the service on a VPS does not reproduce CVM isolation.
 - Repair is optional planned stretch work for a **rejected proposal**, with explicit developer approval before resubmission. It is not active-vault repair and is not implemented yet.
 
