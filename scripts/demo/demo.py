@@ -27,7 +27,8 @@ def run(*args, cwd=ROOT, env=None):
 
 def rpc(url, method, params):
     request = Request(url, json.dumps({"jsonrpc": "2.0", "id": "demo", "method": method,
-                                      "params": params}).encode(), {"Content-Type": "application/json"})
+                                      "params": params}).encode(),
+                      {"Content-Type": "application/json", "User-Agent": "constitution-demo/1"})
     with urlopen(request, timeout=60) as response:
         data = json.load(response)
     if "error" in data:
@@ -119,8 +120,9 @@ def check_evm(args, evm):
 
 
 def deploy(args):
-    if Path(args.output).exists():
-        raise ValueError("Output exists; use a fresh output path (deployment is not resumable)")
+    resuming = Path(args.output).exists()
+    if resuming and not args.resume:
+        raise ValueError("Output exists; pass --resume to continue a partial testnet deployment")
     if number(run("cast", "chain-id", "--rpc-url", args.rpc)) != 84532:
         raise ValueError("Expected chain 84532")
     if args.local_unlocked:
@@ -145,21 +147,30 @@ def deploy(args):
     for attack in gallery["attacks"]:
         if hashes[attack["contract"]] != attack["codehash"]:
             raise ValueError(f"Compiled gallery codehash mismatch: {attack['id']}")
-    env = dict(os.environ, SIGNER=args.signer)
-    run("forge", "script", "script/DeployDemo.s.sol:DeployDemo", "--rpc-url", args.rpc,
-        *wallet(args, script=True), "--broadcast", "--slow", "--offline", cwd=ROOT / "contracts", env=env)
-    broadcast = json.loads((ROOT / "contracts/broadcast/DeployDemo.s.sol/84532/run-latest.json").read_text())
-    created = {t["contractName"]: t["contractAddress"].lower() for t in broadcast["transactions"]
-               if t["transactionType"] == "CREATE"}
-    receipts = list(broadcast["receipts"])
-    evm = {"executor": created["ConstitutionExecutor"], "token": created["MockToken"],
-           "vault_v1": created["VaultV1"], "derived_eoa": args.signer.lower(), "implementations": {},
-           "receipts": receipts}
-    evm["proxy"] = call(args, evm["executor"], "proxy()(address)")
-    evm["proxy_admin"] = call(args, evm["executor"], "proxyAdmin()(address)")
-    # Persist bootstrap observations immediately; never blindly redeploy after partial failure.
-    save(args.output, evm)
+    if resuming:
+        # Bootstrap already confirmed on-chain; reuse the persisted observations.
+        evm = json.loads(Path(args.output).read_text())
+        if evm["derived_eoa"] != args.signer.lower():
+            raise ValueError("Resume record belongs to another signer")
+        receipts = evm["receipts"]
+    else:
+        env = dict(os.environ, SIGNER=args.signer)
+        run("forge", "script", "script/DeployDemo.s.sol:DeployDemo", "--rpc-url", args.rpc,
+            *wallet(args, script=True), "--broadcast", "--slow", "--offline", cwd=ROOT / "contracts", env=env)
+        broadcast = json.loads((ROOT / "contracts/broadcast/DeployDemo.s.sol/84532/run-latest.json").read_text())
+        created = {t["contractName"]: t["contractAddress"].lower() for t in broadcast["transactions"]
+                   if t["transactionType"] == "CREATE"}
+        receipts = list(broadcast["receipts"])
+        evm = {"executor": created["ConstitutionExecutor"], "token": created["MockToken"],
+               "vault_v1": created["VaultV1"], "derived_eoa": args.signer.lower(), "implementations": {},
+               "receipts": receipts}
+        evm["proxy"] = call(args, evm["executor"], "proxy()(address)")
+        evm["proxy_admin"] = call(args, evm["executor"], "proxyAdmin()(address)")
+        # Persist bootstrap observations immediately; never blindly redeploy after partial failure.
+        save(args.output, evm)
     for contract in contracts:
+        if contract in evm["implementations"]:
+            continue
         result = json.loads(run("forge", "create", contract, "--json", "--broadcast", "--offline",
                                 "--rpc-url", args.rpc, *wallet(args), cwd=ROOT / "contracts"))
         evm["implementations"][contract] = result["deployedTo"].lower()
@@ -236,6 +247,7 @@ def main():
     dep.add_argument("--signer-funding", default="0.0005ether")
     dep.add_argument("--actor-funding", default="0.002ether")
     dep.add_argument("--local-unlocked", action="store_true")
+    dep.add_argument("--resume", action="store_true", help="continue a partial testnet deployment from --output")
     dep.add_argument("--deployer", default="0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266")
     for name in ("deployer", "actor"):
         dep.add_argument(f"--{name}-keystore", default=f".secrets/evm/{'r5-actor' if name == 'actor' else name}")
