@@ -6,8 +6,8 @@ import Button from "../ui/Button.astro";
 // words stay plain text in the h1; `mark` sets the word that carries the lavender highlight.
 const sentences = [
   "Steal every admin key.",
-  "You still cannot violate the upgrade constitution.",
-].map((sentence) => sentence.split(" ").map((word) => ({ word, mark: word === "cannot" })));
+  "You still can't break the rules.",
+].map((sentence) => sentence.split(" ").map((word) => ({ word, mark: word === "can't" })));
 ---
 
 <section id="top" class="hero" aria-labelledby="top-title">
@@ -177,8 +177,8 @@ const sentences = [
     color: var(--ink-muted);
   }
 
-  /* The header chip carries the scope on wider screens; on a phone it is hidden, so say it here. */
-  @media (max-width: 34rem) {
+  /* The header chip carries the scope on wider screens; below 48rem it is hidden, so say it here. */
+  @media (max-width: 48rem) {
     .hero__scope {
       display: block;
     }

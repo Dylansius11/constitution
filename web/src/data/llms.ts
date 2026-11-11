@@ -1,4 +1,4 @@
-import { humanCommands } from "./commands.ts";
+import { cliTabs, localChecks } from "./commands.ts";
 import { finalEvm, finalGate, finalRuns, finalVerifier, RECORDED_ON } from "./final-evidence.ts";
 
 /** Only public repository configuration affects this static, deterministic guide. */
@@ -10,7 +10,7 @@ export interface LlmsSite {
 export function buildLlmsText(site: LlmsSite): string {
   const source = (path: string): string =>
     site.repoUrl ? `[${path}](${site.repoUrl}/blob/dev/${path})` : path;
-  const commands = humanCommands
+  const commands = [...cliTabs.flatMap((tab) => tab.lines), ...localChecks]
     .map((line) => (line.cmd ? line.cmd : `# ${line.note ?? ""}`))
     .join("\n");
 
@@ -41,7 +41,7 @@ export function buildLlmsText(site: LlmsSite): string {
 - Recorded run, proposal ${finalRuns.drain.proposalId} (${finalRuns.drain.fixture}): R1 Pass, ${finalRuns.drain.ruleId} ${finalRuns.drain.ruleName} Fail (reason ${finalRuns.drain.reasonCode}), signed Reject, gate state Rejected, no signature requested, proxy implementation unchanged (VaultV1). Verifier run ${finalRuns.drain.verifierSeconds} s. NEAR transactions: propose ${finalRuns.drain.proposeTx}, verdict ${finalRuns.drain.verdictTx}.
 - Recorded run, governance change ${finalRuns.governance.changeId} (${finalRuns.governance.kind}): scheduled in ${finalRuns.governance.scheduleTx}, applicable from ${finalRuns.governance.applicableFromUtc}. An early apply_change was refused ${finalRuns.governance.refusedCode} in ${finalRuns.governance.earlyApplyTx}.
 - Recorded run, proposal ${finalRuns.honest.proposalId} (${finalRuns.honest.fixture}, ${finalRuns.honest.initCall}): R1 to R5 Pass; a private AI review through NEAR AI Cloud (provider_tee) returned ${finalRuns.honest.aiCandidates} candidates and none reproduced (${finalRuns.honest.aiSeconds} s); signed Pass certificate; gate SignRequested; NEAR MPC signature; executed on Base Sepolia, status success, block ${finalRuns.honest.block}, gas used ${finalRuns.honest.gasUsed}, sender the MPC-derived signer, nonce ${finalRuns.honest.nonce}. Run total ${finalRuns.honest.totalSeconds} s. NEAR transactions: propose ${finalRuns.honest.proposeTx}, verdict ${finalRuns.honest.verdictTx}. Base Sepolia transaction ${finalRuns.honest.baseTx}. Proxy implementation before ${finalEvm.vaultV1}, after ${finalEvm.vaultV2Honest}.
-- Live runs are closed on this gate. The proxy is now VaultV2Honest while the committed manifest's reference source is VaultV1, so a new attack or upgrade proposal is refused at rule 0 (current source runtime mismatch) before R2 runs. The page therefore offers no in-browser run and no public demo key; the recorded receipts above are the evidence. What anyone can do is read the live gate state, watch proposal ids 0 and 1, and run the audit and receipt commands below.
+- Live runs are closed on this final gate, which stays untouched as permanent evidence. The proxy is now VaultV2Honest while the committed manifest's reference source is VaultV1, so a new attack or upgrade proposal is refused at rule 0 (current source runtime mismatch) before R2 runs. The public page therefore has no run button here and no public demo key; the recorded receipts above are the evidence. Live attacks run on the page's /app route against a separate demo gate, not this one. What anyone can do against the final gate is read its live state and run the audit, status and receipt commands below.
 - Spike, 2026-11-03: a real NEAR MPC signature executed an honest upgrade on Base Sepolia, transaction 0xc232188629763bec4eb9a72be7fd08f66ab5690a2ad997ac6ed20697ff0729d8, receipt status 1. This used constitution-spike.testnet with no verifier in the loop, not the final gate.
 - Local test, recorded 2026-11-05: gate checks passed 83 tests (58 unit, 18 property, seven sandbox/integration). This is a dated result, not a claim that tests were rerun for this guide.
 - Local test: R1-R5 are exercised locally. The committed depth-four R2 check rejects VaultV2Drain; bounded local checks are not a testnet rejection receipt.
@@ -98,7 +98,7 @@ export function buildLlmsText(site: LlmsSite): string {
 ## How to verify
 
 - Run from the repository root with the pinned prerequisites. Rust, Foundry and sandbox checks use Linux/WSL2; use native pnpm for web checks (Windows pnpm on Windows). These local checks do not deploy, sign or call paid inference.
-- The commands below are shared with the public page. Reads of the final gate use the committed deployment record (${source("deployments/testnet.json")}) and a locally built executor artifact. Set GATE_ACCOUNT=${finalGate.account} and PROPOSAL_ID=0 or 1 in the Linux/WSL2 shell, not spike values; select the actual RPCs via NEAR_RPC_URL and BASE_SEPOLIA_RPC_URL when necessary. The public testnet RPC defaults need no signing key.
+- The audit, status, receipt and appraise commands are the four tabs on the public page; the local checks follow them. Reads of the final gate use the committed deployment record (${source("deployments/testnet.json")}) and a locally built executor artifact, with the gate account ${finalGate.account} and proposal ids 0 and 1 already in the commands, not spike values; select the actual RPCs via NEAR_RPC_URL and BASE_SEPOLIA_RPC_URL when necessary. The public testnet RPC defaults need no signing key.
 
 \`\`\`sh
 ${commands}

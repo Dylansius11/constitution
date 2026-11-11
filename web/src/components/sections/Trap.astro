@@ -182,9 +182,15 @@ const depth = (text: string) => (text.length - text.trimStart().length) / 4;
 
   .trap__found {
     display: none;
-    margin-top: var(--space-4);
+    margin-top: var(--space-2);
     font-size: var(--text-sm);
     font-weight: 500;
+  }
+
+  .trap__found a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
   }
 
   .trap__legend {
@@ -277,6 +283,11 @@ const depth = (text: string) => (text.length - text.trimStart().length) / 4;
   }
 
   @media (max-width: 36rem) {
+    .line__row {
+      min-height: 2.75rem;
+      align-content: center;
+    }
+
     .line__text {
       padding-left: calc(var(--d, 0) * 1.25ch);
       font-size: var(--text-xs);
@@ -346,7 +357,8 @@ const depth = (text: string) => (text.length - text.trimStart().length) / 4;
   }
 
   .trap__show {
-    padding: var(--space-2) var(--space-4);
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-5);
     border: 1px solid var(--ink);
     border-radius: var(--radius-sm);
     background: transparent;

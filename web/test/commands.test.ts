@@ -1,19 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { agentCommands, humanCommands } from "../src/data/commands.ts";
+import { cliTabs, localChecks } from "../src/data/commands.ts";
 import { buildLlmsText } from "../src/data/llms.ts";
 
-describe("judge command guide", () => {
-  it("offers runnable programs without unfinished or invented-host instructions", () => {
-    const commands = humanCommands.flatMap((line) => (line.cmd ? [line.cmd] : []));
-    expect(commands.length).toBeGreaterThan(0);
-    for (const command of commands) {
-      expect(command).toMatch(/^(cargo|forge|pnpm|constitution|make)\s/);
-    }
-    for (const line of [...humanCommands, ...agentCommands]) {
-      expect(`${line.cmd ?? ""} ${line.note ?? ""}`).not.toMatch(/TODO|example\.com/i);
+const tabLines = cliTabs.flatMap((tab) => tab.lines);
+
+describe("check-it-yourself command tabs", () => {
+  it("has the four read-only tabs in order, each with at least one command", () => {
+    expect(cliTabs.map((tab) => tab.id)).toEqual(["audit", "status", "receipt", "appraise"]);
+    for (const tab of cliTabs) {
+      expect(tab.lines.some((line) => line.cmd)).toBe(true);
     }
   });
 
+  it("calls only read-only CLI subcommands and carries no unfinished or invented-host text", () => {
+    for (const line of tabLines) {
+      if (line.cmd) {
+        expect(line.cmd).toMatch(
+          /^\.\/target\/debug\/constitution (audit|status|receipt|verifier appraise) /,
+        );
+      }
+    }
+    for (const line of [...tabLines, ...localChecks]) {
+      expect(`${line.cmd ?? ""} ${line.note ?? ""}`).not.toMatch(/TODO|example\.com/i);
+    }
+  });
+});
+
+describe("agent guide", () => {
   it("states the recorded final deployment and its limits in the agent guide", () => {
     const text = buildLlmsText({ repoUrl: null });
     expect(text).toContain("## Status as of 2026-11-10");
@@ -23,10 +36,12 @@ describe("judge command guide", () => {
     expect(text).toContain("the final gate's only access key was deleted");
     expect(text).toContain("refused at rule 0 (current source runtime mismatch)");
     expect(text).toContain("appraisal passed");
-    expect(text).not.toMatch(/not deployed|does not exist yet|awaiting activation|after activation/i);
+    expect(text).not.toMatch(
+      /not deployed|does not exist yet|awaiting activation|after activation/i,
+    );
     expect(text).not.toMatch(/PUBLIC_DEMO|ed25519:/);
     expect(text).toContain("## How to verify");
-    for (const line of humanCommands) {
+    for (const line of [...tabLines, ...localChecks]) {
       if (line.cmd) expect(text).toContain(line.cmd);
     }
     expect(text).not.toMatch(/TODO|example\.com/i);

@@ -1,81 +1,69 @@
 ---
-import { spikeEvidence } from "../../data/evidence.ts";
-import { manifestFacts } from "../../data/manifest.ts";
+import { baseTxUrl, finalRuns, nearTxUrl, RECORDED_ON } from "../../data/final-evidence.ts";
 import { site } from "../../data/site.ts";
 import GateLedger from "../live/GateLedger.astro";
-import ProposalWatch from "../live/ProposalWatch.astro";
 import SpikeReceipt from "../live/SpikeReceipt.astro";
-import StatusBadge, { type EvidenceTone } from "../ui/StatusBadge.astro";
+import StatusBadge from "../ui/StatusBadge.astro";
 import FinalEvidence from "./FinalEvidence.astro";
+import FinalRuns from "./FinalRuns.astro";
 
 /**
- * Evidence (DESIGN 5 row 6): what has actually run, each line with its source label.
- * Sources: docs/BUILD-PLAN.md P1.4 Stage B and the 2026-11-05 review checks, crates/verifier
- * evidence (local), crates/verifier/evidence/ai (rehearsal 2026-11-06).
+ * Evidence (DESIGN 5 row 6): what has actually run, each line with its source label. Three recorded
+ * headline results come first, each with its transaction; then the spike beside the final gate (live
+ * ledger above its recorded deployment facts); then the three receipts. Each fact lives in one
+ * place: the headline links to its receipt instead of repeating it.
+ * Sources: src/data/final-evidence.ts (deployments/testnet.json), BUILD-PLAN P1.4 Stage B and the
+ * 2026-11-05 review checks, crates/verifier/evidence/ai (rehearsal 2026-11-06).
  */
-// Large figures, each a recorded value with its source; none of them is read live.
-const figures: { value: string; label: string; tone: EvidenceTone; badge: string }[] = [
+const { drain, honest, keyDeletion, keylessAudit } = finalRuns;
+const near = (hash: string) => nearTxUrl(site.nearExplorer, hash);
+
+interface Stat {
+  id: string;
+  headline: string;
+  detail: string;
+  links: { href: string; label: string; external: boolean }[];
+}
+
+// Recorded values from 2026-11-10. The live access-key count is the ledger row below, not this page's claim.
+const stats: Stat[] = [
   {
-    value: "1",
-    label: "NEAR MPC signature that executed an upgrade on Base Sepolia",
-    tone: "spike",
-    badge: "Spike, 2026-11-03",
+    id: "keys",
+    headline: `${keyDeletion.keysAfter} access keys`,
+    detail: `The gate's only access key was deleted, so nobody can redeploy the gate or add a key to it. The recorded audit then reported ${keylessAudit.check} ${keylessAudit.result}.`,
+    links: [
+      { href: near(keyDeletion.tx), label: "Key deletion on the NEAR explorer", external: true },
+      { href: "#gate-ledger", label: "Read the live count", external: false },
+    ],
   },
   {
-    value: spikeEvidence.honest.gasUsed.toLocaleString("en-US"),
-    label: "Gas used by that upgrade transaction",
-    tone: "spike",
-    badge: "Spike, 2026-11-03",
+    id: "attack",
+    headline: "Attack refused",
+    detail: `Proposal ${drain.proposalId}, ${drain.fixture}, refused under ${drain.ruleId} ${drain.ruleName}, reason ${drain.reasonCode}. No signature was requested and the proxy kept VaultV1.`,
+    links: [
+      { href: near(drain.verdictTx), label: "Verdict on the NEAR explorer", external: true },
+      { href: "#receipt-drain", label: "Read the receipt", external: false },
+    ],
   },
   {
-    value: "83",
-    label: "Gate tests passed: unit, property, sandbox",
-    tone: "local",
-    badge: "Local test, 2026-11-05",
-  },
-  {
-    value: "5",
-    label: `Committed rules, solc ${manifestFacts.solc}`,
-    tone: "recorded",
-    badge: "rules/manifest.json",
+    id: "upgrade",
+    headline: "Honest upgrade executed",
+    detail: `Proposal ${honest.proposalId}, ${honest.fixture}: R1 to R5 passed, the NEAR MPC network signed and Base Sepolia executed it in block ${honest.block.toLocaleString("en-US")}.`,
+    links: [
+      { href: baseTxUrl(site.baseExplorer, honest.baseTx), label: "Upgrade on Base Sepolia explorer", external: true },
+      { href: "#receipt-honest", label: "Read the receipt", external: false },
+    ],
   },
 ];
 
-const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }[] = [
+const earlier: { text: string; badge: string }[] = [
   {
-    part: "Upgrade path through Chain Signatures",
-    state:
-      "Ran live on a minimal spike gate: the NEAR MPC network signed an upgrade transaction for a NEAR contract, and it executed on Base Sepolia. No verifier was in that loop.",
-    tone: "spike",
-    badge: "Spike, 2026-11-03",
+    text: "83 gate tests passed: 58 unit, 18 property, 7 sandbox and integration.",
+    badge: "Local test, 2026-11-05",
   },
   {
-    part: "Gate contract",
-    state:
-      "Deployed on NEAR testnet as constitution-gate.testnet and exercised by the three recorded runs below. Local suite: 83 tests passed on 2026-11-05 (58 unit, 18 property, 7 sandbox and integration).",
-    tone: "recorded",
-    badge: "Testnet, recorded 2026-11-10",
-  },
-  {
-    part: "Attested verifier, R1 to R5",
-    state:
-      "Runs in a Phala TDX confidential VM, and its appraisal passed on 2026-11-10. On testnet, R2 refused VaultV2Drain and R1 to R5 passed VaultV2Honest. The same checks ran locally first.",
-    tone: "recorded",
-    badge: "Testnet, recorded 2026-11-10",
-  },
-  {
-    part: "Private red-team AI",
-    state:
-      "On testnet the honest upgrade's review used NEAR AI Cloud, verified as provider_tee, and reproduced none of 4 candidates. In a 2026-11-06 rehearsal a returned candidate, replayed locally, reproduced the drain on VaultV2Drain only. No find rate is claimed.",
-    tone: "recorded",
-    badge: "Testnet, recorded 2026-11-10",
-  },
-  {
-    part: "Gate access keys",
-    state:
-      "On 2026-11-10 the gate's only access key was deleted, and the recorded audit then reported zero access keys. The Gate access keys row below reads the chain now; zero keys means keyless.",
-    tone: "recorded",
-    badge: "Testnet, recorded 2026-11-10",
+    text: "In an AI rehearsal, one returned candidate, replayed locally, reproduced the drain on VaultV2Drain only. Completions were verified as provider_tee. No find rate is claimed.",
+    badge: "Local replay, 2026-11-06",
   },
 ];
 ---
@@ -85,63 +73,36 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
     <div class="evidence__head" data-reveal>
       <h2 id="evidence-title">What has actually run.</h2>
       <p class="lede">
-        Every fact on this page carries its source. Local tests are labeled local, the spike is
-        labeled spike, saved testnet receipts are labeled recorded, and nothing is shown as
-        observed until this page has read it from the chain.
+        Every fact carries its source. Recorded values are saved testnet receipts; observed values
+        are read from the chain by this page. Spike and local results are labeled as such, and you
+        can re-check the spike in your browser.
       </p>
     </div>
 
-    <aside class="verify" aria-labelledby="verify-title" data-reveal>
-      <h3 id="verify-title" class="verify__title">Check it yourself in three steps</h3>
-      <ol class="verify__steps">
-        <li>
-          <span class="verify__n mono" aria-hidden="true">1</span>
-          <p>Find the recorded spike run below. It lists the NEAR and Base Sepolia transaction hashes.</p>
-        </li>
-        <li>
-          <span class="verify__n mono" aria-hidden="true">2</span>
-          <p>Press <strong>Re-check on Base Sepolia</strong>. Your browser asks the chain directly, not our server.</p>
-        </li>
-        <li>
-          <span class="verify__n mono" aria-hidden="true">3</span>
-          <p>Compare. The current implementation should match the recorded one, and the explorer link opens the same transaction.</p>
-        </li>
-      </ol>
-      <p class="verify__foot">
-        <a class="verify__go" href="#receipt-spike">Go to the re-check <span aria-hidden="true">↓</span></a>
-        <span class="muted">This re-check covers the recorded spike. The final gate's receipts are recorded below, and its state is read live in the ledger.</span>
-      </p>
-    </aside>
-
-    <ul class="figures" aria-label="Recorded figures">
+    <ul class="stats" aria-label="Headline results on the final gate">
       {
-        figures.map((figure, i) => (
-          <li class="figure" data-reveal style={`--i:${i}`}>
-            <p class="figure__value mono">{figure.value}</p>
-            <p class="figure__label">{figure.label}</p>
-            <StatusBadge tone={figure.tone}>{figure.badge}</StatusBadge>
+        stats.map((stat, i) => (
+          <li class="stat" data-reveal style={`--i:${i}`}>
+            <h3 class="stat__headline">{stat.headline}</h3>
+            <p class="stat__detail">{stat.detail}</p>
+            <StatusBadge tone="recorded">
+              Testnet, recorded <time datetime={RECORDED_ON}>{RECORDED_ON}</time>
+            </StatusBadge>
+            <ul class="stat__links">
+              {
+                stat.links.map((link) => (
+                  <li>
+                    <a href={link.href} rel={link.external ? "noopener" : undefined}>
+                      {link.label} <span aria-hidden="true">{link.external ? "↗" : "↓"}</span>
+                    </a>
+                  </li>
+                ))
+              }
+            </ul>
           </li>
         ))
       }
     </ul>
-
-    <ol class="ledger" aria-label="Status by component">
-      {
-        ledger.map((row, i) => (
-          <li class="ledger__row" data-reveal style={`--i:${i}`}>
-            <h3 class="ledger__part">{row.part}</h3>
-            <p class="ledger__state">{row.state}</p>
-            <div class="ledger__badge">
-              <StatusBadge tone={row.tone}>{row.badge}</StatusBadge>
-            </div>
-          </li>
-        ))
-      }
-    </ol>
-
-    <div class="evidence__block evidence__final" data-reveal>
-      <FinalEvidence />
-    </div>
 
     <div class="evidence__pair">
       <div class="evidence__block" data-reveal>
@@ -149,10 +110,29 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
         <SpikeReceipt />
       </div>
       <div class="evidence__block" data-reveal style="--i:1">
-        <h3 class="evidence__title">The final gate, read live</h3>
+        <h3 class="evidence__title">The final gate</h3>
+        <h4 class="evidence__sub">Read live, now</h4>
         <GateLedger />
-        {site.gateAccount && <ProposalWatch />}
+        <FinalEvidence />
       </div>
+    </div>
+
+    <div class="evidence__block evidence__runs" data-reveal>
+      <FinalRuns />
+    </div>
+
+    <div class="evidence__block earlier" data-reveal>
+      <h3 class="evidence__title">Before the testnet runs</h3>
+      <ul class="earlier__list">
+        {
+          earlier.map((row) => (
+            <li class="earlier__row">
+              <p>{row.text}</p>
+              <StatusBadge tone="local">{row.badge}</StatusBadge>
+            </li>
+          ))
+        }
+      </ul>
     </div>
   </div>
 </section>
@@ -174,105 +154,77 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
     font-size: var(--text-3xl);
   }
 
-  .figures {
+  .stats {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     margin-bottom: var(--space-9);
     list-style: none;
     border-top: 1px solid var(--ink);
   }
 
-  .figure {
+  .stat {
     display: grid;
     align-content: start;
     justify-items: start;
-    gap: var(--space-3);
-    padding: var(--space-5) var(--space-5) var(--space-5) 0;
+    gap: var(--space-4);
+    padding: var(--space-6) var(--space-5) var(--space-6) 0;
   }
 
-  .figure + .figure {
+  .stat + .stat {
     padding-left: var(--space-5);
     border-left: 1px solid var(--line);
   }
 
-  .figure__value {
-    font-size: clamp(2.5rem, 1.6rem + 3vw, 4.75rem);
+  .stat__headline {
+    font-size: clamp(2.25rem, 1.3rem + 3.4vw, 4rem);
     font-weight: 500;
-    line-height: 0.95;
-    letter-spacing: -0.06em;
+    line-height: 0.98;
+    letter-spacing: var(--tracking-display);
+    text-wrap: balance;
   }
 
-  .figure__label {
-    max-width: 22ch;
+  .stat__detail {
+    max-width: 34ch;
     font-size: var(--text-sm);
+    line-height: 1.55;
     color: var(--ink-muted);
+  }
+
+  .stat__links {
+    display: grid;
+    gap: var(--space-1);
+    list-style: none;
+    font-size: var(--text-sm);
+  }
+
+  .stat__links a {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 2.75rem;
+    font-weight: 500;
   }
 
   @media (max-width: 62rem) {
-    .figures {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .figure:nth-child(3) {
-      padding-left: 0;
-      border-left: 0;
-    }
-
-    .figure:nth-child(n + 3) {
-      border-top: 1px solid var(--line);
-    }
-  }
-
-  @media (max-width: 30rem) {
-    .figures {
+    .stats {
       grid-template-columns: minmax(0, 1fr);
     }
 
-    .figure + .figure {
-      padding-left: 0;
+    .stat,
+    .stat + .stat {
+      padding: var(--space-5) 0;
       border-left: 0;
+    }
+
+    .stat + .stat {
       border-top: 1px solid var(--line);
     }
-  }
-
-  .ledger {
-    list-style: none;
-    border-top: 1px solid var(--ink);
-  }
-
-  .ledger__row {
-    display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr) 11.5rem;
-    gap: var(--space-3) var(--space-6);
-    align-items: baseline;
-    padding: var(--space-5) 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .ledger__part {
-    font-size: var(--text-base);
-    letter-spacing: -0.01em;
-  }
-
-  .ledger__state {
-    font-size: var(--text-sm);
-    color: var(--ink-muted);
-    max-width: var(--measure);
-  }
-
-  .ledger__badge {
-    justify-self: end;
-  }
-
-  .evidence__final {
-    margin-top: var(--space-9);
   }
 
   .evidence__pair {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-7);
-    margin-top: var(--space-9);
     align-items: start;
   }
 
@@ -282,81 +234,50 @@ const ledger: { part: string; state: string; tone: EvidenceTone; badge: string }
     min-width: 0;
   }
 
+  .evidence__runs,
+  .earlier {
+    margin-top: var(--space-9);
+  }
+
   .evidence__title {
     font-size: var(--text-xl);
   }
 
-  @media (max-width: 62rem) {
-    .ledger__row {
-      grid-template-columns: 1fr;
-    }
-
-    .ledger__badge {
-      justify-self: start;
-    }
-
-    .evidence__pair {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .verify {
-    display: grid;
-    gap: var(--space-4);
-    margin-block: var(--space-7);
-    padding: var(--space-5) var(--space-6);
-    border-radius: var(--radius-md);
-    background: var(--lav-soft);
-    color: var(--ink-on-lav);
-  }
-
-  .verify__title {
-    font-size: var(--text-xl);
+  .evidence__sub {
+    margin-bottom: calc(-1 * var(--space-2));
+    font-size: var(--text-lg);
     letter-spacing: var(--tracking-tight);
   }
 
-  .verify__steps {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
-    gap: var(--space-5);
+  .earlier__list {
     list-style: none;
+    border-top: 1px solid var(--ink);
   }
 
-  .verify__steps li {
+  .earlier__row {
     display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr);
-    gap: var(--space-3);
-    align-items: start;
-    font-size: var(--text-base);
-    line-height: 1.5;
-  }
-
-  .verify__n {
-    display: grid;
-    place-items: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 50%;
-    background: var(--ink-on-lav);
-    color: var(--lav-soft);
-    font-size: var(--text-sm);
-  }
-
-  .verify__foot {
-    display: flex;
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-3) var(--space-6);
     align-items: baseline;
-    gap: var(--space-2) var(--space-5);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--line);
     font-size: var(--text-sm);
+    color: var(--ink-muted);
   }
 
-  .verify__foot .muted {
-    color: var(--ink-on-lav);
-    opacity: 0.8;
+  .earlier__row p {
+    max-width: var(--measure);
   }
 
-  .verify__go {
-    font-weight: 600;
-    color: var(--ink-on-lav);
+  @media (max-width: 62rem) {
+    .evidence__pair {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 40rem) {
+    .earlier__row {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 </style>
