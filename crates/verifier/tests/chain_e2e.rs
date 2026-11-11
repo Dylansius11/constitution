@@ -66,14 +66,54 @@ fn logged_address(text: &str, label: &str) -> [u8; 20] {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_r2_fail_certificate_lands_on_real_gate() -> Result<(), Box<dyn std::error::Error>> {
-    local_chain_flow(false).await
+    local_chain_flow(Fixture::Drain).await
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_honest_r1_to_r5_pass_withheld_without_ai() -> Result<(), Box<dyn std::error::Error>>
 {
-    local_chain_flow(true).await
+    local_chain_flow(Fixture::Honest).await
 }
-async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_storage_shuffle_r1_rejection_lands_on_real_gate() -> Result<(), Box<dyn std::error::Error>> {
+    local_chain_flow(Fixture::StorageShuffle).await
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_self_destruct_r3_rejection_lands_on_real_gate() -> Result<(), Box<dyn std::error::Error>> {
+    local_chain_flow(Fixture::SelfDestruct).await
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_forbidden_init_r4_rejection_lands_on_real_gate() -> Result<(), Box<dyn std::error::Error>> {
+    local_chain_flow(Fixture::ForbiddenInit).await
+}
+#[derive(Clone, Copy, Debug)]
+enum Fixture {
+    Drain,
+    Honest,
+    StorageShuffle,
+    SelfDestruct,
+    ForbiddenInit,
+}
+impl Fixture {
+    fn contract(self) -> &'static str {
+        match self {
+            Self::Drain => "src/demo/VaultV2Drain.sol:VaultV2Drain",
+            Self::Honest | Self::ForbiddenInit => "src/demo/VaultV2Honest.sol:VaultV2Honest",
+            Self::StorageShuffle => "src/demo/VaultV2StorageShuffle.sol:VaultV2StorageShuffle",
+            Self::SelfDestruct => "src/demo/VaultV2SelfDestruct.sol:VaultV2SelfDestruct",
+        }
+    }
+    fn rejection(self) -> Option<(u8, u16)> {
+        match self {
+            Self::Drain => Some((2, 20)),
+            Self::StorageShuffle => Some((1, 10)),
+            Self::SelfDestruct => Some((3, 30)),
+            Self::ForbiddenInit => Some((4, 41)),
+            Self::Honest => None,
+        }
+    }
+}
+async fn local_chain_flow(fixture: Fixture) -> Result<(), Box<dyn std::error::Error>> {
+    let honest = matches!(fixture, Fixture::Honest);
     let start = Instant::now();
     let worker = near_workspaces::sandbox().await?;
     let wasm = std::fs::read(repo().join("target/near/constitution_gate/constitution_gate.wasm"))?;
@@ -190,6 +230,15 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             }
             let text = command("cast", &["calldata", "initializeV2(uint256)", "1000000"]);
             serde_json::from_value::<HexBytes>(json!(text.trim())).unwrap()
+        } else if matches!(fixture, Fixture::SelfDestruct) {
+            let text = command("cast", &["calldata", "initializeV2(uint256)", "1000000"]);
+            serde_json::from_value::<HexBytes>(json!(text.trim())).unwrap()
+        } else if matches!(fixture, Fixture::ForbiddenInit) {
+            let text = command(
+                "cast",
+                &["calldata", "initializeV2(uint256)", "340282366920938463463374607431768211456"],
+            );
+            serde_json::from_value::<HexBytes>(json!(text.trim())).unwrap()
         } else {
             HexBytes(vec![])
         };
@@ -197,11 +246,7 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             "forge",
             &[
                 "create",
-                if honest {
-                    "src/demo/VaultV2Honest.sol:VaultV2Honest"
-                } else {
-                    "src/demo/VaultV2Drain.sol:VaultV2Drain"
-                },
+                fixture.contract(),
                 "--rpc-url",
                 &rpc_deploy,
                 "--broadcast",
@@ -238,24 +283,22 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
     };
     gate.call("new").args_json(json!({"config":config,"constitution":constitution,"roles":Roles {governor:proposer.id().clone(),guardian:proposer.id().clone()},"verifiers":[(Base64(identity.pubkey()),VerifierRecord {release_hash:identity.release_hash(),attestation_uri:"local:socket-simulator-not-real-attestation".into(),added_at_ns:0})],"initial_evm_nonce":0})).transact().await?.into_result()?;
     let mut files = vec![];
-    for name in [
-        "VaultV1.sol",
-        "VaultV2Honest.sol",
-        "VaultV2Drain.sol",
-        "MockToken.sol",
-    ] {
+    let mut names = vec!["MockToken.sol", "VaultV1.sol"];
+    match fixture {
+        Fixture::Drain => names.extend(["VaultV2Honest.sol", "VaultV2Drain.sol"]),
+        Fixture::Honest | Fixture::ForbiddenInit => names.push("VaultV2Honest.sol"),
+        Fixture::StorageShuffle => names.push("VaultV2StorageShuffle.sol"),
+        Fixture::SelfDestruct => names.extend(["VaultV2Honest.sol", "VaultV2SelfDestruct.sol"]),
+    }
+    names.sort_unstable();
+    for name in names {
         files.push((
             format!("src/demo/{name}"),
             std::fs::read(repo().join(format!("contracts/src/demo/{name}")))?,
         ));
     }
     let bundle = SourceBundle {
-        contract_name: if honest {
-            "src/demo/VaultV2Honest.sol:VaultV2Honest"
-        } else {
-            "src/demo/VaultV2Drain.sol:VaultV2Drain"
-        }
-        .into(),
+        contract_name: fixture.contract().into(),
         files,
         foundry_profile: "default".into(),
     };
@@ -304,9 +347,25 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .await?
         .into_result()?;
     let id:u64=proposer.call(gate.id(),"propose").args_json(json!({"args":ProposeArgs {new_impl,new_impl_codehash:Hex32(constitution_verifier::keccak(&code.0)),expected_current_impl:Hex20(current),init_calldata:init,source_commitment:Hex32(sha256(&bytes))}})).transact().await?.into_result()?.json()?;
-    // Workspaces transact returns before this proposal reaches finality.
-    // GateSource deliberately reads only final views, so advance the local chain.
-    worker.fast_forward(3).await?;
+    // Workspaces transact can precede final views. Observe the same finality boundary
+    // GateSource uses before making the single verifier request (never retry a run).
+    let finality_deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        worker.fast_forward(3).await?;
+        let view: Value = client
+            .post(worker.rpc_addr())
+            .json(&call("query", json!({
+                "request_type": "call_function", "finality": "final",
+                "account_id": gate.id(), "method_name": "get_proposal",
+                "args_base64": Base64Bytes(serde_json::to_vec(&json!({"id":id}))?)
+            })))
+            .send().await?.error_for_status()?.json().await?;
+        let bytes: Vec<u8> = serde_json::from_value(view["result"]["result"].clone())?;
+        let finalized: Value = serde_json::from_slice(&bytes)?;
+        if finalized["id"] == id { break; }
+        assert!(Instant::now() < finality_deadline, "proposal did not finalize: {view}");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     client
         .post(&rpc)
         .json(&call(
@@ -386,6 +445,7 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
         .error_for_status()?
         .json()
         .await?;
+    eprintln!("GALLERY_FIXTURE={fixture:?} RUNTIME_CODEHASH={}", json!(evidence.compile.runtime_hash));
     let proposal: Value = gate
         .view("get_proposal")
         .args_json(json!({"id":id}))
@@ -447,9 +507,10 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             start.elapsed().as_millis()
         );
     } else {
+        let (rule_id, reason_code) = fixture.rejection().unwrap();
         assert_eq!(
             run["verdict"],
-            json!({"Reject":{"rule_id":2,"reason_code":20}}),
+            json!({"Reject":{"rule_id":rule_id,"reason_code":reason_code}}),
             "{run}"
         );
         assert!(!run["near_tx_hash"].as_str().unwrap().is_empty(), "{run}");
@@ -459,8 +520,15 @@ async fn local_chain_flow(honest: bool) -> Result<(), Box<dyn std::error::Error>
             constitution_types::manifest::evidence_root(&evidence)?
         );
         assert_eq!(proposal["state"], "Rejected");
-        assert_eq!(proposal["rejection"]["rule_id"], 2);
-        assert_eq!(proposal["rejection"]["reason_code"], 20);
+        assert_eq!(proposal["rejection"]["rule_id"], rule_id);
+        assert_eq!(proposal["rejection"]["reason_code"], reason_code);
+        for (index, name) in ["r1_layout", "r2_solvency", "r3_filter", "r4_initializer"].iter().enumerate() {
+            if index + 1 >= usize::from(rule_id) { break; }
+            let stage = run["stages"].as_array().unwrap().iter().find(|s| s["name"] == *name).unwrap();
+            assert_eq!(stage["status"], "Pass", "{run}");
+        }
+        assert!(evidence.ai.signature_kind.is_empty());
+        eprintln!("GALLERY_REJECT={fixture:?} RULE={rule_id} REASON={reason_code}");
         assert!(proposal["evm"].is_null());
         eprintln!("LOCAL_CHAIN_E2E_RUNTIME_MS={}", start.elapsed().as_millis());
     }
