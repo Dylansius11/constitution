@@ -7,6 +7,7 @@
 - [V] Founder answers on 2026-11-02 (UTC): the founder creates the GitHub repo personally and the lead commits locally only until told to push (D9); the lead creates NEAR testnet accounts via the faucet with keys in the repo-local gitignored `.secrets/` (B1, done); D7 waits for the founder's logo and references; D8 deferred between Cloudflare Pages and Vercel.
 - Open founder decisions include guardian custody and monitoring, hosting deploy access, license, funding and verifier uptime budget. D8 selected Cloudflare Pages; the deploy path remains open. D7 is resolved. Open organizer questions: D16. D4 repair scope is approved; implementation remains gated on core completion.
 - [V, 2026-11-10] D20 selected an immutable governance delay of 1–30 whole days, default three. D21's fresh authorization was given and the final gate key was deleted; the keyless audit followed.
+- [V, founder decision 2026-11-11] D28 adds a separate 1-day live demo gate with manifest-v2 lineage and visitor-wallet attacks; honest upgrades remain CLI-only. Final-gate evidence/CVM are unchanged, and deleting that CVM needs founder re-confirmation.
 - Build opened 2026-11-01T00:00:00Z; build work started 2026-11-02. Remaining BLOCKERS below identify owners and manual prerequisites.
 
 Founder-owned rows are never silently decided by agents. Status: open, blocked or resolved. Lead-owned rows record the reasoning so the founder can overrule. Each row has its explanation below.
@@ -42,6 +43,7 @@ Founder-owned rows are never silently decided by agents. Status: open, blocked o
 | D25 | Public hosting deploy access | founder | resolved 2026-11-11 | P3.6 | Project `constitution-gate` lives in the founder's student Cloudflare account (not the wrangler login); the founder enabled the relay for that Chrome profile and the lead uploaded the build through the dashboard's direct-upload page |
 | D26 | License | founder | resolved 2026-11-10: Apache-2.0 | P4.3 | `LICENSE` and the workspace `license` field added; the gate wasm already on testnet predates the declaration |
 | D27 | Standby verifier CVM | founder | open; none added | P4.7 | Lead leans no; replacing a verifier requires a three-day `AddVerifier` |
+| D28 | Separate live demo and recording boundary | founder | resolved 2026-11-11; acceptance pending | F12, P3.7, P4.4, P4.7 | Separate demo gate/CVM, v2 lineage, CLI-only honest upgrades; credit/version burn limit; no implied final-CVM deletion |
 
 ### D1. Technology stack
 
@@ -165,7 +167,7 @@ Official channel per EVENT.md: https://discord.com/invite/nearprotocol. Founder 
 
 ### D17. Demo key exposure model (lead)
 
-Original design [I]: the QR "take it" key would be a restricted governor function-call key for `propose`, `schedule_change` and `apply_change`; it could not cancel guardian actions or transfer NEAR. [V, exercised on testnet 2026-11-10] The key was created, its restrictions exercised and then deleted without publishing its secret; no QR or public live try-it shipped. The final proxy's V2 state and V1-specific rule set prevent repeating the upgrade under the same rules. Founder decision [V, chat 2026-11-10]: remove P3.3 (public key, QR, live try-it) from scope; recorded receipts are the demo evidence.
+Original design [I]: the QR "take it" key would be a restricted governor function-call key for `propose`, `schedule_change` and `apply_change`; it could not cancel guardian actions or transfer NEAR. [V, exercised on testnet 2026-11-10] The key was created, its restrictions exercised and then deleted without publishing its secret; no QR or public live try-it shipped at that time. The final proxy's V2 state and V1-specific rule set prevent repeating the upgrade under the same rules. Founder decision [V, chat 2026-11-10]: remove P3.3 (public key, QR, final-gate live try-it) from scope; recorded receipts are the final-gate demo evidence. [V, founder addition 2026-11-11] D28 subsequently adds a separate demo gate with visitor wallets and `propose`-only session keys, not the shared governor-key design.
 
 ### D18. Verifier key lifetime vs CVM budget
 
@@ -209,6 +211,18 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 
 [V, initial runtime preparation 2026-11-10] Auto-selection unexpectedly chose a development OS, so that short-lived instance was deleted. Subsequent preparation explicitly pins production `dstack-0.5.12` and its published non-dev hash. The scheduled-delete PATCH is accepted, but the current info/list response does not expose its timestamp for independent readback; a separately armed local deletion watchdog is an additional guard, not proof of a provider spending cap. Final runtime results and confirmed deletion belong in P1.6 evidence.
 
+### D28. Separate live demo gate and founder recording
+
+[V, founder decision and exercised deployment 2026-11-11] Keep the final-evidence gate `constitution-gate.testnet`, its 3-day delay, manifest and CVM unchanged. Use separate `constitution-demo.testnet` with a 1-day immutable delay, its own executor/proxy and Phala CVM `cvm_VKZRaXKr` for judges. Both deploy identical gate wasm; current-reference lineage VaultV1→VaultV2Honest→VaultV3Honest lives in manifest v2 (`rules/demo/manifest.json`), selected by `VERIFIER_MANIFEST`, not new gate code. See [deployment evidence](../README.md#live-demo-gate).
+
+[V, delivered 2026-11-11] `/app` (PR #25) offers four repeatable attacks through a visitor's NEAR testnet wallet and a `propose`-only session key. **No honest-upgrade button.** The active rule set is Vault pack; other presets and a rule-pack builder are planned, not built; no TUI. [V, exercised on testnet 2026-11-11] The lead's four CLI attacks were rejected by R2/20, R1/10, R3/30 and R4/41, with no signing record and unchanged proxy; these do not prove the unexercised live-wallet path [U].
+
+[I, planned recording] The founder records honest upgrades V1→V2→V3 from `constitution demo upgrade`, with observed receipts at each transition. Local R1–R5 lineage success with AI withheld is not testnet upgrade evidence. Permissionless honest proposals from anyone can consume a demo version; free demo credit/version burn is a declared demonstration risk, not a claim of an exclusive recording slot. Lineage is not a forward-only upgrade restriction and does not expand bounded-rule coverage.
+
+[V, founder decision 2026-11-11] Creating the demo CVM does **not** authorize deletion of final CVM `cvm_2eakrQwn`; ask the founder to re-confirm before any deletion. The existing final-gate ephemeral key, evidence availability, F11 pending apply and judging-uptime/budget requirements remain relevant. No restart or deletion is implied by this documentation.
+
+[V, exercised on testnet 2026-11-11] The demo pre-deletion audit FAILs only `gate_has_no_access_keys`; its key remains intentionally present during founder testing. [I, planned] Complete wallet acceptance and recording, then obtain fresh authorization for irreversible demo key deletion and collect a keyless demo audit. Final-gate deletion/audit receipts cannot close these tasks. Owners: founder (wallet rehearsal, recording, deletion permissions, uptime/budget), lead (evidence and audit). Affected: F12, P3.7e–P3.7j, P4.4 and P4.7.
+
 ## BLOCKERS
 
 | Id | Missing prerequisite | Owner | Status | Blocks plan ids | Next action / proof |
@@ -225,6 +239,9 @@ Options for the founder at P1.6: (a) entry tier fits: no new spend; (b) approve 
 | B10 | Guardian key custody and judging monitoring (D24) | founder | open | P4.7 | Key file is on lead's machine; founder decides custody and who watches through 2026-11-18 |
 | B11 | Cloudflare Pages deploy path (D25) | founder | resolved 2026-11-11 | P3.6, P4.6 | Dashboard direct upload via the student-account relay profile; redo it for any later page change |
 | B12 | License (D26) | founder | resolved 2026-11-10: Apache-2.0 | P4.3, P4.6 | Done |
+| B13 | Live demo wallet acceptance and fresh key-deletion authorization | founder (rehearsal/approval), lead (evidence/audit) | open 2026-11-11 | P3.7e, P3.7g, P3.7h | Exercise `/app` against the live demo gate; after acceptance obtain fresh deletion approval, record zero keys and passing demo audit; current audit fails only the key check |
+| B14 | Recorded honest demo V1→V2→V3 transitions | founder (CLI recording), lead (evidence) | open 2026-11-11 | P3.7i, P3.7j, P4.4 | Run the two authorized CLI upgrades with real AI/MPC/Base receipts; local lineage checks are not testnet proof; permissionless version consumption is a limit |
+| B15 | Real final-gate F11 maturation and apply receipt | founder/lead (authorized execution) | pending ETA 2026-11-13T16:56:01Z | P4.5 | Apply change 0 only after observed ETA and record the real receipt; no matured apply yet |
 
 ### B1. NEAR testnet accounts
 

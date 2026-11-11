@@ -31,7 +31,7 @@
 | Depositors and integrators | Know which code can and cannot become live | Must trust the admin |
 | Hackathon judge (human, Claude Code, Codex) | Verify claims in minutes | Most demos show mock success states |
 
-[I] The commercial unit is "a protected proxy": one gate deployment, one committed rule set and one verifier allowlist per protected contract. The demo protects one vault on Base Sepolia.
+[I] The commercial unit is "a protected proxy": one gate deployment, one committed rule set and one verifier allowlist per protected contract. [V, exercised on testnet 2026-11-11] The final-evidence vault and the separate live-demo vault are distinct Base Sepolia proxies; F12 defines the judge-facing deployment.
 
 ## Insight and necessity
 
@@ -54,14 +54,16 @@ Why each unusual primitive is load-bearing:
 
 Editorial target: about 3 minutes [I]. [U] No official video duration limit was found in the rules (EVENT.md section 7). A public X post by a human with media mentioning NEAR HACKATHON is mandatory [V].
 
+[I, original storyboard] The numbered shared-key/QR concept below is historical; the founder's final-gate scope cut and subsequent separate-wallet F12 replacement are recorded after it. For the current planned recording, use [DEMO-SCRIPT](DEMO-SCRIPT.md#live-demo-gate-recording-flow).
+
 1. **"Take it."** A QR code on screen encodes a disposable, testnet-only NEAR key that holds the demo protocol's *governor* role (the closest thing this protocol has to an admin). Never a production key, never a NEAR full-access key of the gate, the MPC-derived EVM key or any founder wallet. (F9, F10)
 2. **The attack.** The judge, using that key, proposes `VaultV2Drain`: it looks like a routine fee update but contains a hidden path that lets one address withdraw the whole vault. (F1, F9, F10)
-3. **Rejection.** The private red-team AI proposes a counterexample; the deterministic verifier reproduces it ("address X withdrew 100% of the vault"); the gate records a rejection receipt; the MPC signer is never called; the Base Sepolia explorer shows the proxy implementation unchanged. (F5, F6, F8)
+3. **Rejection.** The deterministic verifier rejects the drain at R2; the gate records a rejection receipt, the MPC signer is never called, and the Base Sepolia explorer shows the proxy implementation unchanged. AI runs only after R1–R5 pass, so this attack does not invoke private AI. (F5, F6, F8)
 4. **Honest upgrade.** `VaultV2Honest` passes every rule; the gate requests the Chain Signature; the relayed transaction executes `ProxyAdmin.upgradeAndCall` via `ConstitutionExecutor` on Base Sepolia; explorer link and receipt shown. (F3, F4, F8)
 5. **Even governance waits.** The governor key schedules a rule change and immediately tries to apply it: the gate refuses (`E53_TIMELOCK_NOT_ELAPSED`) with a real testnet receipt. A change is shown as matured only after the deployment's selected delay has actually elapsed (F11, P1). A local time-travel test is labeled "local test", never presented as testnet evidence.
 6. **Business.** Buyer, pricing hypothesis, next 90 days, without invented customers or revenue.
 
-[V, exercised on testnet 2026-11-10] The shipped evidence is recorded receipts for the drain rejection, honest upgrade and early governance refusal, not a live judge attack. The D17 function-call key was created, exercised and deleted without publishing its secret or a QR: the final proxy now runs V2, and the fixed V1 reference permits only one upgrade per rule set. A matured apply of change 0 remains pending, with ETA 2026-11-13T16:56:01Z. The steps above remain the original design, not a claim that public try-it shipped; the founder approved removing P3.3 (public key and QR) from scope on 2026-11-10 (chat).
+[V, exercised on testnet 2026-11-10] The final gate's shipped evidence is recorded receipts for the drain rejection, honest upgrade and early governance refusal. The D17 function-call key was created, exercised and deleted without publishing its secret or a QR: the final proxy now runs V2, and its fixed V1 reference permits only one upgrade per rule set. A matured apply of change 0 remains pending, with ETA 2026-11-13T16:56:01Z. The founder removed P3.3 (public governor key and QR) from scope on 2026-11-10. [V, delivered 2026-11-11] F12 subsequently adds a **separate** live-demo attack page with visitor wallets, not the original shared governor-key design; its browser wallet flows remain unexercised by the founder [U].
 
 Fallback order if live inference fails during recording: show the real rejection receipt from the rehearsal run with its timestamp and say so on screen. Never replay a fixture as live.
 
@@ -137,12 +139,12 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 ### F9. CLI and judge commands (P0)
 
 - [V] Implemented CLI commands include `constitution demo attack|upgrade`, `propose`, `status <id>`, `relay <id>`, `receipt <id>`, `audit`, `govern schedule|apply|cancel`, `rules hash <manifest>`, `verifier appraise <url>`, `verifier run` and `executor-runtime-hash` (full table in ARCHITECTURE). `make attack` and `make upgrade` wrap the demo runner; the recorded testnet runs used the CLI directly.
-- [V] Public read-only receipt and audit paths need no demo key. The restricted governor key was exercised on testnet but deleted unpublished; public judge-key mode was not delivered.
+- [V, 2026-11-11] Public read-only receipt and audit paths need no demo key. The restricted governor key for the final-gate rehearsal was exercised on testnet but deleted unpublished; that public judge-key mode was not delivered. F12 instead uses visitor wallets and `propose`-only session keys on the separate demo gate.
 - Acceptance: README "do X, see Y" steps run in a fresh environment with documented prerequisites; every error prints the cause and the next step.
 
 ### F10. Public web page (P0)
 
-- Outcome: one page designed for Attack, Honest upgrade, Receipts and an audit panel. [V] A static page has been published; the QR key and public live try-it were not delivered. The original interactive design remains subject to P3.3 and P3.5 acceptance.
+- Outcome: an explanatory landing page plus the separate `/app` attack experience (F12). [V, deployed 2026-11-11] Both are published at `https://constitution-gate.pages.dev` (live app, PR #25). The original shared QR key and public final-gate try-it were not delivered; the demo app has no honest-upgrade button. Historical injected/browser checks are not proof of the live wallet flow.
 - States: idle, submitting, verifying (real verifier stage reported), AI review, certified, signing, relaying, executed, rejected, expired, error with next step. No fake progress.
 - Accessibility: keyboard operable, visible focus, readable contrast, works at 390 px and 1280 px, honors `prefers-reduced-motion`.
 - Acceptance: browser test walks both flows against testnet; visual check at both widths.
@@ -150,6 +152,18 @@ Priority: P0 = required for the final submission and never-cut demo; P1 = strong
 ### F11. Real timelock maturation on testnet (P1)
 
 - Outcome: a harmless governance change scheduled at activation is applied after the selected number of real days with a receipt, before the submission cutoff, if feasible. The old 2026-11-07T12:00:00Z activation milestone was for seven days and is stale; calculate feasibility from the actual schedule and observed `eta_ns`, never assume maturation.
+
+### F12. Separate live demo gate and attack gallery (P0, founder addition 2026-11-11)
+
+- [V, exercised on testnet 2026-11-11] Scope: `constitution-demo.testnet`, Base Sepolia proxy `0xc24a9b7b139af4e458df40a2644229a4ca5fec91`, a separate executor and Phala CVM `cvm_VKZRaXKr`, immutable governance delay **1 day**. The final-evidence gate `constitution-gate.testnet` (3 days), its proxy, manifest and CVM are unchanged; its keyless audit and recorded upgrade are not demo-gate evidence.
+- [V, exercised on testnet 2026-11-11] Same gate wasm/code hash as the final gate. The demo verifier selects `rules/demo/manifest.json` through `VERIFIER_MANIFEST`; manifest v2 commits current-reference lineage VaultV1→VaultV2Honest→VaultV3Honest, hash `0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8`. Lineage is policy data, not a gate code change or a forward-only version guarantee. See [ARCHITECTURE](technical/ARCHITECTURE.md#version-2-committed-current-reference-lineage) for bounds.
+- [V, exercised on testnet 2026-11-11] Delivered CLI evidence: drain proposal 0 rejected R2/20, storage shuffle proposal 1 R1/10, self-destruct proposal 2 R3/30, forbidden initializer proposal 3 R4/41; each has no signing record and unchanged implementation. Verdict transactions and evidence roots are in [the gallery](../deployments/demo-gallery.json) and [retained receipts](../deployments/demo-receipts/). One warm CVM took 35–117 s per attack; not a service-level guarantee. R1–R5 failure precedes AI, so these attacks never call NEAR AI.
+- [I, delivered UI; live wallet acceptance pending] Visitors open `/app`, connect a NEAR testnet wallet, authorize one confirmation to deposit credit and add a `propose`-only session key, then run the four repeatable attacks. The active rule set is **Vault pack**. [U, 2026-11-11] The founder has not yet exercised the live demo wallet flow; CLI testnet refusals do not establish that acceptance.
+- [I, planned, not delivered] Founder video shows honest V1→V2→V3 upgrades from `constitution demo upgrade`; no honest-upgrade button exists on the web. [V, locally tested 2026-11-11] Local lineage integration passed R1–R5 with AI withheld; neither honest upgrade has yet been exercised on this demo gate on testnet. Attack refusals after V2/V3 are locally tested, not demo-testnet evidence.
+- [V, exercised on testnet 2026-11-11] The pre-deletion demo audit FAILs only `gate_has_no_access_keys`, with the key intentionally retained during founder testing. [I, planned] After fresh founder authorization, delete all demo gate keys and record a passing keyless audit. Until then, the demo gate does not satisfy F7's keyless precondition.
+- [I, planned roadmap, not built] Additional rule-pack presets and a rule-pack builder; no TUI. Limits: permissionless honest CLI proposals can consume demo versions; free demo credit can be burned. Lineage keeps current references available but does not expand R1–R5 coverage or guarantee arbitrary migrations. All existing bounded-rule, TEE, MPC and AI-veto trust limits still apply.
+- [I, planned acceptance] Exercise the founder's live wallet attack/recovery path, record both honest upgrades with observed MPC/Base receipts, and collect the demo key-deletion receipt plus keyless audit. Link only observed hashes and outcomes; never substitute final-gate receipts. Tracking: BUILD-PLAN P3.7 and OPEN-DECISIONS D28.
+
 
 ### S1. Act 2 semi-autonomous proposal repair (stretch, D4 approved 2026-11-05)
 
