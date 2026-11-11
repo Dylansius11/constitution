@@ -46,9 +46,70 @@ fn golden_rule_set_hash_matches_independent_python_borsh() {
     let hash = rule_set_hash(&m).unwrap();
     let hex = hash.iter().map(|b| format!("{b:02x}")).collect::<String>();
     assert_eq!(hex, String::from_utf8(output.stdout).unwrap().trim());
+    assert_eq!(
+        hex,
+        "1efe635ac3eb0eb59b0df0d56c7243b2728922898b55487bc5cf8063db94a410"
+    );
     let bytes = borsh::to_vec(&m).unwrap();
     assert_eq!(borsh::from_slice::<RuleSetManifest>(&bytes).unwrap(), m);
     let mut changed = m;
     changed.optimizer_runs += 1;
     assert_ne!(rule_set_hash(&changed).unwrap(), hash);
+}
+
+#[test]
+fn version_two_commits_every_ordered_reference_and_preserves_v1_bytes() {
+    use constitution_types::manifest::{
+        RuleSetManifest as Manifest, RuleSetManifestV1, RuleSetManifestV2,
+        validate_rule_set as validate_manifest,
+    };
+    let v1: RuleSetManifestV1 =
+        serde_json::from_str(include_str!("../../../rules/manifest.json")).unwrap();
+    let document: Manifest =
+        serde_json::from_str(include_str!("../../../rules/manifest.json")).unwrap();
+    assert_eq!(
+        borsh::to_vec(&document).unwrap(),
+        borsh::to_vec(&v1).unwrap()
+    );
+    let mut policy = v1.clone();
+    policy.version = 2;
+    let mut next = v1.reference.clone();
+    next.contract_name = "src/demo/VaultV2Honest.sol:VaultV2Honest".into();
+    let v2 = Manifest::V2(RuleSetManifestV2 {
+        policy,
+        reference_lineage: vec![v1.reference.clone(), next],
+    });
+    validate_manifest(&v2).unwrap();
+    let hash = rule_set_hash(&v2).unwrap();
+    assert_ne!(hash, rule_set_hash(&document).unwrap());
+    assert_eq!(
+        borsh::from_slice::<Manifest>(&borsh::to_vec(&v2).unwrap()).unwrap(),
+        v2
+    );
+    assert_eq!(
+        serde_json::from_slice::<Manifest>(&serde_json::to_vec(&v2).unwrap()).unwrap(),
+        v2
+    );
+    for index in 0..2 {
+        let Manifest::V2(mut changed) = v2.clone() else {
+            unreachable!()
+        };
+        changed.reference_lineage[index]
+            .source_sha256s
+            .insert("src/Test.sol".into(), constitution_types::Hex32([7; 32]));
+        assert_ne!(rule_set_hash(&Manifest::V2(changed)).unwrap(), hash);
+    }
+    let Manifest::V2(mut changed) = v2 else {
+        unreachable!()
+    };
+    changed.reference_lineage.swap(0, 1);
+    assert_ne!(rule_set_hash(&Manifest::V2(changed.clone())).unwrap(), hash);
+    assert!(validate_manifest(&Manifest::V2(changed.clone())).is_err());
+    changed.reference_lineage.clear();
+    assert!(validate_manifest(&Manifest::V2(changed.clone())).is_err());
+    changed.reference_lineage = vec![v1.reference.clone(), v1.reference.clone()];
+    assert!(validate_manifest(&Manifest::V2(changed)).is_err());
+    let mut unknown = serde_json::to_value(document).unwrap();
+    unknown["version"] = 3.into();
+    assert!(serde_json::from_value::<Manifest>(unknown).is_err());
 }
