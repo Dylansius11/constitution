@@ -1,0 +1,109 @@
+{
+  "version": 2,
+  "name": "constitution.demo.live",
+  "solc": "0.8.38",
+  "evm_version": "prague",
+  "optimizer_runs": 200,
+  "tools": {
+    "foundry": "1.8.6",
+    "halmos": "0.3.3",
+    "upgrades_core": "1.47.0",
+    "z3": "4.12.6.0",
+    "yices": "2.6.4"
+  },
+  "reference": {
+    "contract_name": "src/demo/VaultV1.sol:VaultV1",
+    "source_sha256s": {
+      "src/demo/MockToken.sol": "0xc9d4bf771ab446a4d7d6e83c86b97d6e494646f24168e5728c3a100d549e80ea",
+      "src/demo/VaultV1.sol": "0x34c43de600beb580e3319c9887da4d1614b3e296832523aa10d89786bc98c1f9"
+    }
+  },
+  "r1": {
+    "unsafe_allow": [
+      "constructor",
+      "missing-initializer",
+      "delegatecall",
+      "selfdestruct"
+    ]
+  },
+  "r2": {
+    "harness_sha256": "0x240f6c97ab34099e65c9c0e400f8f271a934b22ce9eaa5ac4f8f8df8ecfec91b",
+    "invariant_depth": 4,
+    "loop_bound": 2,
+    "array_lengths": "",
+    "solver_timeout_assertion_s": 10,
+    "fuzz_runs": 2000,
+    "fuzz_depth": 128,
+    "fuzz_seed": "0x0000000000000000000000000000000000000000000000000000000000000001"
+  },
+  "r3": {
+    "forbidden_opcodes": [
+      255,
+      242,
+      244
+    ],
+    "forbidden_constants": [
+      "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103",
+      "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbb",
+      "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbd",
+      "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6102",
+      "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6104",
+      "0x0000000000000000000000007109709ecfa91a80626ff3989d68f67f5b1dd12d",
+      "0x000000000000000000000000f3993a62377bcd56ae39d773740a5390411e8bc9"
+    ]
+  },
+  "r4": {
+    "allowlist": [
+      {
+        "selector": "0x5b4e128c",
+        "args": [
+          {
+            "type": "uint256",
+            "max": "2^128-1"
+          }
+        ]
+      }
+    ],
+    "allow_empty": true
+  },
+  "r5": {
+    "corpus_sha256": "0x9534a4b731515547e2e4321b6c13f937e76159cdfde51c2ca5e531ebe13a8aee",
+    "max_txs": 7,
+    "confirmations": 2
+  },
+  "ai": {
+    "required": true,
+    "model": "z-ai/glm-5.3-flash",
+    "signature_kind": "provider_tee",
+    "max_candidates": 4,
+    "timeout_s": 600
+  },
+  "max_cert_ttl_s": 300,
+  "reference_lineage": [
+    {
+      "contract_name": "src/demo/VaultV1.sol:VaultV1",
+      "source_sha256s": {
+        "src/demo/MockToken.sol": "0xc9d4bf771ab446a4d7d6e83c86b97d6e494646f24168e5728c3a100d549e80ea",
+        "src/demo/VaultV1.sol": "0x34c43de600beb580e3319c9887da4d1614b3e296832523aa10d89786bc98c1f9"
+      }
+    },
+    {
+      "contract_name": "src/demo/VaultV2Honest.sol:VaultV2Honest",
+      "source_sha256s": {
+        "src/demo/MockToken.sol": "0xc9d4bf771ab446a4d7d6e83c86b97d6e494646f24168e5728c3a100d549e80ea",
+        "src/demo/VaultV1.sol": "0x34c43de600beb580e3319c9887da4d1614b3e296832523aa10d89786bc98c1f9",
+        "src/demo/VaultV2Honest.sol": "0x6326a13660cf8e8bf9d2f45a9ee1895b0780d18c81fbf15962cea387190c1eb3"
+      }
+    },
+    {
+      "contract_name": "src/demo/VaultV3Honest.sol:VaultV3Honest",
+      "source_sha256s": {
+        "src/demo/MockToken.sol": "0xc9d4bf771ab446a4d7d6e83c86b97d6e494646f24168e5728c3a100d549e80ea",
+        "src/demo/VaultV1.sol": "0x34c43de600beb580e3319c9887da4d1614b3e296832523aa10d89786bc98c1f9",
+        "src/demo/VaultV2Honest.sol": "0x6326a13660cf8e8bf9d2f45a9ee1895b0780d18c81fbf15962cea387190c1eb3",
+        "src/demo/VaultV3Honest.sol": "0xca896dfcfa524f96e2a2010ffd8d6601f6c2eed020c0814e4870f7d5a84707bf"
+      }
+    }
+  ]
+}

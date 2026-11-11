@@ -148,6 +148,8 @@ impl Sandbox {
         let root = tempfile::tempdir().map_err(storage_error)?;
         crate::bundle::materialize(bundle, root.path())
             .map_err(|_| "infrastructure:storage_error".to_owned())?;
+        crate::bundle::supply_references(root.path(), manifest)
+            .map_err(|_| "infrastructure:storage_error".to_owned())?;
         let config = format!(
             "[profile.default]\nsrc='src'\ntest='test'\nout='out'\nlibs=['/opt/constitution/lib']\nsolc='/usr/local/bin/solc'\nevm_version='prague'\noptimizer=true\noptimizer_runs={}\nbytecode_hash='none'\ncbor_metadata=false\nffi=false\nast=true\ndynamic_test_linking=false\nbuild_info=true\nextra_output=['storageLayout']\nremappings=['@openzeppelin/contracts/=/opt/constitution/lib/openzeppelin-contracts/contracts/','@openzeppelin/contracts-upgradeable/=/opt/constitution/lib/openzeppelin-contracts-upgradeable/contracts/','forge-std/=/opt/constitution/lib/forge-std/src/']\n",
             manifest.optimizer_runs
