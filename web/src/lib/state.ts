@@ -58,6 +58,8 @@ export type SurfaceErrorCause =
   | "verifier_incomplete"
   | "run_refused"
   | "run_evicted"
+  | "session_key"
+  | "wallet_declined"
   | "other";
 
 /** The page's own write path: sealing the bundle, sending `propose`, posting the run. */

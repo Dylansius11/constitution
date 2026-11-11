@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { GateWriteError, type ProposeArgs, proposeWithDemoKey } from "../src/lib/near-write.ts";
+import { GateWriteError, type ProposeArgs, proposeWithSessionKey } from "../src/lib/near-write.ts";
 import { relaySignedTransaction, verifyRelay } from "../src/lib/relay.ts";
 import { hex } from "./support/fixtures.ts";
 
@@ -14,8 +14,8 @@ const args: ProposeArgs = {
 const config = {
   nearRpc: "https://rpc.example",
   gateAccount: "gate.testnet",
-  demoAccountId: "demo.testnet",
-  demoSecretKey: "ed25519:never-print-this",
+  accountId: "demo.testnet",
+  secretKey: "ed25519:never-print-this",
 };
 const txHash = "11111111111111111111111111111111";
 const event = (id: number, executor = "gate.testnet") => ({
@@ -32,10 +32,10 @@ const response = (value: string, receipts = [event(7)]) => ({
   receipts_outcome: receipts,
 });
 
-describe("demo NEAR propose", () => {
+describe("session-key NEAR propose", () => {
   it("uses only propose, zero attachment and no automatic resubmission", async () => {
     let observed: unknown;
-    const accepted = await proposeWithDemoKey(config, args, async (request) => {
+    const accepted = await proposeWithSessionKey(config, args, async (request) => {
       observed = request;
       return response("7");
     });
@@ -50,7 +50,7 @@ describe("demo NEAR propose", () => {
   });
 
   it("can read the gate event when the final return is empty", async () => {
-    expect(await proposeWithDemoKey(config, args, async () => response(""))).toEqual({
+    expect(await proposeWithSessionKey(config, args, async () => response(""))).toEqual({
       proposalId: 7,
       nearTxHash: txHash,
     });
@@ -62,13 +62,13 @@ describe("demo NEAR propose", () => {
       response("8"),
       response("", [event(7, "other.testnet")]),
     ]) {
-      await expect(proposeWithDemoKey(config, args, async () => result)).rejects.toThrow();
+      await expect(proposeWithSessionKey(config, args, async () => result)).rejects.toThrow();
     }
   });
 
   it("does not treat an event as acceptance without a successful final execution status", async () => {
     await expect(
-      proposeWithDemoKey(config, args, async () => ({
+      proposeWithSessionKey(config, args, async () => ({
         ...response("7"),
         status: "Started",
       })),
@@ -77,7 +77,7 @@ describe("demo NEAR propose", () => {
 
   it("maps recorded panic failures to gate_refused with only the stable code", async () => {
     try {
-      await proposeWithDemoKey(config, args, async () => ({
+      await proposeWithSessionKey(config, args, async () => ({
         status: {
           Failure: {
             ActionError: {
@@ -99,8 +99,8 @@ describe("demo NEAR propose", () => {
 
   it("never exposes a secret from a thrown transport error", async () => {
     await expect(
-      proposeWithDemoKey(config, args, async () => {
-        throw new Error(config.demoSecretKey);
+      proposeWithSessionKey(config, args, async () => {
+        throw new Error(config.secretKey);
       }),
     ).rejects.toThrow("NEAR proposal submission failed");
   });
