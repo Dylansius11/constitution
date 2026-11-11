@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "gate": "constitution-demo.testnet",
+  "proxy": null,
+  "attacks": [
+    {
+      "id": "drain",
+      "title": "Hidden withdrawal rebate",
+      "summary": "A loyalty rebate lets one depositor withdraw assets still owed to other depositors.",
+      "expected_rule": 2,
+      "expected_reason": 20,
+      "contract": "src/demo/VaultV2Drain.sol:VaultV2Drain",
+      "source_files": [
+        "src/demo/MockToken.sol",
+        "src/demo/VaultV1.sol",
+        "src/demo/VaultV2Drain.sol",
+        "src/demo/VaultV2Honest.sol"
+      ],
+      "impl": null,
+      "codehash": "0x9b4a6e24f005b8988ec1e858f8ef8792595c838ac3ef162b5e9597b30764871d",
+      "init_calldata": "0x",
+      "observed": null
+    },
+    {
+      "id": "storage-shuffle",
+      "title": "Reordered vault storage",
+      "summary": "Reordering existing storage fields makes recorded depositor balances unreadable after the upgrade.",
+      "expected_rule": 1,
+      "expected_reason": 10,
+      "contract": "src/demo/VaultV2StorageShuffle.sol:VaultV2StorageShuffle",
+      "source_files": [
+        "src/demo/MockToken.sol",
+        "src/demo/VaultV1.sol",
+        "src/demo/VaultV2StorageShuffle.sol"
+      ],
+      "impl": null,
+      "codehash": "0x0db3fd6be44f977706634e2263af373c38829777c14e331588ca31cd7d956a0b",
+      "init_calldata": "0x",
+      "observed": null
+    },
+    {
+      "id": "self-destruct",
+      "title": "Unsafe emergency shutdown",
+      "summary": "An emergency shutdown introduces a forbidden opcode that can transfer the proxy's native currency without depositor accounting.",
+      "expected_rule": 3,
+      "expected_reason": 30,
+      "contract": "src/demo/VaultV2SelfDestruct.sol:VaultV2SelfDestruct",
+      "source_files": [
+        "src/demo/MockToken.sol",
+        "src/demo/VaultV1.sol",
+        "src/demo/VaultV2Honest.sol",
+        "src/demo/VaultV2SelfDestruct.sol"
+      ],
+      "impl": null,
+      "codehash": "0x4f679176ffc524f651af8231856138f81c524b46391cba4799bdc3f6d1b2464c",
+      "init_calldata": "0x5b4e128c00000000000000000000000000000000000000000000000000000000000f4240",
+      "observed": null
+    },
+    {
+      "id": "forbidden-init",
+      "title": "Out-of-policy deposit cap",
+      "summary": "The honest implementation is proposed with a deposit cap above the owner's committed initialization limit.",
+      "expected_rule": 4,
+      "expected_reason": 41,
+      "contract": "src/demo/VaultV2Honest.sol:VaultV2Honest",
+      "source_files": [
+        "src/demo/MockToken.sol",
+        "src/demo/VaultV1.sol",
+        "src/demo/VaultV2Honest.sol"
+      ],
+      "impl": null,
+      "codehash": "0xce7d19f1ffeec2a698e6f73994168cee262294e65809598514ef7d04d7fc43dc",
+      "init_calldata": "0x5b4e128c0000000000000000000000000000000100000000000000000000000000000000",
+      "observed": null
+    }
+  ],
+  "upgrades": [
+    { "from": "VaultV1", "to": "VaultV2Honest", "observed": null },
+    { "from": "VaultV2Honest", "to": "VaultV3Honest", "observed": null }
+  ]
+}
