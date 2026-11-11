@@ -19,7 +19,15 @@
       "impl": "0xbdd4826a0124a2443e9e3561d17e38f749c084e4",
       "codehash": "0x9b4a6e24f005b8988ec1e858f8ef8792595c838ac3ef162b5e9597b30764871d",
       "init_calldata": "0x",
-      "observed": null
+      "observed": {
+        "proposal_id": 0,
+        "near_tx": "3SurzWhzTKtdy9rmPmvhbKKB6W45JY1bTEGCCJmT56ue",
+        "propose_tx": "B69VX9ZTa3TXgEWDgF4oAo2gZkdYuq7js1QvfWgySrvR",
+        "rule_id": 2,
+        "reason_code": 20,
+        "evidence_root": "0x2e5811713be0b0a08f8b02ee894f5c0a17ddfac5e34baa84584b614a412167a9",
+        "observed_at": "2026-11-11T12:02:07.056Z"
+      }
     },
     {
       "id": "storage-shuffle",
@@ -36,7 +44,15 @@
       "impl": "0x8a1e8fff2e157976c6711b0dc0a62eb9cec48e13",
       "codehash": "0x0db3fd6be44f977706634e2263af373c38829777c14e331588ca31cd7d956a0b",
       "init_calldata": "0x",
-      "observed": null
+      "observed": {
+        "proposal_id": 1,
+        "near_tx": "9U24kJitQ6oUqnwj6SaaXrvc1qvGYpHbnUQka7s9Yhi9",
+        "propose_tx": "2xqbCC6DmL5P5dPMjaQoGcycubsp4MXkma2jBbsdax7J",
+        "rule_id": 1,
+        "reason_code": 10,
+        "evidence_root": "0x7b1cb4fc2cf04950fe736b2a60d4f05eb9742544a170181a60596afb52547a81",
+        "observed_at": "2026-11-11T12:02:50.663Z"
+      }
     },
     {
       "id": "self-destruct",
@@ -54,7 +70,15 @@
       "impl": "0x9deb93a87eaa4e2898f9a6374ab82ef921dd4f52",
       "codehash": "0x4f679176ffc524f651af8231856138f81c524b46391cba4799bdc3f6d1b2464c",
       "init_calldata": "0x5b4e128c00000000000000000000000000000000000000000000000000000000000f4240",
-      "observed": null
+      "observed": {
+        "proposal_id": 2,
+        "near_tx": "8bcqhJdfaqQ2brTD66Vzn7Fwmxb7KuegZL3caezvkDBA",
+        "propose_tx": "ES7RYjdyHLZK3KB8yqKrwzZZgwebe94doabcBXcYCMLM",
+        "rule_id": 3,
+        "reason_code": 30,
+        "evidence_root": "0x903a39097267c0709a5303ef9818855d199e2924c53ab3b4239de07de6ea4772",
+        "observed_at": "2026-11-11T12:04:45.037Z"
+      }
     },
     {
       "id": "forbidden-init",
@@ -71,7 +95,15 @@
       "impl": "0xcdff74f564ebdfb387d7f4ec4e0ca0f4a8753005",
       "codehash": "0xce7d19f1ffeec2a698e6f73994168cee262294e65809598514ef7d04d7fc43dc",
       "init_calldata": "0x5b4e128c0000000000000000000000000000000100000000000000000000000000000000",
-      "observed": null
+      "observed": {
+        "proposal_id": 3,
+        "near_tx": "6RaagKfdYUSkn4fAt6QswcrAXHDuh2HXga9GfJPm1k2k",
+        "propose_tx": "CU8vBSkDP71tTmDiqswhQmrNw5oYHEesxktqrHfXh4zj",
+        "rule_id": 4,
+        "reason_code": 41,
+        "evidence_root": "0xf2dd04449adde9fa55878d2ebccc5de54651dfe01ece80b49b668c18f5217585",
+        "observed_at": "2026-11-11T12:06:41.780Z"
+      }
     }
   ],
   "upgrades": [

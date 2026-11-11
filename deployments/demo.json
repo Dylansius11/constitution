@@ -1,0 +1,21 @@
+{
+  "chain_id": 84532,
+  "governance_delay_days": 1,
+  "gate": "constitution-demo.testnet",
+  "gate_code_hash": "GjPz45TdYvvuVX5k2NtSKDm8gdBt3gvdF7WpUJXZvLGP",
+  "mpc_account": "v1.signer-prod.testnet",
+  "executor": "0xd1a7633669f6f1a08a168479798d04a40e0f2483",
+  "executor_runtime_hash": "0x146f314b34d542adac94a0fdc7fe8ccf702d5be655e00583bbce6cd668f3a8fc",
+  "proxy": "0xc24a9b7b139af4e458df40a2644229a4ca5fec91",
+  "verifiers": [
+    {
+      "pubkey": "JBHLFjHnYXnHVZVnkSeEPdb3SHesFPAKz8kkvK1pivE=",
+      "release_hash": "0xfe5ca64ccd11b9ecfd29d0a2ba5553bafd6d642d7f7fc8db4528117daaacea5b"
+    }
+  ],
+  "roles": {
+    "governor": "constitution-governor.testnet",
+    "guardian": "constitution-guardian.testnet"
+  },
+  "planned_changes": []
+}
