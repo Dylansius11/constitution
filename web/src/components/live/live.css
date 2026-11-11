@@ -1,3 +1,5 @@
+@import "../ui/hash.css";
+
 .live-surface {
   color: var(--ink);
   min-width: 0;
