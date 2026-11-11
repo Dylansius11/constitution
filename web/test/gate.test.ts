@@ -331,3 +331,78 @@ describe("gate view client", () => {
     expect(seen?.credentials).toBe("omit");
   });
 });
+
+describe("account standing views", () => {
+  const ACCOUNT = "alice.testnet";
+
+  it("reads amounts as exact decimal strings and the active proposal as an id or null", async () => {
+    const huge = "123456789012345678901234567890";
+    const credit = rpc(`"${huge}"`);
+    expect((await client(credit.fetch).getCredit(ACCOUNT)).value).toBe(BigInt(huge));
+    expect(credit.calls[0]?.body.params.method_name).toBe("get_credit");
+    expect(decodeArgs(credit.calls[0])).toEqual({ account: ACCOUNT });
+    expect((await client(rpc(`"100000000000000000000000"`).fetch).getRequiredCredit()).value).toBe(
+      100_000_000_000_000_000_000_000n,
+    );
+    expect((await client(rpc(`"5"`).fetch).getProposalFee()).value).toBe(5n);
+    expect((await client(rpc(`"6"`).fetch).getCreditEntryFee(ACCOUNT)).value).toBe(6n);
+    expect((await client(rpc("12").fetch).getActive(ACCOUNT)).value).toBe(12);
+    expect((await client(rpc("null").fetch).getActive(ACCOUNT)).value).toBeNull();
+  });
+
+  it("refuses a malformed amount and an invalid account before or after the wire", async () => {
+    await expect(client(rpc("100").fetch).getCredit(ACCOUNT)).rejects.toThrow(WireError);
+    await expect(client(rpc(`"-1"`).fetch).getCredit(ACCOUNT)).rejects.toThrow(WireError);
+    await expect(client(rpc(`"1"`).fetch).getCredit("Not An Account")).rejects.toThrow(InputError);
+  });
+
+  const KEY = `ed25519:${"2".repeat(44)}`;
+  const keyResult = (permission: unknown) => {
+    const calls: Array<{ params: Record<string, string> }> = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      calls.push(JSON.parse(String(init?.body)));
+      return new Response(
+        JSON.stringify({ result: { nonce: 1, permission, block_height: 9, block_hash: "h" } }),
+      );
+    };
+    return { fetch: fetchImpl, calls };
+  };
+
+  it("reads a function-call key with its allowance and a full-access key", async () => {
+    const limited = keyResult({
+      FunctionCall: { allowance: "250", receiver_id: GATE, method_names: ["propose"] },
+    });
+    const read = await client(limited.fetch).getAccessKey(ACCOUNT, KEY);
+    expect(read?.value).toEqual({
+      allowance: 250n,
+      receiverId: GATE,
+      methodNames: ["propose"],
+      fullAccess: false,
+    });
+    expect(limited.calls[0]?.params).toMatchObject({
+      request_type: "view_access_key",
+      account_id: ACCOUNT,
+      public_key: KEY,
+    });
+    const unlimited = keyResult({
+      FunctionCall: { allowance: null, receiver_id: GATE, method_names: [] },
+    });
+    expect((await client(unlimited.fetch).getAccessKey(ACCOUNT, KEY))?.value.allowance).toBeNull();
+    const full = await client(keyResult("FullAccess").fetch).getAccessKey(ACCOUNT, KEY);
+    expect(full?.value.fullAccess).toBe(true);
+  });
+
+  it("treats a key the account does not have as null, and any other failure as an error", async () => {
+    const missing: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          error: { name: "HANDLER_ERROR", cause: { name: "UNKNOWN_ACCESS_KEY" }, message: "k" },
+        }),
+      );
+    expect(await client(missing).getAccessKey(ACCOUNT, KEY)).toBeNull();
+    const other: typeof fetch = async () =>
+      new Response(JSON.stringify({ error: { name: "INTERNAL_ERROR", message: "boom" } }));
+    await expect(client(other).getAccessKey(ACCOUNT, KEY)).rejects.toThrow(RpcError);
+    await expect(client(missing).getAccessKey(ACCOUNT, "ed25519:short")).rejects.toThrow(InputError);
+  });
+});
