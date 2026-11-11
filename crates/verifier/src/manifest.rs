@@ -9,6 +9,33 @@ pub fn load_manifest(path: impl AsRef<Path>) -> Result<RuleSetManifest, String> 
     Ok(manifest)
 }
 
+/// Operator input is repo-relative, and canonicalization also refuses symlink escapes.
+pub fn configured_path(
+    repo: &Path,
+    value: Option<&std::ffi::OsStr>,
+) -> Result<std::path::PathBuf, String> {
+    let value = value.unwrap_or_else(|| std::ffi::OsStr::new("rules/manifest.json"));
+    let path = Path::new(value);
+    if path.as_os_str().is_empty()
+        || path
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err("VERIFIER_MANIFEST must be a repo-relative path without traversal".into());
+    }
+    let repo = repo
+        .canonicalize()
+        .map_err(|_| "manifest repository unavailable")?;
+    let path = repo
+        .join(path)
+        .canonicalize()
+        .map_err(|_| "VERIFIER_MANIFEST unavailable")?;
+    if !path.starts_with(&repo) {
+        return Err("VERIFIER_MANIFEST escapes repository".into());
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,6 +86,43 @@ mod tests {
             let mut address = [0; 32];
             address[12..].copy_from_slice(&hash[12..]);
             assert_eq!(m.r3.forbidden_constants[6 + index].0, address);
+        }
+    }
+}
+
+#[cfg(test)]
+mod configured_tests {
+    use super::*;
+    #[test]
+    fn configured_manifest_refuses_absolute_traversal_and_symlink_escape() {
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::create_dir(repo.path().join("rules")).unwrap();
+        std::fs::write(repo.path().join("rules/manifest.json"), "{}").unwrap();
+        assert!(
+            configured_path(repo.path(), None)
+                .unwrap()
+                .ends_with("rules/manifest.json")
+        );
+        for path in [
+            "",
+            "../manifest.json",
+            "rules/../rules/manifest.json",
+            "/etc/passwd",
+        ] {
+            assert!(configured_path(repo.path(), Some(std::ffi::OsStr::new(path))).is_err());
+        }
+        #[cfg(unix)]
+        {
+            let outside = tempfile::tempdir().unwrap();
+            std::fs::write(outside.path().join("manifest.json"), "{}").unwrap();
+            std::os::unix::fs::symlink(outside.path(), repo.path().join("escape")).unwrap();
+            assert!(
+                configured_path(
+                    repo.path(),
+                    Some(std::ffi::OsStr::new("escape/manifest.json"))
+                )
+                .is_err()
+            );
         }
     }
 }

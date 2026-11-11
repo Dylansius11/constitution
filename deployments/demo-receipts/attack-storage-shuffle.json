@@ -1,0 +1,50 @@
+{
+  "schema": "constitution.receipt/1",
+  "proposal": {
+    "id": 1,
+    "proposer": "constitution-governor.testnet",
+    "created_at_ns": 1794398556657800578,
+    "expires_at_ns": 1794402156657800578,
+    "rule_set_hash": "0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8",
+    "new_impl": "0x8a1e8fff2e157976c6711b0dc0a62eb9cec48e13",
+    "new_impl_codehash": "0x0db3fd6be44f977706634e2263af373c38829777c14e331588ca31cd7d956a0b",
+    "expected_current_impl": "0x48879e182efbf2db3633088073017e8239eb1457",
+    "init_calldata": "0x",
+    "source_commitment": "0x0e109a9961088bdd09a3605e961e2939f2baaa5f53d4e88a87e104f94b46806b",
+    "reserved": "0",
+    "state": "Rejected",
+    "certificate_hash": "0x6f6b13ced6d338f9f0d8037dd1d160264c7416ca8a16c6a0afb542fe16b8082b",
+    "rejection": {
+      "rule_id": 1,
+      "reason_code": 10,
+      "evidence_root": "0x7b1cb4fc2cf04950fe736b2a60d4f05eb9742544a170181a60596afb52547a81"
+    },
+    "evm": null
+  },
+  "rule_set_hash": "0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8",
+  "evm": {
+    "status": "not_signed"
+  },
+  "labels": {
+    "network": "testnet"
+  },
+  "verdict": {
+    "kind": "Reject",
+    "rule_id": 1,
+    "reason_code": 10
+  },
+  "evidence_root": "0x7b1cb4fc2cf04950fe736b2a60d4f05eb9742544a170181a60596afb52547a81",
+  "verifier": {
+    "pubkey": "0x2411cb1631e76179c75595679127843dd6f74877ac14f00acfc924bcad698af1",
+    "release_hash": "0xfe5ca64ccd11b9ecfd29d0a2ba5553bafd6d642d7f7fc8db4528117daaacea5b"
+  },
+  "near": {
+    "verdict_tx": "9U24kJitQ6oUqnwj6SaaXrvc1qvGYpHbnUQka7s9Yhi9",
+    "propose_tx": "2xqbCC6DmL5P5dPMjaQoGcycubsp4MXkma2jBbsdax7J"
+  },
+  "proxy": {
+    "implementation_after": "0x48879e182efbf2db3633088073017e8239eb1457",
+    "observed_at_block": 57383508,
+    "implementation_before": "0x48879e182efbf2db3633088073017e8239eb1457"
+  }
+}

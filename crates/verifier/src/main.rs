@@ -3,7 +3,7 @@ use constitution_verifier::{
     api::{Service, router, serve},
     chain::GateSource,
     identity::Identity,
-    manifest::load_manifest,
+    manifest::{configured_path, load_manifest},
     proposals::LocalRegistry,
     submit::NearSubmitter,
 };
@@ -29,7 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(_) => return Err("invalid VERIFIER_LISTEN_ADDR".into()),
     };
     let repo = std::env::current_dir()?;
-    let manifest = load_manifest(repo.join("rules/manifest.json"))?;
+    let manifest = load_manifest(configured_path(
+        &repo,
+        std::env::var_os("VERIFIER_MANIFEST").as_deref(),
+    )?)?;
     let origin = required("PAGE_ORIGIN")?;
     let gate = if local {
         None
