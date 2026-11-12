@@ -1,5 +1,5 @@
 import type { CodeLine, CodeTab } from "../components/ui/code-types.ts";
-import { demoGate, demoVerifier } from "./demo-evidence.ts";
+import { demoGate, demoKeyless, demoVerifier } from "./demo-evidence.ts";
 import { finalRuns, RECORDED_ON } from "./final-evidence.ts";
 
 /**
@@ -36,6 +36,9 @@ export const cliTabs: CodeTab[] = [
     lines: [
       {
         note: "Reads the live demo gate and compares it with the committed deployment record and the demo rules. Needs the executor artifact from the quickstart build.",
+      },
+      {
+        note: `Demo gate, recorded ${demoKeyless.date}: exit ${demoKeyless.auditExitCode}, ${demoKeyless.auditChecks} checks, gate_has_no_access_keys PASS after its key was deleted.`,
       },
       // crates/cli/src/main.rs:95-122 (--deployment, --manifest, --near-rpc; no --network flag).
       {

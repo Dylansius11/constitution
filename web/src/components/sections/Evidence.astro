@@ -1,4 +1,5 @@
 ---
+import { demoKeyless } from "../../data/demo-evidence.ts";
 import { baseTxUrl, finalRuns, nearTxUrl, RECORDED_ON } from "../../data/final-evidence.ts";
 import { site } from "../../data/site.ts";
 import GateLedger from "../live/GateLedger.astro";
@@ -118,6 +119,15 @@ const earlier: { text: string; badge: string }[] = [
           <p class="evidence__intro">
             The separate gate that /app attacks, read live in the same way. It holds no run of the
             final gate and the final gate holds none of its runs.
+          </p>
+          <p class="evidence__intro">
+            <StatusBadge tone="recorded">
+              Testnet, recorded <time datetime={demoKeyless.date}>{demoKeyless.date}</time>
+            </StatusBadge>{" "}
+            Its only access key was deleted and the audit that had failed only on that check then
+            exited {demoKeyless.auditExitCode} with {demoKeyless.auditChecks} checks passed.{" "}
+            <a href={near(demoKeyless.keyDeletionTx)} rel="noopener">Key deletion on the NEAR explorer ↗</a>.
+            The live access-key row below is the authority.
           </p>
           <GateLedger
             id="demo-gate-ledger"

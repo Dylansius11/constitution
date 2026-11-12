@@ -1,5 +1,5 @@
 ---
-import { DEMO_RECORDED_ON } from "../../../data/demo-evidence.ts";
+import { DEMO_RECORDED_ON, demoKeyless } from "../../../data/demo-evidence.ts";
 import { CLI, demoGate, NEAR_RPC_DEFAULT } from "../../../data/docs.ts";
 import { site } from "../../../data/site.ts";
 import type { CodeLine, CodeTab } from "../../ui/code-types.ts";
@@ -115,8 +115,9 @@ const audit: CodeTab[] = [
   <p class="docs-note">
     <strong>Read every line, not only the exit code.</strong> The README recorded this audit on
     {DEMO_RECORDED_ON}: it failed only <code>gate_has_no_access_keys</code>, because the demo gate's
-    access key was still present. That key was scheduled for deletion on 2026-11-12. State changes,
-    so read every line of your own run instead of relying on this record.
+    access key was still present. That key was deleted on {demoKeyless.date}, and the identical
+    audit then exited {demoKeyless.auditExitCode} with {demoKeyless.auditChecks} checks. State
+    changes, so read every line of your own run instead of relying on these records.
   </p>
 
   <h3>Where to next</h3>
