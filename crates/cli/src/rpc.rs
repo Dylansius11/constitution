@@ -112,6 +112,17 @@ impl Near {
         }
     }
 
+    /// Interactive reads are bounded independently of the unchanged CLI transport defaults.
+    pub fn with_timeout(url: &str, timeout: std::time::Duration) -> Result<Self, String> {
+        Ok(Self {
+            url: url.to_owned(),
+            client: reqwest::blocking::Client::builder()
+                .timeout(timeout)
+                .build()
+                .map_err(|e| safe_error(url, e))?,
+        })
+    }
+
     fn query(&self, params: Value) -> Result<Value, String> {
         let result = post(&self.client, &self.url, "query", params)?;
         // nearcore reports some query failures inside `result.error`.
@@ -206,6 +217,17 @@ impl Evm {
             url: url.to_owned(),
             client: reqwest::blocking::Client::new(),
         }
+    }
+
+    /// Interactive reads are bounded independently of the unchanged CLI transport defaults.
+    pub fn with_timeout(url: &str, timeout: std::time::Duration) -> Result<Self, String> {
+        Ok(Self {
+            url: url.to_owned(),
+            client: reqwest::blocking::Client::builder()
+                .timeout(timeout)
+                .build()
+                .map_err(|e| safe_error(url, e))?,
+        })
     }
 
     pub fn chain_id(&self) -> Result<u64, String> {
