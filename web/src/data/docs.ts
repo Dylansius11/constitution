@@ -882,8 +882,15 @@ export const tuiKeymap: readonly TuiKeyGroup[] = [
       { keys: ["p"], action: "Switch profile between Demo gate and Final gate (read-only)" },
       { keys: ["r"], action: "Refresh" },
       { keys: ["?"], action: "Help" },
+      { keys: ["v"], action: "Show or hide the raw JSON behind a proposal or change" },
       { keys: ["q", "Esc"], action: "Back, or quit" },
-      { keys: ["Ctrl+C"], action: "Cancel" },
+      { keys: ["Ctrl+C"], action: "Cancel a running write (asks once; on-chain steps are not undone)" },
+    ],
+  },
+  {
+    scope: "Overview",
+    keys: [
+      { keys: ["a"], action: "Appraise the demo verifier against its pinned compose hash" },
     ],
   },
   {

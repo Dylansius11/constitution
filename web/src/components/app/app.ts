@@ -123,6 +123,11 @@ function start(data: AppData, panel: HTMLElement): void {
   const accountSummary = must<HTMLElement>(panel, "[data-account-summary]");
   const accountIdEl = must<HTMLElement>(panel, "[data-account-id]");
   const disconnectBtn = must<HTMLButtonElement>(panel, "[data-disconnect]");
+  const walletBar = must<HTMLElement>(document, "[data-wallet-bar]");
+  const connectTopBtn = must<HTMLButtonElement>(walletBar, "[data-connect-top]");
+  const disconnectTopBtn = must<HTMLButtonElement>(walletBar, "[data-disconnect-top]");
+  const walletLabel = must<HTMLElement>(walletBar, "[data-wallet-label]");
+  const walletDetail = must<HTMLElement>(walletBar, "[data-wallet-detail]");
   const walletMessage = must<HTMLElement>(panel, "[data-wallet-message]");
   const enableBtn = must<HTMLButtonElement>(panel, "[data-enable]");
   const attemptsSelect = must<HTMLSelectElement>(panel, "[data-attempts]");
@@ -420,6 +425,16 @@ function start(data: AppData, panel: HTMLElement): void {
     connectBtn.setAttribute("aria-disabled", String(connecting));
     connectBtn.toggleAttribute("aria-busy", connecting);
     connectBtn.textContent = state.wallet === "restoring" ? "Reconnecting…" : connecting ? "Waiting for the wallet…" : "Connect wallet";
+
+    // Wallet bar in the page head: the connect control stays visible, restored session or not.
+    walletBar.dataset["walletState"] = connected ? "connected" : connecting ? "connecting" : "idle";
+    walletLabel.textContent = connected ? "Wallet connected" : connecting ? connectBtn.textContent : "Wallet not connected";
+    walletDetail.textContent = connected ? (state.accountId ?? "") : "NEAR testnet only; nothing here touches mainnet funds.";
+    connectTopBtn.hidden = connected;
+    connectTopBtn.setAttribute("aria-disabled", String(connecting));
+    connectTopBtn.toggleAttribute("aria-busy", connecting);
+    connectTopBtn.textContent = connectBtn.textContent;
+    disconnectTopBtn.hidden = !connected;
 
     // Credit and key
     if (standing) {
@@ -848,6 +863,10 @@ function start(data: AppData, panel: HTMLElement): void {
     if (!disabled(connectBtn)) void connect();
   });
   disconnectBtn.addEventListener("click", () => void disconnect());
+  connectTopBtn.addEventListener("click", () => {
+    if (!disabled(connectTopBtn)) void connect();
+  });
+  disconnectTopBtn.addEventListener("click", () => void disconnect());
   enableBtn.addEventListener("click", () => {
     if (!disabled(enableBtn)) void enable();
   });
