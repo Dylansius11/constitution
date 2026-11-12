@@ -63,20 +63,29 @@ What that changes when something goes wrong:
 
 ## Why NEAR
 
-This design needs three things at once: a contract that holds **no key**, a way for that contract to **sign for another chain**, and **private, attested verification**. On an EVM chain alone it is not possible, because an upgrade authority there is always an address someone controls. NEAR provides each piece natively, and the project uses them all:
+The design needs a contract that holds **no key**, can still **sign for another chain**, and relies on **private, attested verification**. On an EVM chain alone that is impossible: an upgrade authority there is always an address someone controls. NEAR provides each piece natively.
 
-| NEAR capability | What CONSTITUTION does with it | Evidence |
+| NEAR capability | Role here | Proof |
 | --- | --- | --- |
-| **Accounts that can have zero keys** | The gate's access keys are deleted, so nothing can sign for the account or redeploy its code. The gate also has no code-upgrade, add-key or delete-account method. | Key deletions: [final gate](https://testnet.nearblocks.io/txns/FugUyo9Xa8VLTm9qM5vovYUpJU5DAqNjTUriYkmKEhn8), [demo gate](https://testnet.nearblocks.io/txns/8xzaoDru5ashVSXMf7aqs1xEPL8MzG2MgBmbCWPiaEjj); `audit` passes `gate_has_no_access_keys` |
-| **Chain Signatures (MPC)** | The gate derives one Base address from `v1.signer-prod.testnet` and path `constitution/base-sepolia/v1`. It builds the exact EIP-1559 transaction itself and never signs a caller-supplied hash. The key exists only as MPC shares, used only when the gate's code asks. | Honest upgrade sent by the derived address, nonce 0: [Base tx `0xe323d9b9…01da2`](https://sepolia.basescan.org/tx/0xe323d9b9c0169174e2b3895b8bdc41dc81e8e83c1e8cb62fcd51e8f708601da2) |
-| **Function-call access keys as session keys** | On the web app one wallet confirmation prepays credit and adds a key to *your* account that can call only `propose` on the demo gate, with a 0.25 NEAR gas allowance. It cannot transfer funds, withdraw credit or call anything else, and you can remove it any time. The verifier's relay uses a separate key limited to `submit_verdict` with a 5 NEAR allowance, so a leaked CVM secret can only submit verdicts, whose validity comes from the certificate signature. | [Session key code](web/src/lib/session-key.ts); [relay key tx `DaLXGPHn…CkX1`](https://testnet.nearblocks.io/txns/DaLXGPHnxwwdD4LqnmKyRTEtfzqppHQ9GMxXJQXoCkX1); a restricted governor key was refused on other methods, attached deposits and transfers on testnet, then deleted ([record](docs/technical/SMART-CONTRACT.md)) |
-| **Storage staking and prepaid credit** | A keyless gate has no operator to pay for storage, so every proposal prepays its own permanent record from deposited credit, and growth the gate cannot fund fails closed (`E12_STORAGE_INSOLVENT`). `propose` takes no attached deposit, which is what lets a restricted key use funded credit. | [Contract spec](docs/technical/SMART-CONTRACT.md) |
-| **Reproducible wasm and an on-chain code hash** | The gate is built with `cargo near build reproducible-wasm`. The code hash on-chain equals the committed build, and both gates run the same wasm. | Code hash `GjPz45Td…vLGP`, SHA-256 `e9bbaf83…c0f0`; `audit` passes `gate_code_is_committed_build` |
-| **Contract-enforced time** | Governance changes have a 1 to 30 day delay fixed at deployment and enforced on the NEAR clock. | Early apply refused: [tx](https://testnet.nearblocks.io/txns/AvHkJNNzU7zQvQmncDSUhsXTWM8F5bciHVhZSRDBuHP) |
-| **NEAR AI Cloud** | Private, end-to-end encrypted review with `z-ai/glm-5.3-flash`, no model aliasing, and a response verified as `provider_tee`. Up to four candidate counterexamples within 600 s; each must reproduce before it can veto. | Real review in the honest upgrade, 419 s, none reproduced |
-| **Tooling** | `near-sdk` 5.29.1 with Borsh state, `near-workspaces` sandbox tests, `near-api-js` 7 for session-key signing in the browser. | [Repository map](#repository-map) |
+| **Zero-key accounts** | The gate's access keys are deleted; it has no code-upgrade, add-key or delete-account method. | Key deletions: [final gate](https://testnet.nearblocks.io/txns/FugUyo9Xa8VLTm9qM5vovYUpJU5DAqNjTUriYkmKEhn8), [demo gate](https://testnet.nearblocks.io/txns/8xzaoDru5ashVSXMf7aqs1xEPL8MzG2MgBmbCWPiaEjj) |
+| **Chain Signatures (MPC)** | The gate derives one Base address (`v1.signer-prod.testnet`, path `constitution/base-sepolia/v1`) and signs only an EIP-1559 transaction it built itself, never a caller-supplied hash. | [Honest upgrade, Base tx `0xe323d9b9…01da2`](https://sepolia.basescan.org/tx/0xe323d9b9c0169174e2b3895b8bdc41dc81e8e83c1e8cb62fcd51e8f708601da2) |
+| **Function-call keys as session keys** | One wallet confirmation prepays credit and adds a key to *your* account that can call only `propose` on the demo gate (0.25 NEAR gas allowance, no transfers, removable any time). The verifier relay's key is limited to `submit_verdict` (5 NEAR allowance), so a leaked CVM secret can only submit verdicts, whose validity rests on the certificate signature. | [Session key code](web/src/lib/session-key.ts); [relay key tx](https://testnet.nearblocks.io/txns/DaLXGPHnxwwdD4LqnmKyRTEtfzqppHQ9GMxXJQXoCkX1); a restricted governor key was refused on other methods, deposits and transfers on testnet, then deleted ([record](docs/technical/SMART-CONTRACT.md)) |
+| **Storage staking and prepaid credit** | No operator pays for storage, so each proposal prepays its own permanent record; unfunded growth fails closed (`E12_STORAGE_INSOLVENT`). `propose` takes no attached deposit, which is what lets a restricted key spend credit. | [Contract spec](docs/technical/SMART-CONTRACT.md) |
+| **Reproducible wasm** | The on-chain code hash equals the committed `cargo near build reproducible-wasm` output; both gates run the same wasm. | `audit` passes `gate_code_is_committed_build` |
+| **Contract-enforced time** | Rule changes wait a 1 to 30 day delay set at deployment, on the NEAR clock. | [Early apply refused](https://testnet.nearblocks.io/txns/AvHkJNNzU7zQvQmncDSUhsXTWM8F5bciHVhZSRDBuHP) |
+| **NEAR AI Cloud** | Private, end-to-end encrypted counterexample search that can only veto. | Real review in the honest upgrade: 419 s, none reproduced |
 
-The residual trust is stated plainly in [limits](#guarantees-and-limits): the MPC network, the TEE vendor and the AI provider remain assumptions.
+The residual trust is in [limits](#guarantees-and-limits): the MPC network, the TEE vendor and the AI provider remain assumptions.
+
+## Ecosystem integration
+
+| Technology | How CONSTITUTION uses it |
+| --- | --- |
+| **NEAR Chain Signatures** | The MPC network owns the executor's authority through a key derived for the gate. `crates/gate/src/evm.rs` builds the exact transaction and is pinned by test vectors. |
+| **NEAR AI Cloud** | Model `z-ai/glm-5.3-flash`, end-to-end encrypted, no model aliasing, response attested as `provider_tee`. Up to four candidate counterexamples within 600 s; each must reproduce deterministically before it can veto. AI output can never produce a Pass. |
+| **Phala Cloud (dstack, Intel TDX)** | Hosts the verifier. The CLI appraises the TDX quote with `dcap-qvl` against Intel's root, replays RTMR3 and pins the compose hash before any source is sealed to it. |
+| **NEAR protocol** | `near-sdk` 5.29.1, Borsh state, reproducible wasm, prepaid proposal credit, function-call session keys and a 1 to 30 day governance timelock. Details in [Why NEAR](#why-near). |
+| **Base Sepolia and OpenZeppelin 5.6.1** | Unmodified Transparent proxy. The executor owns the ProxyAdmin and enforces deadline, current implementation, code hash and replay checks before `upgradeAndCall`. |
 
 ## Proof, not promises
 
@@ -160,6 +169,17 @@ The final gate's verifier CVM was retired by founder decision to keep the demo v
 
 <p align="center"><img src="docs/assets/architecture.svg" alt="System map: developer or agent, keyless NEAR gate with Chain Signatures, Intel TDX verifier running rules R1 to R5, private AI review on NEAR AI Cloud, and the executor and vault proxy on Base Sepolia" width="900"></p>
 
+| Piece | Role | Holds a key? |
+| --- | --- | --- |
+| **Gate** (`crates/gate`, NEAR) | Stores proposals, checks certificates, requests MPC signatures for one exact transaction, enforces the governance delay | No. Access keys deleted; no code-upgrade, add-key or "sign this hash" method |
+| **Verifier** (`crates/verifier`, Phala CVM) | Runs the committed rules on sealed source; signs verdicts with an ephemeral key bound to its TDX quote | Ephemeral, inside the TEE only |
+| **AI review** (NEAR AI Cloud) | Searches privately for counterexamples after R1–R5 pass | Can only veto, and only when its counterexample reproduces |
+| **Executor** (`contracts/`, Base Sepolia) | Owns the ProxyAdmin; accepts only gate-signed upgrades with a live deadline, the expected current implementation and code hash | No. Only the gate's MPC-derived signer can call it, and each certificate works once |
+
+## How it works
+
+One upgrade, start to finish. A failed rule ends the run with a signed rejection and nothing is signed for Base.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -186,13 +206,6 @@ sequenceDiagram
         Base->>Base: executor checks, then upgradeAndCall
     end
 ```
-
-| Piece | Role | Holds a key? |
-| --- | --- | --- |
-| **Gate** (`crates/gate`, NEAR) | Stores proposals, checks certificates, requests MPC signatures for one exact transaction, enforces the governance delay | No. Access keys deleted; no code-upgrade, add-key or "sign this hash" method |
-| **Verifier** (`crates/verifier`, Phala CVM) | Runs the committed rules on sealed source; signs verdicts with an ephemeral key bound to its TDX quote | Ephemeral, inside the TEE only |
-| **AI review** (NEAR AI Cloud) | Searches privately for counterexamples after R1–R5 pass | Can only veto, and only when its counterexample reproduces |
-| **Executor** (`contracts/`, Base Sepolia) | Owns the ProxyAdmin; accepts only gate-signed upgrades with a live deadline, the expected current implementation and code hash | No. Only the gate's MPC-derived signer can call it, and each certificate works once |
 
 ### The rules
 
