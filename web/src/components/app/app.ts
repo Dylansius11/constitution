@@ -10,6 +10,19 @@ import {
 import { reasonText, ruleLabel } from "../../lib/reasons.ts";
 import { createRunFlow, type RunFlow, type RunFlowUpdate } from "../../lib/run-flow.ts";
 import {
+  advanceClock,
+  buildSteps,
+  formatElapsed,
+  newClock,
+  PIPELINE,
+  type RunClock,
+  runFinished,
+  runSeconds,
+  type Step,
+  stageSeconds,
+  type WalletSteps,
+} from "../../lib/run-steps.ts";
+import {
   forgetSessionKey,
   generateSessionKey,
   loadSessionKey,
@@ -39,13 +52,13 @@ import {
   removeSessionKeyTx,
   withdrawCreditTx,
 } from "../../lib/wallet-actions.ts";
-import { renderLadder } from "../live/ladder.ts";
 import { replaceValue, timestamp } from "../live/runtime.ts";
 
 /**
  * /app controller. All chain facts are re-read from the gate and the account; the wallet's own
  * answers are never taken as proof. One run at a time (the gate allows one active proposal per
- * account), and nothing proposes without a click.
+ * account), and nothing proposes without a click. One panel shows the selected attack; the
+ * stepper, timers and result are painted from that attack's last run update.
  */
 
 interface AppAttack extends Pick<DemoAttackConfig, "id" | "title" | "contract" | "impl" | "codehash" | "initCalldata" | "expectedRule" | "expectedReason" | "files"> {}
@@ -62,9 +75,10 @@ interface AppData {
 
 const WALLET_HINT = "constitution:app:wallet";
 const TERMINAL: Record<string, true> = { executed: true, rejected: true, expired: true, reverted: true, error: true };
+const RULE_STEP = ["r1_layout", "r2_solvency", "r3_filter", "r4_initializer", "r5_replay"] as const;
 
 const dataNode = document.getElementById("app-data");
-const root = document.getElementById("account");
+const root = document.getElementById("run");
 if (dataNode?.textContent && root) start(JSON.parse(dataNode.textContent) as AppData, root);
 
 function must<T extends Element>(scope: ParentNode, selector: string): T {
@@ -95,48 +109,65 @@ const KEY_LABEL: Record<KeyState, string> = {
   active: "Active",
 };
 
-function start(data: AppData, account: HTMLElement): void {
+const IDLE_TITLE = "Ready";
+const IDLE_BODY = "Starting proposes this upgrade to the demo gate. The verifier then checks it against the rules.";
+
+function start(data: AppData, panel: HTMLElement): void {
   const gate: GateClient = createGateClient({ rpcUrl: data.nearRpc, gate: data.gate });
-  const stepEl = (name: string): HTMLElement => must(account, `[data-step="${name}"]`);
-  const connectStep = stepEl("connect");
-  const enableStep = stepEl("enable");
-  const runStep = stepEl("run");
-  const connectBtn = must<HTMLButtonElement>(account, "[data-connect]");
-  const connectedBox = must<HTMLElement>(account, "[data-connected]");
-  const accountIdEl = must<HTMLElement>(account, "[data-account-id]");
-  const disconnectBtn = must<HTMLButtonElement>(account, "[data-disconnect]");
-  const walletMessage = must<HTMLElement>(account, "[data-wallet-message]");
-  const connectHelp = must<HTMLElement>(account, "[data-connect-help]");
-  const enableBtn = must<HTMLButtonElement>(account, "[data-enable]");
-  const attemptsSelect = must<HTMLSelectElement>(account, "[data-attempts]");
-  const depositNote = must<HTMLElement>(account, "[data-deposit-note]");
-  const manage = must<HTMLElement>(account, "[data-manage]");
-  const withdrawBtn = must<HTMLButtonElement>(account, "[data-withdraw]");
-  const removeKeyBtn = must<HTMLButtonElement>(account, "[data-remove-key]");
-  const refreshBtn = must<HTMLButtonElement>(account, "[data-refresh]");
-  const setupMessage = must<HTMLElement>(account, "[data-setup-message]");
-  const runSummary = must<HTMLElement>(account, "[data-run-summary]");
-  const activePanel = must<HTMLElement>(account, "[data-active-panel]");
-  const activeText = must<HTMLElement>(account, "[data-active-text]");
-  const expireBtn = must<HTMLButtonElement>(account, "[data-expire]");
-  const activeMessage = must<HTMLElement>(account, "[data-active-message]");
-  const fact = (name: string): HTMLElement => must(account, `[data-fact="${name}"]`);
+  const pane = (name: string): HTMLElement => must(panel, `[data-pane="${name}"]`);
+  const connectPane = pane("connect");
+  const enablePane = pane("enable");
+  const runPane = pane("run");
+  const connectBtn = must<HTMLButtonElement>(panel, "[data-connect]");
+  const accountDetails = must<HTMLDetailsElement>(panel, "[data-account-details]");
+  const accountSummary = must<HTMLElement>(panel, "[data-account-summary]");
+  const accountIdEl = must<HTMLElement>(panel, "[data-account-id]");
+  const disconnectBtn = must<HTMLButtonElement>(panel, "[data-disconnect]");
+  const walletMessage = must<HTMLElement>(panel, "[data-wallet-message]");
+  const enableBtn = must<HTMLButtonElement>(panel, "[data-enable]");
+  const attemptsSelect = must<HTMLSelectElement>(panel, "[data-attempts]");
+  const depositNote = must<HTMLElement>(panel, "[data-deposit-note]");
+  const manage = must<HTMLElement>(panel, "[data-manage]");
+  const withdrawBtn = must<HTMLButtonElement>(panel, "[data-withdraw]");
+  const removeKeyBtn = must<HTMLButtonElement>(panel, "[data-remove-key]");
+  const refreshBtn = must<HTMLButtonElement>(panel, "[data-refresh]");
+  const setupMessage = must<HTMLElement>(panel, "[data-setup-message]");
+  const activePanel = must<HTMLElement>(panel, "[data-active-panel]");
+  const activeText = must<HTMLElement>(panel, "[data-active-text]");
+  const expireBtn = must<HTMLButtonElement>(panel, "[data-expire]");
+  const activeMessage = must<HTMLElement>(panel, "[data-active-message]");
+  const runBtn = must<HTMLButtonElement>(panel, "[data-run]");
+  const runHint = must<HTMLElement>(panel, "[data-run-hint]");
+  const runTitle = must<HTMLElement>(panel, "[data-run-title]");
+  const runBody = must<HTMLElement>(panel, "[data-run-body]");
+  const runWait = must<HTMLElement>(panel, "[data-run-wait]");
+  const runTimer = must<HTMLElement>(panel, "[data-run-timer]");
+  const runNear = must<HTMLAnchorElement>(panel, "[data-run-near]");
+  const runWatch = must<HTMLAnchorElement>(panel, "[data-run-watch]");
+  const result = must<HTMLElement>(panel, "[data-result]");
+  const stepEls = new Map<string, HTMLElement>();
+  for (const li of panel.querySelectorAll<HTMLElement>("[data-step]")) stepEls.set(li.dataset["step"] ?? "", li);
+  const radios = [...panel.querySelectorAll<HTMLInputElement>('input[name="attack"]')];
+  const pickLock = must<HTMLElement>(panel, "[data-pick-lock]");
+  const fact = (name: string): HTMLElement => must(panel, `[data-fact="${name}"]`);
   const verifierBox = document.querySelector<HTMLElement>("[data-verifier]");
-  const cards = new Map<string, HTMLElement>();
-  for (const attack of data.attacks) {
-    const card = document.querySelector<HTMLElement>(`[data-attack="${attack.id}"]`);
-    if (card) cards.set(attack.id, card);
-  }
+  const views = new Map<string, HTMLElement>();
+  for (const view of panel.querySelectorAll<HTMLElement>("[data-attack-view]")) views.set(view.dataset["attackView"] ?? "", view);
+  const attackById = new Map(data.attacks.map((attack) => [attack.id, attack] as const));
+  const firstAttack = data.attacks[0];
+  if (firstAttack === undefined) throw new Error("The gallery has no attacks");
 
   const state = {
     accountId: null as string | null,
     wallet: "idle" as "idle" | "restoring" | "connecting" | "connected",
+    connectFailed: false,
     standing: null as Standing | null,
     standingLoading: false,
     standingFailed: false,
     verifier: "checking" as "checking" | "online" | "offline",
     setupBusy: false,
     walletBusy: false,
+    selected: firstAttack.id,
     busyAttack: null as string | null,
     ownProposal: null as number | null,
     activeExpiryMs: null as number | null,
@@ -144,9 +175,14 @@ function start(data: AppData, account: HTMLElement): void {
   };
   const flows = new Map<string, RunFlow>();
   const lastUpdate = new Map<string, RunFlowUpdate>();
+  const lastSteps = new Map<string, Step[]>();
+  const clocks = new Map<string, RunClock>();
+  const resumed = new Set<string>();
+  let ticker: ReturnType<typeof setInterval> | undefined;
   let wallet: WalletPort | null = null;
 
   const runKey = (id: string): string => `constitution:run:${data.gate}:${state.accountId}:${id}`;
+  const startKey = (id: string): string => `${runKey(id)}:started`;
   const sessionKey = (): SessionKey | null =>
     state.accountId === null ? null : loadSessionKey(localStorage, data.gate, state.accountId);
 
@@ -196,6 +232,7 @@ function start(data: AppData, account: HTMLElement): void {
     state.verifier = "checking";
     render();
     try {
+      // Deliberately lazy: the verifier client is only needed once the page is open and a run may start.
       const { createVerifierClient } = await import("../../lib/verifier.ts");
       const identity = await createVerifierClient({ baseUrl: data.verifierUrl, timeoutMs: 8000 }).identity();
       state.verifier = "online";
@@ -248,40 +285,149 @@ function start(data: AppData, account: HTMLElement): void {
 
   /* ---------- render ---------- */
 
-  function setStep(step: HTMLElement, mode: "done" | "current" | "locked", status: string): void {
-    step.dataset["state"] = mode;
-    must(step, "[data-step-status]").textContent = status;
+  function walletSteps(): WalletSteps {
+    const standing = state.standing;
+    const connecting = state.wallet === "connecting" || state.wallet === "restoring";
+    return {
+      connected: state.accountId !== null,
+      connecting,
+      connectFailed: state.connectFailed,
+      standing:
+        standing === null
+          ? state.standingFailed
+            ? "unreadable"
+            : "reading"
+          : readiness(standing).kind === "needs_credit"
+            ? "needs_credit"
+            : "ready",
+    };
+  }
+
+  function stepsFor(id: string): Step[] {
+    const update = lastUpdate.get(id);
+    return buildSteps(walletSteps(), update === undefined ? null : { state: update.state, stages: update.view.stages });
+  }
+
+  const now = (): number => Date.now();
+
+  /** Stepper, run timer and per-step times for the selected attack. */
+  function paintSteps(): void {
+    const steps = stepsFor(state.selected);
+    lastSteps.set(state.selected, steps);
+    const clock = clocks.get(state.selected);
+    const target = attackById.get(state.selected)?.expectedRule;
+    for (const step of steps) {
+      const li = stepEls.get(step.id);
+      if (!li) continue;
+      li.dataset["state"] = step.state;
+      must(li, "[data-step-status]").textContent = step.status;
+      const isTarget = target !== undefined && step.id === RULE_STEP[target - 1];
+      must<HTMLElement>(li, "[data-step-target]").hidden = !isTarget;
+      li.toggleAttribute("data-target", isTarget);
+    }
+    paintTimes(steps, clock);
+  }
+
+  function paintTimes(steps: readonly Step[], clock: RunClock | undefined): void {
+    const t = now();
+    PIPELINE.forEach((spec, i) => {
+      const li = stepEls.get(spec.id);
+      if (!li) return;
+      const seconds = clock === undefined ? null : stageSeconds(clock, i, t);
+      must(li, "[data-step-time]").textContent = seconds === null ? "" : `${seconds} s`;
+    });
+    const total = clock === undefined ? null : runSeconds(clock, t);
+    const finished = clock !== undefined && (clock.endMs !== null || runFinished(steps));
+    runTimer.textContent = total === null ? (clock === undefined ? "0:00" : "—") : formatElapsed(total * 1000);
+    runTimer.dataset["running"] = String(clock !== undefined && !finished);
+  }
+
+  function ensureTicker(): void {
+    const live = [...clocks.values()].some((clock) => clock.endMs === null && clock.known);
+    if (live && ticker === undefined) {
+      ticker = setInterval(() => {
+        const clock = clocks.get(state.selected);
+        const steps = lastSteps.get(state.selected);
+        if (steps) paintTimes(steps, clock);
+        if (![...clocks.values()].some((c) => c.endMs === null && c.known)) {
+          clearInterval(ticker);
+          ticker = undefined;
+        }
+      }, 1000);
+    }
+  }
+
+  /** The run area of the selected attack: status, wait notice, links and the result card. */
+  function paintRun(): void {
+    const id = state.selected;
+    const update = lastUpdate.get(id);
+    const card = attackById.get(id);
+    const kind = update?.state.kind;
+    panel.dataset["tone"] = update?.view.tone ?? "neutral";
+    runTitle.textContent = update?.view.title ?? IDLE_TITLE;
+    runBody.textContent = update?.view.body ?? IDLE_BODY;
+    const waiting = update?.waiting ?? null;
+    runWait.hidden = waiting === null;
+    if (waiting !== null) {
+      const seconds = Math.max(1, Math.ceil((waiting.retryAtMs - now()) / 1000));
+      runWait.textContent = `The verifier is busy with another run. Your proposal is recorded and waiting in line; trying again in about ${seconds} s.`;
+    }
+    runNear.hidden = update?.nearTxHash == null;
+    if (update?.nearTxHash != null) runNear.href = `${data.explorer}/txns/${update.nearTxHash}`;
+    runWatch.hidden = update?.proposalId == null;
+    if (update?.proposalId != null) runWatch.dataset["proposal"] = String(update.proposalId);
+
+    const rejection = update?.rejection ?? null;
+    result.hidden = rejection === null || kind !== "rejected";
+    if (rejection !== null && kind === "rejected" && card !== undefined) {
+      const match = rejection.ruleId === card.expectedRule && rejection.reasonCode === card.expectedReason;
+      result.dataset["match"] = String(match);
+      must(result, "[data-result-title]").textContent = `The gate held. Refused under ${ruleLabel(rejection.ruleId)}, reason ${rejection.reasonCode}.`;
+      must(result, "[data-result-reason]").textContent = reasonText(rejection.reasonCode) ?? `Reason code ${rejection.reasonCode}.`;
+      must(result, "[data-result-match]").textContent = match
+        ? "This is the rule the attack was built to hit. No signature was requested and the proxy was not touched."
+        : `The gate refused it, but under a different rule or reason than expected (${ruleLabel(card.expectedRule)}, reason ${card.expectedReason}).`;
+    }
+  }
+
+  function pickStatus(id: string): string {
+    const update = lastUpdate.get(id);
+    if (update === undefined) return "Not run yet";
+    const kind = update.state.kind;
+    if (kind === "rejected") return `Refused · ${ruleLabel(update.state.ruleId)}`;
+    if (kind === "executed") return "Executed";
+    if (TERMINAL[kind] === true) return kind === "error" ? "Needs a retry" : "Ended";
+    return "Running";
   }
 
   function render(): void {
     const connected = state.accountId !== null;
     const standing = state.standing;
     const ready = standing === null ? null : readiness(standing);
+    const runnable = ready?.kind === "ready";
+    const keyReady = standing?.key === "active";
+    const selectedHasRun = lastUpdate.has(state.selected);
 
-    // Step 1
-    connectBtn.hidden = connected;
-    connectedBox.hidden = !connected;
-    connectHelp.hidden = connected;
+    // Which controls belong to the current step.
+    connectPane.hidden = connected;
+    enablePane.hidden = !connected || (ready !== null && ready.kind === "active_proposal") || (runnable && keyReady);
+    runPane.hidden = !connected || (!runnable && !selectedHasRun);
+    accountDetails.hidden = !connected;
+
+    // Wallet
     accountIdEl.textContent = state.accountId ?? "";
     const connecting = state.wallet === "connecting" || state.wallet === "restoring";
     connectBtn.setAttribute("aria-disabled", String(connecting));
     connectBtn.toggleAttribute("aria-busy", connecting);
     connectBtn.textContent = state.wallet === "restoring" ? "Reconnecting…" : connecting ? "Waiting for the wallet…" : "Connect wallet";
-    setStep(connectStep, connected ? "done" : "current", connected ? "Connected" : connecting ? "Connecting" : "Not connected");
 
-    // Step 2
-    const keyReady = standing?.key === "active";
-    const enableDone = ready?.kind === "ready" && keyReady;
-    setStep(
-      enableStep,
-      !connected ? "locked" : enableDone ? "done" : "current",
-      !connected ? "Locked" : standing === null ? (state.standingFailed ? "Unreadable" : "Reading") : enableDone ? "Enabled" : ready?.kind === "ready" ? "Wallet per run" : "Needs credit",
-    );
+    // Credit and key
     if (standing) {
       fact("credit").textContent = `${formatNear(standing.credit)} NEAR`;
       fact("runs").textContent = String(attemptsAffordable(standing));
       fact("key").textContent = KEY_LABEL[standing.key];
       fact("fee").textContent = `${formatNear(standing.fee)} NEAR`;
+      accountSummary.textContent = `${formatNear(standing.credit)} NEAR credit · covers ${attemptsAffordable(standing)} attack${attemptsAffordable(standing) === 1 ? "" : "s"}`;
       const deposit = depositFor(standing, state.attempts);
       depositNote.textContent =
         deposit === 0n
@@ -296,6 +442,7 @@ function start(data: AppData, account: HTMLElement): void {
       removeKeyBtn.hidden = standing.key === "none";
     } else {
       for (const name of ["credit", "runs", "key", "fee"]) fact(name).textContent = connected ? "Reading…" : "Not read";
+      accountSummary.textContent = connected ? "Reading the gate" : "";
       depositNote.textContent = connected ? "Reading the gate's fees." : "Connect a wallet first.";
       enableBtn.hidden = false;
       enableBtn.textContent = "Enable live runs";
@@ -305,24 +452,15 @@ function start(data: AppData, account: HTMLElement): void {
     enableBtn.toggleAttribute("aria-busy", state.setupBusy);
     refreshBtn.setAttribute("aria-disabled", String(state.standingLoading));
 
-    // Step 3
-    const runnable = ready?.kind === "ready";
-    setStep(runStep, runnable ? "current" : "locked", runnable ? "Ready" : "Locked");
-    runSummary.textContent = !connected
-      ? "Connect a wallet and enable live runs to unlock the attacks."
-      : runnable && standing
-        ? `Credit covers ${attemptsAffordable(standing)} attack${attemptsAffordable(standing) === 1 ? "" : "s"}. ${
-            standing.key === "active" ? "Your session key signs each one, with no pop-ups." : "Your wallet will ask you to confirm each one."
-          }`
-        : "Add credit to unlock the attacks.";
+    // A proposal of this account that this page did not start (or that outlived a reload).
     const own = state.ownProposal !== null && standing?.active === state.ownProposal;
     const showActive = standing !== null && standing.active !== null && !own;
     activePanel.hidden = !showActive;
     if (showActive && standing && standing.active !== null) {
-      const expired = state.activeExpiryMs !== null && Date.now() >= state.activeExpiryMs;
+      const expired = state.activeExpiryMs !== null && now() >= state.activeExpiryMs;
       activeText.textContent =
         state.activeExpiryMs === null
-          ? `Proposal ${standing.active} is in flight on your account. Watch it below, or let it finish.`
+          ? `Proposal ${standing.active} is in flight on your account. Look it up below, or let it finish.`
           : expired
             ? `Proposal ${standing.active} passed its deadline. Releasing it returns your reservation so you can run again.`
             : `Proposal ${standing.active} is in flight on your account. It can be released after ${new Date(state.activeExpiryMs).toUTCString()}.`;
@@ -330,32 +468,43 @@ function start(data: AppData, account: HTMLElement): void {
       expireBtn.setAttribute("aria-disabled", String(state.walletBusy));
     }
 
-    // Cards
+    // The run button of the selected attack
     const decision = gateFor();
-    for (const [id, card] of cards) {
-      const button = must<HTMLButtonElement>(card, "[data-run]");
-      const hint = must<HTMLElement>(card, "[data-run-hint]");
-      const finished = card.dataset["state"] === "done" || card.dataset["state"] === "failed";
-      const running = state.busyAttack === id;
-      let label = finished ? "Run again" : "Run live";
-      let disabled = false;
-      let text = "";
-      if (running) {
-        label = "Running…";
-        disabled = true;
-      } else if (!decision.ok) {
-        text = decision.reason;
-        if (decision.action === "connect") label = "Connect wallet to run";
-        else if (decision.action === "enable") label = "Enable live runs";
-        else disabled = true;
-      } else {
-        text = decision.signing === "session" ? "Signed by your session key. No pop-up." : "Your wallet will ask you to confirm.";
-      }
-      button.textContent = label;
-      button.setAttribute("aria-disabled", String(disabled));
-      button.toggleAttribute("aria-busy", running);
-      hint.textContent = running ? "" : text;
+    const running = state.busyAttack === state.selected;
+    const finished = selectedHasRun && !running && TERMINAL[lastUpdate.get(state.selected)?.state.kind ?? ""] === true;
+    let label = finished ? "Run again" : "Run this attack live";
+    let disabled = false;
+    let hint = "";
+    if (running) {
+      label = "Running…";
+      disabled = true;
+    } else if (!decision.ok) {
+      hint = decision.reason;
+      if (decision.action === "enable") label = "Enable live runs first";
+      disabled = decision.action !== "connect";
+    } else {
+      hint = decision.signing === "session" ? "Signed by your session key. No pop-up." : "Your wallet will ask you to confirm.";
     }
+    runBtn.textContent = label;
+    runBtn.setAttribute("aria-disabled", String(disabled));
+    runBtn.toggleAttribute("aria-busy", running);
+    runHint.textContent = running ? "" : hint;
+
+    // Picker: free to browse, locked while a run is in flight
+    const locked = state.busyAttack !== null;
+    pickLock.hidden = !locked;
+    for (const radio of radios) {
+      radio.disabled = locked && radio.value !== state.selected;
+      radio.checked = radio.value === state.selected;
+      const status = panel.querySelector<HTMLElement>(`[data-pick-status="${radio.value}"]`);
+      if (status) status.textContent = pickStatus(radio.value);
+      const body = radio.closest<HTMLElement>(".rp-card");
+      if (body) body.dataset["state"] = lastUpdate.get(radio.value)?.state.kind ?? "idle";
+    }
+    for (const [id, view] of views) view.hidden = id !== state.selected;
+
+    paintSteps();
+    paintRun();
 
     // Verifier chip
     if (verifierBox) {
@@ -366,11 +515,18 @@ function start(data: AppData, account: HTMLElement): void {
     }
   }
 
+  function select(id: string): void {
+    if (!attackById.has(id) || state.selected === id) return;
+    state.selected = id;
+    render();
+  }
+
   /* ---------- wallet ---------- */
 
   async function onAccount(accountId: string): Promise<void> {
     state.accountId = accountId;
     state.wallet = "connected";
+    state.connectFailed = false;
     state.standing = null;
     state.standingFailed = false;
     localStorage.setItem(WALLET_HINT, "1");
@@ -384,12 +540,14 @@ function start(data: AppData, account: HTMLElement): void {
     if (state.wallet === "connecting" || state.wallet === "restoring") return;
     setMessage(walletMessage, null);
     state.wallet = "connecting";
+    state.connectFailed = false;
     render();
     try {
       const accountId = await (await ensureWallet()).connect();
       await onAccount(accountId);
     } catch (error) {
       state.wallet = "idle";
+      state.connectFailed = !(error instanceof WalletRejectedError);
       render();
       setMessage(
         walletMessage,
@@ -405,16 +563,14 @@ function start(data: AppData, account: HTMLElement): void {
     for (const flow of flows.values()) flow.dispose();
     flows.clear();
     lastUpdate.clear();
+    lastSteps.clear();
+    clocks.clear();
+    resumed.clear();
     state.accountId = null;
     state.wallet = "idle";
     state.standing = null;
     state.busyAttack = null;
     state.ownProposal = null;
-    for (const card of cards.values()) {
-      card.dataset["state"] = "idle";
-      card.dataset["tone"] = "neutral";
-      must<HTMLElement>(card, "[data-live]").hidden = true;
-    }
     setMessage(setupMessage, null);
     setMessage(activeMessage, null);
     render();
@@ -595,61 +751,50 @@ function start(data: AppData, account: HTMLElement): void {
     };
   }
 
-  function renderCard(id: string, update: RunFlowUpdate): void {
-    const card = cards.get(id);
-    if (!card) return;
+  /** Stores the update, advances that attack's clocks, and repaints when it is the selected attack. */
+  function onUpdate(id: string, update: RunFlowUpdate): void {
     const kind = update.state.kind;
     const terminal = TERMINAL[kind] === true;
-    const live = must<HTMLElement>(card, "[data-live]");
-    live.hidden = false;
-    card.dataset["tone"] = update.view.tone;
-    card.dataset["state"] = !terminal ? "running" : kind === "error" ? "failed" : "done";
-    must(card, "[data-run-title]").textContent = update.view.title;
-    must(card, "[data-run-body]").textContent = update.view.body;
-    renderLadder(card, update.view.stages);
-    const wait = must<HTMLElement>(card, "[data-run-wait]");
-    wait.hidden = update.waiting === null;
-    if (update.waiting !== null) {
-      const seconds = Math.max(1, Math.ceil((update.waiting.retryAtMs - Date.now()) / 1000));
-      wait.textContent = `The verifier is busy with another run. Your proposal is recorded; trying again in about ${seconds} s.`;
-    }
-    const near = must<HTMLAnchorElement>(card, "[data-run-near]");
-    near.hidden = update.nearTxHash === null;
-    if (update.nearTxHash !== null) near.href = `${data.explorer}/txns/${update.nearTxHash}`;
-    const watch = must<HTMLAnchorElement>(card, "[data-run-watch]");
-    watch.hidden = update.proposalId === null;
-    if (update.proposalId !== null) watch.dataset["proposal"] = String(update.proposalId);
-
-    const result = must<HTMLElement>(card, "[data-result]");
-    result.hidden = update.rejection === null || kind !== "rejected";
-    if (update.rejection !== null && kind === "rejected") {
-      const expectedRule = Number(card.dataset["expectedRule"]);
-      const expectedReason = Number(card.dataset["expectedReason"]);
-      const match = update.rejection.ruleId === expectedRule && update.rejection.reasonCode === expectedReason;
-      result.dataset["match"] = String(match);
-      must(result, "[data-result-title]").textContent = `Refused under ${ruleLabel(update.rejection.ruleId)}`;
-      must(result, "[data-result-reason]").textContent =
-        reasonText(update.rejection.reasonCode) ?? `Reason code ${update.rejection.reasonCode}.`;
-      must(result, "[data-result-match]").textContent = match
-        ? "This is the rule the attack was built to hit."
-        : `The gate refused it, but under a different rule or reason than this card expects (${ruleLabel(expectedRule)}, reason ${expectedReason}).`;
-    }
+    const first = !lastUpdate.has(id);
     lastUpdate.set(id, update);
+
+    let clock = clocks.get(id);
+    if (clock === undefined) {
+      const stored = Number(localStorage.getItem(startKey(id)));
+      const wasResumed = resumed.has(id);
+      // After a reload the end of a run that already finished is unknown, so no time is claimed.
+      clock = Number.isFinite(stored) && stored > 0 ? newClock(stored, !(wasResumed && terminal)) : newClock(now(), !wasResumed);
+      clocks.set(id, clock);
+    }
+    const steps = buildSteps(walletSteps(), { state: update.state, stages: update.view.stages });
+    if (clock.known) advanceClock(clock, steps, now());
+    else if (clock.endMs === null && runFinished(steps)) clock.endMs = now();
+
     state.ownProposal = terminal && state.busyAttack === id ? null : (update.proposalId ?? state.ownProposal);
-    if (!terminal) state.busyAttack = id;
-    else if (state.busyAttack === id) {
+    if (!terminal) {
+      if (state.busyAttack !== id && first && state.selected !== id) state.selected = id;
+      state.busyAttack = id;
+    } else if (state.busyAttack === id) {
       state.busyAttack = null;
       announce(`${update.view.title}.`);
       void refreshStanding();
     }
     render();
+    ensureTicker();
   }
 
   function beginRun(attack: AppAttack, resume: boolean): void {
     const accountId = state.accountId;
     if (accountId === null) return;
     flows.get(attack.id)?.dispose();
-    if (!resume) localStorage.removeItem(runKey(attack.id));
+    if (resume) resumed.add(attack.id);
+    else {
+      localStorage.removeItem(runKey(attack.id));
+      localStorage.setItem(startKey(attack.id), String(now()));
+      clocks.set(attack.id, newClock(now()));
+      lastUpdate.delete(attack.id);
+      resumed.delete(attack.id);
+    }
     const label = attack.contract.split(":")[1] ?? attack.contract;
     const flow = createRunFlow(
       {
@@ -666,12 +811,13 @@ function start(data: AppData, account: HTMLElement): void {
           bundle: attackBundle(attack),
         },
       },
-      (update) => renderCard(attack.id, update),
+      (update) => onUpdate(attack.id, update),
       { propose: (args) => proposeSigner()(args) },
     );
     flows.set(attack.id, flow);
     if (!resume) state.busyAttack = attack.id;
     render();
+    ensureTicker();
     flow.start().catch(() => {
       if (state.busyAttack === attack.id) state.busyAttack = null;
       render();
@@ -683,14 +829,13 @@ function start(data: AppData, account: HTMLElement): void {
       if (state.accountId !== null && localStorage.getItem(runKey(attack.id)) !== null) beginRun(attack, true);
   }
 
-  async function onRunClick(attack: AppAttack): Promise<void> {
+  async function onRunClick(): Promise<void> {
+    const attack = attackById.get(state.selected);
+    if (attack === undefined) return;
     const decision = gateFor();
     if (!decision.ok) {
       if (decision.action === "connect") await connect();
-      else if (decision.action === "enable") {
-        document.getElementById("account")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-        enableBtn.focus({ preventScroll: true });
-      }
+      else if (decision.action === "enable") enableBtn.focus();
       return;
     }
     beginRun(attack, false);
@@ -720,22 +865,22 @@ function start(data: AppData, account: HTMLElement): void {
     state.attempts = Number(attemptsSelect.value);
     render();
   });
+  runBtn.addEventListener("click", () => {
+    if (!disabled(runBtn)) void onRunClick();
+  });
+  for (const radio of radios) radio.addEventListener("change", () => select(radio.value));
   verifierBox?.querySelector("[data-verifier-retry]")?.addEventListener("click", () => void checkVerifier());
-  for (const attack of data.attacks) {
-    const card = cards.get(attack.id);
-    card?.querySelector("[data-run]")?.addEventListener("click", (event) => {
-      if (!disabled(event.currentTarget as HTMLElement)) void onRunClick(attack);
-    });
-    card?.querySelector("[data-run-watch]")?.addEventListener("click", (event) => {
-      const id = (event.currentTarget as HTMLElement).dataset["proposal"];
-      const input = document.querySelector<HTMLInputElement>("#demo-watch-input");
-      const form = input?.closest("form");
-      if (id !== undefined && input && form) {
-        input.value = id;
-        form.requestSubmit();
-      }
-    });
-  }
+  const lookup = (id: string | undefined): void => {
+    const input = document.querySelector<HTMLInputElement>("#demo-watch-input");
+    const form = input?.closest("form");
+    if (id !== undefined && input && form) {
+      input.value = id;
+      form.requestSubmit();
+    }
+  };
+  runWatch.addEventListener("click", () => lookup(runWatch.dataset["proposal"]));
+  for (const button of document.querySelectorAll<HTMLElement>("[data-lookup-id]"))
+    button.addEventListener("click", () => lookup(button.dataset["lookupId"]));
 
   render();
   void checkVerifier();

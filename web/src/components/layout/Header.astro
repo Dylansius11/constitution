@@ -3,12 +3,12 @@ import Button from "../ui/Button.astro";
 import Logo from "../ui/Logo.astro";
 
 interface Props {
-  /** True on `/app`: section links point back at the landing page. */
-  app?: boolean;
+  /** Section links point back at the landing page from every other page. */
+  page?: "landing" | "app" | "docs";
 }
 
-const { app = false } = Astro.props;
-const prefix = app ? "/" : "";
+const { page = "landing" } = Astro.props;
+const prefix = page === "landing" ? "" : "/";
 const links = [
   { href: `${prefix}#plain`, label: "Start here" },
   { href: `${prefix}#how`, label: "How it works" },
@@ -16,15 +16,16 @@ const links = [
   { href: `${prefix}#timelock`, label: "Timelock" },
   { href: `${prefix}#evidence`, label: "Evidence" },
   { href: `${prefix}#limits`, label: "Limits" },
+  { href: "/docs", label: "Docs" },
 ];
 
-// The wide bar has no room for a seventh link next to the app button; the compact menu does.
+// The wide bar has no room for another link next to the app button; the compact menu does.
 const menuLinks = [...links, { href: `${prefix}#try`, label: "Check it yourself" }];
 ---
 
 <header class="header">
   <div class="header__inner container">
-    <Logo href={app ? "/" : "#top"} class="header__logo" />
+    <Logo href={page === "landing" ? "#top" : "/"} class="header__logo" />
     <span class="header__scope">Testnet · Not audited</span>
     <nav class="header__nav" aria-label="Sections">
       <ul>
@@ -40,8 +41,8 @@ const menuLinks = [...links, { href: `${prefix}#try`, label: "Check it yourself"
       </nav>
     </details>
     {
-      app ? (
-        <Button href="/" variant="secondary" class="header__cta">The story</Button>
+      page === "app" ? (
+        <Button href="#run" class="header__cta">Try the attack</Button>
       ) : (
         <Button href="/app" class="header__cta">Open app</Button>
       )
