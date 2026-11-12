@@ -1,0 +1,18 @@
+observed_at=2026-11-12T03:55:35Z
+PASS gate_has_no_access_keys: constitution-demo.testnet has 0 access key(s); must be 0, any key could redeploy the gate
+PASS gate_code_is_committed_build: code hash GjPz45TdYvvuVX5k2NtSKDm8gdBt3gvdF7WpUJXZvLGP (committed GjPz45TdYvvuVX5k2NtSKDm8gdBt3gvdF7WpUJXZvLGP)
+PASS executor_code_is_committed_build: masked runtime 0x146f314b34d542adac94a0fdc7fe8ccf702d5be655e00583bbce6cd668f3a8fc; committed 0x146f314b34d542adac94a0fdc7fe8ccf702d5be655e00583bbce6cd668f3a8fc; artifact 0x146f314b34d542adac94a0fdc7fe8ccf702d5be655e00583bbce6cd668f3a8fc
+PASS gate_binds_this_deployment: gate config chain 84532 executor 0xd1a7633669f6f1a08a168479798d04a40e0f2483 proxy 0xc24a9b7b139af4e458df40a2644229a4ca5fec91 mpc v1.signer-prod.testnet; EVM RPC chain 84532; governance delay 1 days (committed 1)
+PASS derived_eoa_is_executor_signer: MPC derives 0x6e6568bc88e937b84d739c94a1127304d1160132 for (constitution-demo.testnet, constitution/base-sepolia/v1); gate records 0x6e6568bc88e937b84d739c94a1127304d1160132; executor accepts 0x6e6568bc88e937b84d739c94a1127304d1160132
+PASS executor_controls_this_proxy: executor.proxy 0xc24a9b7b139af4e458df40a2644229a4ca5fec91 executor.proxyAdmin 0xb2f5f34e5c1d1b28f2d8540040ce64c37ad3d000 (gate config 0xb2f5f34e5c1d1b28f2d8540040ce64c37ad3d000)
+PASS executor_owns_proxy_admin: ProxyAdmin.owner() is 0xd1a7633669f6f1a08a168479798d04a40e0f2483
+PASS proxy_admin_is_erc1967_admin: ERC-1967 admin slot holds 0xb2f5f34e5c1d1b28f2d8540040ce64c37ad3d000
+PASS implementation_tracker_matches_slot: ERC-1967 implementation slot 0x48879e182efbf2db3633088073017e8239eb1457 vs executor.currentImplementation 0x48879e182efbf2db3633088073017e8239eb1457
+PASS active_rule_set_is_committed_manifest: gate rule_set_hash 0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8 vs manifest 0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8
+PASS verifier_allowlist_is_committed: gate lists 1 verifier(s), deployment commits 1
+PASS gate_roles: governor=constitution-governor.testnet guardian=constitution-guardian.testnet; match the deployment record
+PASS gate_operating_surplus: operating_surplus=5495084945600826600000000 yoctoNEAR, required at least 1000000000000000000000000; only plain transfers can top up a keyless gate
+PASS signing_paused: signing_paused=false; pause does not revoke already signed transactions
+PASS pending_governance_changes: 0 pending change(s)
+audit passed: 15 named checks/information lines
+audit_exit=0
