@@ -1,19 +1,122 @@
-use super::{panel, theme};
+use super::{theme, ui};
 use crate::tui::app::App;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    widgets::{Paragraph, Wrap},
+    text::{Line, Span},
+    widgets::Paragraph,
 };
+
+const LABEL: usize = 14;
+
+fn input(
+    label: &str,
+    value: &str,
+    editing: bool,
+    placeholder: &str,
+    width: usize,
+) -> Line<'static> {
+    let shown = if editing {
+        format!(
+            "{:<width$}",
+            format!(
+                "{}{}",
+                ui::clip_start(value, width.saturating_sub(1)),
+                theme::CURSOR
+            )
+        )
+    } else if value.is_empty() {
+        placeholder.to_owned()
+    } else {
+        ui::clip(value, width)
+    };
+    let style = if editing {
+        theme::INPUT
+    } else if value.is_empty() {
+        theme::DIM
+    } else {
+        theme::BASE
+    };
+    Line::from(vec![
+        Span::styled(
+            format!("{} ", if editing { theme::SELECTOR } else { " " }),
+            theme::TITLE,
+        ),
+        ui::text(format!("{label:<LABEL$}"), theme::MUTED),
+        ui::text(shown, style),
+    ])
+}
+
 pub fn render(f: &mut Frame, area: Rect, app: &App) {
-    let areas = Layout::vertical([Constraint::Length(4), Constraint::Min(2)]).split(area);
-    f.render_widget(Paragraph::new(format!("Proposal id [i edits, Enter fetches]: {}{}\nNew JSON path [s edits, Enter saves]: {}{}\n{}",app.receipt_id,if app.receipt_editing {" ◀ editing"}else{""},app.receipt_path,if app.receipt_save_editing {" ◀ editing"}else{""},if app.receipt_loading {"Fetching observed public state…"}else{"j/k scroll · saved JSON is create-only; no source or wallet secrets"})).style(theme::TITLE),areas[0]);
-    let text = app.receipt.as_ref().map_or_else(||"No receipt fetched. Enter a proposal id to assemble constitution.receipt/1 from observed public state. Certificate-only facts remain absent unless verified evidence exists.".into(),|r|serde_json::to_string_pretty(r).unwrap_or_else(|e|e.to_string()));
+    let [form, result] = Layout::vertical([Constraint::Length(6), Constraint::Min(4)]).areas(area);
+    let width = ui::inner_width(area.width).saturating_sub(LABEL + 2);
+
+    let status = if app.receipt_loading {
+        Line::styled(
+            format!(
+                "{} Fetching observed public state…",
+                theme::spinner(app.now_ns / 1_000_000)
+            ),
+            theme::ACCENT,
+        )
+    } else if app.receipt_editing || app.receipt_save_editing {
+        Line::styled("Type · Enter confirms · Esc cancels", theme::ACCENT)
+    } else {
+        Line::from(
+            [
+                ui::keycap("i", "proposal id"),
+                ui::keycap("Enter", "fetch"),
+                ui::keycap("s", "save JSON"),
+            ]
+            .concat(),
+        )
+    };
     f.render_widget(
-        Paragraph::new(text)
-            .wrap(Wrap { trim: false })
-            .scroll((app.receipt_scroll, 0))
-            .block(panel("constitution.receipt/1")),
-        areas[1],
+        Paragraph::new(vec![
+            input(
+                "Proposal id",
+                &app.receipt_id,
+                app.receipt_editing,
+                "digits only, for example 8",
+                width,
+            ),
+            input(
+                "Save to",
+                &app.receipt_path,
+                app.receipt_save_editing,
+                "path of a new .json file (create-only)",
+                width,
+            ),
+            Line::default(),
+            status,
+        ])
+        .block(ui::card("Receipt", theme::BORDER_FOCUS)),
+        form,
     );
+
+    let block = ui::card("constitution.receipt/1", theme::BORDER);
+    let inner = block.inner(result);
+    f.render_widget(block, result);
+    let Some(receipt) = &app.receipt else {
+        let lines = vec![
+            Line::styled("No receipt fetched.", theme::MUTED),
+            Line::default(),
+            Line::styled(
+                "Enter a proposal id to assemble constitution.receipt/1 from observed public state.",
+                theme::DIM,
+            ),
+            Line::styled(
+                "Certificate-only facts stay absent unless verified evidence exists. Saved files hold no source and no wallet secrets.",
+                theme::DIM,
+            ),
+        ];
+        f.render_widget(Paragraph::new(lines), inner);
+        return;
+    };
+    let pretty = serde_json::to_string_pretty(receipt).unwrap_or_else(|e| e.to_string());
+    let lines = ui::json_lines(&pretty, usize::from(inner.width).saturating_sub(1));
+    let height = usize::from(inner.height);
+    let (visible, offset) = ui::window(&lines, height, app.receipt_scroll);
+    f.render_widget(Paragraph::new(visible), inner);
+    ui::scrollbar(f, inner, lines.len(), height, offset);
 }

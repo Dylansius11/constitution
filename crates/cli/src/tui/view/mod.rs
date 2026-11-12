@@ -4,120 +4,327 @@ mod overview;
 mod proposals;
 mod receipt;
 mod run;
+#[cfg(test)]
+mod tests;
 pub mod theme;
-use super::app::{App, Screen};
+mod ui;
+
+use super::app::{App, Profile, Screen, ToastLevel};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Clear, Paragraph},
 };
-pub fn panel(title: &str) -> Block<'_> {
-    Block::default()
-        .title(title)
-        .title_style(theme::TITLE)
-        .borders(Borders::ALL)
-        .border_style(theme::BORDER)
-}
+
 pub fn render(f: &mut Frame, area: Rect, app: &App) {
-    f.render_widget(Block::default().style(theme::BASE), area);
-    let chunks = Layout::vertical([
-        Constraint::Length(2),
-        Constraint::Length(2),
+    f.render_widget(ratatui::widgets::Block::default().style(theme::BASE), area);
+    let notice = notice_lines(app, area.width);
+    let [header, body, notice_area, footer] = Layout::vertical([
+        Constraint::Length(3),
         Constraint::Min(3),
-        Constraint::Length(if app.error.is_some() { 3 } else { 1 }),
+        Constraint::Length(notice.len() as u16),
         Constraint::Length(1),
     ])
-    .split(area);
-    f.render_widget(
-        Paragraph::new(format!(
-            "CONSTITUTION  |  {}  [p: switch profile]",
-            app.profile.label()
-        ))
-        .style(theme::TITLE),
-        chunks[0],
-    );
-    let tabs: Vec<Span<'_>> = Screen::ALL
-        .iter()
-        .enumerate()
-        .flat_map(|(i, s)| {
-            [
-                Span::styled(
-                    format!(" {} {} ", i + 1, s.title()),
-                    if *s == app.screen {
-                        theme::SELECTED
-                    } else {
-                        theme::MUTED
-                    },
-                ),
-                Span::raw(" "),
-            ]
-        })
-        .collect();
-    f.render_widget(Paragraph::new(Line::from(tabs)), chunks[1]);
+    .areas(area);
+    render_header(f, header, app);
     match app.screen {
-        Screen::Overview => overview::render(f, chunks[2], app),
-        Screen::Proposals => proposals::render(f, chunks[2], app),
-        Screen::Run => run::render(f, chunks[2], app),
-        Screen::Audit => audit::render(f, chunks[2], app),
-        Screen::Receipt => receipt::render(f, chunks[2], app),
+        Screen::Overview => overview::render(f, body, app),
+        Screen::Proposals => proposals::render(f, body, app),
+        Screen::Run => run::render(f, body, app),
+        Screen::Audit => audit::render(f, body, app),
+        Screen::Receipt => receipt::render(f, body, app),
     }
-    if let Some(error) = &app.error {
-        f.render_widget(
-            Paragraph::new(error.as_str())
-                .style(theme::WARN)
-                .wrap(Wrap { trim: false }),
-            chunks[3],
-        );
-    } else if let Some(result) = &app.last_action_result {
-        let style = match result.level {
-            crate::tui::app::ToastLevel::Info => theme::ACTIVE,
-            crate::tui::app::ToastLevel::Success => theme::GOOD,
-            crate::tui::app::ToastLevel::Error => theme::BAD,
-        };
-        f.render_widget(
-            Paragraph::new(format!(
-                "{} · {}",
-                result.message,
-                result.observed_at.as_deref().unwrap_or("time unavailable")
-            ))
-            .style(style)
-            .wrap(Wrap { trim: false }),
-            chunks[3],
-        );
+    f.render_widget(Paragraph::new(notice), notice_area);
+    render_footer(f, footer, app);
+    if app.help {
+        render_help(f, area);
+    } else if app.confirm_cancel {
+        render_cancel(f, area);
     }
-    f.render_widget(
-        Paragraph::new(
-            "? help · Tab / 1–5 screens · p profile · r refresh · a appraise (Overview) · v raw · q / Esc back · Ctrl+C cancel",
-        )
-        .style(theme::MUTED),
-        chunks[4],
-    );
-    if app.help || app.confirm_cancel {
-        let width = area.width.saturating_sub(4).min(100);
-        let height = area.height.saturating_sub(4).min(22);
-        let popup = Rect::new(
-            area.x + (area.width - width) / 2,
-            area.y + (area.height - height) / 2,
-            width,
-            height,
-        );
-        let text = if app.confirm_cancel {
-            "A NEAR write MAY already have been sent. This confirmation is conservative from process launch, including while appraisal is still in progress.\n\nStopping the local process cannot undo credit funding, a registered proposal, verifier work, an MPC request, or a Base transaction already broadcast. The remote verifier may continue after cancellation.\n\nInspect submission.json, status and receipt before any retry. Never create a duplicate proposal to recover.\n\ny: stop local worker / n or Esc: keep watching"
+}
+
+fn render_header(f: &mut Frame, area: Rect, app: &App) {
+    let snapshot = app.snapshot.as_ref();
+    let (profile_chip, gate_style) = match app.profile {
+        Profile::Demo => (
+            ui::chip("DEMO · writable", theme::CHIP_ACCENT),
+            theme::MUTED,
+        ),
+        Profile::Final => (
+            ui::chip("FINAL · read-only", theme::CHIP_MUTED),
+            theme::MUTED,
+        ),
+    };
+    let mut left = vec![
+        Span::styled("◆ CONSTITUTION", theme::TITLE),
+        Span::raw("  "),
+        profile_chip,
+    ];
+    if let Some(s) = snapshot.filter(|s| !s.gate.is_empty()) {
+        left.push(Span::raw("  "));
+        left.push(Span::styled(s.gate.clone(), gate_style));
+    }
+    let mut right = Vec::new();
+    match snapshot.and_then(|s| s.access_keys) {
+        Some(0) => right.push(ui::chip("● KEYLESS", theme::CHIP_GOOD)),
+        Some(n) => right.push(ui::chip(&format!("{n} ACCESS KEYS"), theme::CHIP_BAD)),
+        None => {}
+    }
+    if let Some(s) = snapshot {
+        right.push(Span::raw("  "));
+        if app.refreshing {
+            right.push(Span::styled(
+                format!("{} ", theme::spinner(app.now_ns / 1_000_000)),
+                theme::ACCENT,
+            ));
+        }
+        right.push(Span::styled(
+            format!("observed {}", ui::time_of_day(&s.observed_at)),
+            theme::DIM,
+        ));
+    }
+    let [title_row, tab_row, rule_row] = Layout::vertical([Constraint::Length(1); 3]).areas(area);
+    let left_width: usize = left.iter().map(|s| ui::cols(&s.content)).sum();
+    let right_width: usize = right.iter().map(|s| ui::cols(&s.content)).sum();
+    f.render_widget(Paragraph::new(Line::from(left)), title_row);
+    if left_width + right_width + 2 <= usize::from(area.width) {
+        f.render_widget(Paragraph::new(Line::from(right).right_aligned()), title_row);
+    }
+    let mut tabs: Vec<Span<'static>> = Vec::new();
+    for (i, screen) in Screen::ALL.iter().enumerate() {
+        if *screen == app.screen {
+            tabs.push(Span::styled(
+                format!(" {} {} ", i + 1, screen.title()),
+                theme::TAB_ACTIVE,
+            ));
         } else {
-            "GLOBAL\nTab or 1–5: switch screens • p: Demo / Final profile\nr: refresh observed public state (also every 30s)\na: appraise pinned Demo verifier (Overview; Final never probes)\nv: toggle raw JSON (Proposals / governance queue)\nq / Esc: close overlay, leave editor, back to Overview, then quit\nCtrl+C: cancel a run; confirmation after a possible NEAR write\nj/k or arrows: scroll (Proposals: choose row)\n\nRUN\n←/→: presets • e: edit fields • u: attack / upgrade (custom)\nEditor: Tab/Shift+Tab next/previous field; Enter finish editing\nEnter: validate paths + read funding/signing confirmation\ny: confirm signing/spending (only on confirmation screen)\n\nAUDIT: Enter runs read-only checks\nPROPOSALS: Enter reads selected receipt detail\nRECEIPT: i edits proposal id; Enter fetches; s edits new JSON path\nEnter in a receipt input submits; existing files are not overwritten\n\nFinal profile is evidence-only: all write actions disabled."
-        };
-        f.render_widget(Clear, popup);
-        f.render_widget(
-            Paragraph::new(text)
-                .style(theme::BASE)
-                .wrap(Wrap { trim: false })
-                .block(panel(if app.confirm_cancel {
-                    "Confirm cancellation"
-                } else {
-                    "Keyboard help"
-                })),
-            popup,
-        );
+            tabs.push(Span::styled(format!(" {} ", i + 1), theme::DIM));
+            tabs.push(Span::styled(format!("{} ", screen.title()), theme::MUTED));
+        }
+        tabs.push(Span::raw(" "));
     }
+    f.render_widget(Paragraph::new(Line::from(tabs)), tab_row);
+    f.render_widget(
+        Paragraph::new(ui::rule(usize::from(area.width), theme::BORDER)),
+        rule_row,
+    );
+}
+
+/// Error and toast lines under the body; empty when there is nothing to say.
+fn notice_lines(app: &App, width: u16) -> Vec<Line<'static>> {
+    let room = usize::from(width).saturating_sub(3).max(10);
+    if let Some(error) = &app.error {
+        return ui::wrap(error, room)
+            .into_iter()
+            .take(3)
+            .map(|line| {
+                Line::from(vec![
+                    Span::styled("▌ ", theme::BAD),
+                    Span::styled(line, theme::WARN),
+                ])
+            })
+            .collect();
+    }
+    if let Some(result) = &app.last_action_result {
+        let (bar, style) = match result.level {
+            ToastLevel::Info => (theme::ACCENT, theme::MUTED),
+            ToastLevel::Success => (theme::GOOD, theme::GOOD),
+            ToastLevel::Error => (theme::BAD, theme::BAD),
+        };
+        let stamp = result
+            .observed_at
+            .as_deref()
+            .map_or(String::new(), |t| format!("  {}", ui::time_of_day(t)));
+        let message = ui::clip(&result.message, room.saturating_sub(ui::cols(&stamp)));
+        return vec![Line::from(vec![
+            Span::styled("▌ ", bar),
+            Span::styled(message, style),
+            Span::styled(stamp, theme::DIM),
+        ])];
+    }
+    Vec::new()
+}
+
+fn render_footer(f: &mut Frame, area: Rect, app: &App) {
+    let mut hints: Vec<(&str, &str)> = match app.screen {
+        Screen::Overview => vec![
+            ("a", "appraise"),
+            ("r", "refresh"),
+            ("v", "raw"),
+            ("p", "profile"),
+        ],
+        Screen::Proposals => vec![
+            ("↑↓", "select"),
+            ("Enter", "detail"),
+            ("v", "raw JSON"),
+            ("r", "refresh"),
+        ],
+        Screen::Run => {
+            if app.wizard.editing {
+                vec![
+                    ("Tab", "next field"),
+                    ("Enter", "done"),
+                    ("Esc", "stop editing"),
+                ]
+            } else if app.running {
+                vec![("Ctrl+C", "cancel")]
+            } else if app.wizard.confirmation.is_some() {
+                vec![("y", "authorize"), ("Esc", "back"), ("j/k", "scroll")]
+            } else {
+                vec![
+                    ("←→", "scenario"),
+                    ("e", "edit"),
+                    ("u", "attack/upgrade"),
+                    ("Enter", "review"),
+                ]
+            }
+        }
+        Screen::Audit => vec![("Enter", "run audit"), ("j/k", "scroll")],
+        Screen::Receipt => {
+            if app.receipt_editing || app.receipt_save_editing {
+                vec![("Enter", "confirm"), ("Esc", "cancel")]
+            } else {
+                vec![
+                    ("i", "proposal id"),
+                    ("Enter", "fetch"),
+                    ("s", "save"),
+                    ("j/k", "scroll"),
+                ]
+            }
+        }
+    };
+    hints.extend([("Tab", "screens"), ("?", "help"), ("q", "back")]);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut used = 0usize;
+    for (key, label) in hints {
+        let width = ui::cols(key) + ui::cols(label) + 6;
+        if used + width > usize::from(area.width) {
+            break;
+        }
+        used += width;
+        spans.extend(ui::keycap(key, label));
+    }
+    f.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+fn centered(area: Rect, width: u16, height: u16) -> Rect {
+    let width = width.min(area.width);
+    let height = height.min(area.height);
+    Rect::new(
+        area.x + (area.width - width) / 2,
+        area.y + (area.height - height) / 2,
+        width,
+        height,
+    )
+}
+
+const HELP: [(&str, &[(&str, &str)]); 6] = [
+    (
+        "Anywhere",
+        &[
+            ("1–5", "jump to a screen"),
+            ("Tab", "next screen"),
+            ("p", "Demo / Final profile"),
+            ("r", "refresh (also every 30 s)"),
+            ("v", "show or hide raw JSON"),
+            ("q  Esc", "close, back, then quit"),
+            ("Ctrl+C", "cancel a running write"),
+        ],
+    ),
+    (
+        "Overview",
+        &[("a", "appraise the demo verifier"), ("j/k", "scroll")],
+    ),
+    (
+        "Proposals",
+        &[
+            ("↑↓  j/k", "select a proposal"),
+            ("Enter", "fetch its detail"),
+        ],
+    ),
+    (
+        "Run",
+        &[
+            ("←→", "choose a scenario"),
+            ("e", "edit the inputs"),
+            ("Tab", "next field while editing"),
+            ("u", "toggle attack / upgrade"),
+            ("Enter", "review; nothing is written yet"),
+            ("y", "authorize the reviewed write"),
+        ],
+    ),
+    ("Audit", &[("Enter", "run the read-only audit")]),
+    (
+        "Receipt",
+        &[
+            ("i", "set the proposal id"),
+            ("Enter", "fetch the receipt"),
+            ("s", "save it (create-only)"),
+        ],
+    ),
+];
+
+fn render_help(f: &mut Frame, area: Rect) {
+    let popup = centered(area, 100, 24);
+    let section = |name: &str, keys: &[(&str, &str)]| -> Vec<Line<'static>> {
+        let mut lines = vec![Line::styled(name.to_uppercase(), theme::TITLE)];
+        for (key, label) in keys {
+            lines.push(Line::from(vec![
+                Span::styled(format!(" {key:<7}"), theme::KEYCAP),
+                Span::styled(format!(" {label}"), theme::MUTED),
+            ]));
+        }
+        lines.push(Line::default());
+        lines
+    };
+    f.render_widget(Clear, popup);
+    let block = ui::card("Keys", theme::BORDER_FOCUS);
+    let body = block.inner(popup);
+    f.render_widget(block, popup);
+    if popup.width >= 80 {
+        let [left, right] =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(body);
+        let first: Vec<_> = HELP[..3].iter().flat_map(|(n, k)| section(n, k)).collect();
+        let second: Vec<_> = HELP[3..].iter().flat_map(|(n, k)| section(n, k)).collect();
+        f.render_widget(Paragraph::new(first), left);
+        f.render_widget(Paragraph::new(second), right);
+    } else {
+        let all: Vec<_> = HELP.iter().flat_map(|(n, k)| section(n, k)).collect();
+        f.render_widget(Paragraph::new(all), body);
+    }
+}
+
+fn render_cancel(f: &mut Frame, area: Rect) {
+    let popup = centered(area, 78, 16);
+    let inner = ui::inner_width(popup.width);
+    let mut lines = vec![Line::styled(
+        "A NEAR write may already have been sent.",
+        theme::WARN,
+    )];
+    lines.push(Line::default());
+    for paragraph in [
+        "This confirmation is conservative from process launch, including while an appraisal is still running. Stopping the local process cannot undo credit funding, a registered proposal, verifier work, an MPC request or a Base transaction that was already broadcast. The remote verifier may keep working after you cancel.",
+        "Inspect submission.json, the run status and the receipt before any retry. Never create a duplicate proposal to recover.",
+    ] {
+        lines.extend(
+            ui::wrap(paragraph, inner)
+                .into_iter()
+                .map(|l| Line::styled(l, theme::BASE)),
+        );
+        lines.push(Line::default());
+    }
+    lines.push(Line::from(
+        [
+            ui::keycap("y", "stop the local worker"),
+            ui::keycap("n", "keep watching"),
+        ]
+        .concat(),
+    ));
+    f.render_widget(Clear, popup);
+    f.render_widget(
+        Paragraph::new(lines).block(ui::card("Stop the run?", theme::BORDER_WARN)),
+        popup,
+    );
 }

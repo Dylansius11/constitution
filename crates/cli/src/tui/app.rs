@@ -357,14 +357,6 @@ impl Default for Wizard {
     }
 }
 impl Wizard {
-    pub const LABELS: [&str; 6] = [
-        "NEAR account",
-        "Key-file path (never displayed contents)",
-        "Bundle directory",
-        "Contract path:Name",
-        "Implementation (20-byte hex)",
-        "Init calldata",
-    ];
     pub fn field_mut(&mut self) -> &mut String {
         match self.field {
             0 => &mut self.account,
