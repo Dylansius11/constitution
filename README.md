@@ -145,6 +145,42 @@ forge build --root contracts
 
 The TUI shows the gate at a glance (keyless or not, rule hash, verifier, proxy implementation, timelock), browses proposals and receipts, runs the audit, and walks you through a run with a live stepper for each stage, from proposal to Base receipt. The **Demo gate** profile is interactive; the **Final gate** profile is read-only. Full tour and keys: [user guide](docs/GUIDE.md#tui-tour).
 
+<details>
+<summary><b>What the Overview screen looks like</b> (text capture, live testnet, 2026-11-12)</summary>
+
+```text
+◆ CONSTITUTION   DEMO · writable   constitution-demo.testnet                                                                   ● KEYLESS   observed 05:21:22 UTC
+ 1 Overview   2 Proposals   3 Run   4 Audit   5 Receipt
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+╭ Access keys ─────────────────────────╮╭ Proposals ───────────────────────────╮╭ Vault runs ──────────────────────────╮╭ Rule set ────────────────────────────╮
+│             0  ✓ keyless             ││             9 · 9 refused            ││             V1 (initial)             ││          ✓ matches manifest          │
+╰──────────────────────────────────────╯╰──────────────────────────────────────╯╰──────────────────────────────────────╯╰──────────────────────────────────────╯
+╭ Authority ─────────────────────────────────────────────────────────────────╮  ╭ Verifier ──────────────────────────────────────────────────────────────────╮
+│ Gate           constitution-demo.testnet                                   │  │ Status          ONLINE                                                     │
+│ Access keys     0 KEYLESS  nobody can sign for this gate                   │  │ identity endpoint observed, NOT an attestation appraisal                   │
+│ Delay          1 day(s) on governance changes                              │  │ Source         live endpoint · 05:21:22 UTC                                │
+│ Explorer       testnet.nearblocks.io/address/constitution-demo.testnet     │  │ Cert key       0x2411cb1631e76179c75595679127843dd6f74…00acfc924bcad698af1 │
+╰────────────────────────────────────────────────────────────────────────────╯  │ Release        0xfe5ca64ccd11b9ecfd29d0a2ba5553bafd6d6…8db4528117daaacea5b │
+╭ Rules ─────────────────────────────────────────────────────────────────────╮  │ Compose        0xf7571e2688238dd87217f2210789e395c505e…ef026c62051feebe79e │
+│ Active         0xa988551688a3c7a7c61faa25591b933a419d1…6e5bac38456474d8cc8 │  │                                                                            │
+│ Committed      0xa988551688a3c7a7c61faa25591b933a419d1…6e5bac38456474d8cc8 │  │  a  appraise against the pinned compose hash                               │
+│ Binding         MATCH                                                      │  ╰────────────────────────────────────────────────────────────────────────────╯
+│                                                                            │  ╭ Timelock queue ────────────────────────────────────────────────────────────╮
+│ R1 storage layout · R2 solvency · R3 forbidden code · R4 initializer · R5  │  │ ✓ No pending governance changes.                                           │
+│ replay                                                                     │  ╰────────────────────────────────────────────────────────────────────────────╯
+╰────────────────────────────────────────────────────────────────────────────╯  ╭ What the gate guarantees ──────────────────────────────────────────────────╮
+╭ Vault · Base Sepolia ──────────────────────────────────────────────────────╮  │ No key can upgrade the vault. The gate signs only for a certificate from   │
+│ Runs           V1 (initial)                                                │  │ the attested verifier, issued against the committed rules R1–R5. The       │
+│ Implementation 0x48879e182efbf2db3633088073017e8239eb1457                  │  │ private AI reviewer can only veto.                                         │
+│ Explorer       sepolia.basescan.org/address/0xc24a9b7b139af4e458df40a2644… │  ╰────────────────────────────────────────────────────────────────────────────╯
+╰────────────────────────────────────────────────────────────────────────────╯
+ a  appraise    r  refresh    v  raw    p  profile    Tab  screens    ?  help    q  back
+```
+
+Captured by rendering the real screen against live public state in a 160-column terminal; colors are not preserved in text. The Run screen adds a scenario list, a review step and a ten-stage pipeline.
+
+</details>
+
 Check the keyless claim without the TUI:
 
 ```sh
