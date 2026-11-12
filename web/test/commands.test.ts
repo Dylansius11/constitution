@@ -43,6 +43,9 @@ describe("agent guide", () => {
     expect(text).toContain("the final gate's only access key was deleted");
     expect(text).toContain("refused at rule 0 (current source runtime mismatch)");
     expect(text).toContain("appraisal passed");
+    expect(text).toContain("Retired 2026-11-12");
+    expect(text).toContain("https://near-testnet.drpc.org");
+    expect(text).toContain("/docs");
     expect(text).not.toMatch(
       /not deployed|does not exist yet|awaiting activation|after activation/i,
     );
