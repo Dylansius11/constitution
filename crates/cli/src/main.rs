@@ -13,9 +13,11 @@ mod rpc;
 mod rules;
 mod signed_tx;
 mod status;
+mod tui;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use failure::Failure;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -27,11 +29,13 @@ use std::process::ExitCode;
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
 enum Command {
+    /// Open the interactive operator terminal (requires a terminal).
+    Tui,
     /// Propose, watch, verify an attack rejection or relay an honest upgrade; retain evidence.
     Demo(demo::DemoArgs),
     /// Register canonical source and send its sealed bundle to a verifier (identity not appraised).
@@ -316,7 +320,11 @@ enum GovernCommand {
 }
 
 fn run(cli: Cli) -> Result<(), Failure> {
-    match cli.command {
+    let Some(command) = cli.command else {
+        return tui::run();
+    };
+    match command {
+        Command::Tui => tui::run(),
         Command::Demo(args) => demo::run(args),
         Command::Verifier {
             command:
@@ -497,6 +505,10 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if cli.command.is_none() && !std::io::stdout().is_terminal() {
+        print!("{}", Cli::command().render_help());
+        return ExitCode::from(2);
+    }
     match run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
