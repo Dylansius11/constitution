@@ -622,6 +622,13 @@
   grid-column: 1 / -1;
 }
 
+/* The run pane is one column; its own .rp-run row holds the status and the button. */
+@media (min-width: 48rem) {
+  .rp-pane.rp-pane--run {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .rp-pane--run {
   gap: var(--space-4);
 }
@@ -886,7 +893,8 @@
 }
 
 .rp-account > summary {
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
   justify-content: space-between;
   font-weight: 600;
 }
