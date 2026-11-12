@@ -104,21 +104,38 @@ const earlier: { text: string; badge: string }[] = [
       }
     </ul>
 
-    <div class="evidence__pair">
-      <div class="evidence__block" data-reveal>
-        <h3 class="evidence__title">The recorded spike run</h3>
-        <SpikeReceipt />
-      </div>
-      <div class="evidence__block" data-reveal style="--i:1">
-        <h3 class="evidence__title">The final gate</h3>
-        <h4 class="evidence__sub">Read live, now</h4>
-        <GateLedger />
-        <FinalEvidence />
-      </div>
+    <div class="evidence__block evidence__group" data-reveal>
+      <h3 class="evidence__title">The final gate</h3>
+      <h4 class="evidence__sub">Read live, now</h4>
+      <GateLedger columns />
+      <FinalEvidence />
     </div>
 
-    <div class="evidence__block evidence__runs" data-reveal>
+    {
+      site.demoGateAccount !== null && (
+        <div class="evidence__block evidence__group" data-reveal>
+          <h3 class="evidence__title">The demo gate</h3>
+          <p class="evidence__intro">
+            The separate gate that /app attacks, read live in the same way. It holds no run of the
+            final gate and the final gate holds none of its runs.
+          </p>
+          <GateLedger
+            id="demo-gate-ledger"
+            gate={site.demoGateAccount}
+            label="Demo gate status"
+            columns
+          />
+        </div>
+      )
+    }
+
+    <div class="evidence__block evidence__group" data-reveal>
       <FinalRuns />
+    </div>
+
+    <div class="evidence__block evidence__group" data-reveal>
+      <h3 class="evidence__title">The recorded spike run</h3>
+      <SpikeReceipt />
     </div>
 
     <div class="evidence__block earlier" data-reveal>
@@ -221,22 +238,24 @@ const earlier: { text: string; badge: string }[] = [
     }
   }
 
-  .evidence__pair {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-7);
-    align-items: start;
-  }
-
   .evidence__block {
     display: grid;
     gap: var(--space-4);
     min-width: 0;
   }
 
-  .evidence__runs,
+  .evidence__group,
   .earlier {
     margin-top: var(--space-9);
+  }
+
+  .stats + .evidence__group {
+    margin-top: 0;
+  }
+
+  .evidence__intro {
+    max-width: var(--measure);
+    color: var(--ink-muted);
   }
 
   .evidence__title {
@@ -267,12 +286,6 @@ const earlier: { text: string; badge: string }[] = [
 
   .earlier__row p {
     max-width: var(--measure);
-  }
-
-  @media (max-width: 62rem) {
-    .evidence__pair {
-      grid-template-columns: minmax(0, 1fr);
-    }
   }
 
   @media (max-width: 40rem) {
