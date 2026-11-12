@@ -106,6 +106,23 @@ const runtime =
           </p>
         )
       }
+      {
+        config !== null && (
+          <p class="app-wallet" data-wallet-state="idle" data-wallet-bar>
+            <span class="app-verifier__state">
+              <span class="app-dot" aria-hidden="true" />
+              <span data-wallet-label>Wallet not connected</span>
+            </span>
+            <span class="muted" data-wallet-detail>NEAR testnet only; nothing here touches mainnet funds.</span>
+            <button type="button" class="app-btn app-btn--inline" data-connect-top>
+              Connect wallet
+            </button>
+            <button type="button" class="app-btn app-btn--quiet app-btn--inline" data-disconnect-top hidden>
+              Disconnect
+            </button>
+          </p>
+        )
+      }
     </header>
 
     {
