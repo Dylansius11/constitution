@@ -91,14 +91,22 @@ from [`compose.phala.demo.yaml`](../verifier-image/compose.phala.demo.yaml).
 Appraisal passed Intel chain, TCB `UpToDate`, RTMR3 replay, compose, report-data
 and release binding. Recheck availability and identity before private-source use.
 
-[V, exercised on testnet 2026-11-11] The pre-deletion demo audit FAILs only
-`gate_has_no_access_keys`; its key is intentionally retained for founder testing.
-[I, planned] Founder wallet rehearsal, recorded honest V1→V2→V3, fresh deletion
-authorization, key deletion and keyless demo audit are still pending (P3.7).
+[V, exercised on testnet 2026-11-11] The pre-deletion demo audit FAILed only
+`gate_has_no_access_keys` while the key was retained for founder testing.
+[V, exercised on testnet 2026-11-12] After the founder's wallet acceptance
+(demo proposals 5–8, all Rejected) and fresh authorization, the gate's only key
+was deleted (NEAR tx `8xzaoDru5ashVSXMf7aqs1xEPL8MzG2MgBmbCWPiaEjj`) and the
+identical audit exited 0: [audit-keyless-2026-11-12.txt](demo-receipts/audit-keyless-2026-11-12.txt).
+[I, planned] Recorded honest V1→V2→V3 remain (P3.7i, P3.7j).
 The following ceremony documents operator steps, **not new authorization**.
 It never changes permanent `constitution-gate.testnet`, `testnet.json`, its
-manifest/corpus, gate wasm or final CVM/compose. Final CVM deletion requires
-founder re-confirmation (D28); the original `Deploy.s.sol` interface is untouched.
+manifest/corpus or gate wasm; the original `Deploy.s.sol` interface is untouched.
+
+[V, founder decision 2026-11-12] The final verifier CVM `cvm_2eakrQwn` is
+retired. [`final-verifier-retired/`](final-verifier-retired/) holds its Phala
+record and public identity saved at 03:55Z and a fresh `constitution verifier
+appraise --json` result (all seven checks passed), taken immediately before the
+Phala API deletion at 03:56:23Z.
 
 ### 1. Derive, deploy and seed EVM state (lead, after authorization)
 
