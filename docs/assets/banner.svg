@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" width="1200" height="280" role="img" aria-labelledby="t d">
+  <title id="t">CONSTITUTION</title>
+  <desc id="d">The CONSTITUTION mark and wordmark. Steal every admin key. You still cannot ship an upgrade that breaks the rules.</desc>
+  <rect width="1200" height="280" rx="24" fill="#17151f"/>
+  <rect x="1" y="1" width="1198" height="278" rx="23" fill="none" stroke="#3a3748" stroke-width="2"/>
+  <g transform="translate(96 48) scale(0.43)" fill="#b794f6">
+    <path d="M126 15 177 2 214 127 142 250 17 284 2 230 111 201 117 190 26 131 54 84 148 140 158 122Z"/>
+    <path d="M270 122 280 140 374 84 402 131 311 190 317 201 426 230 411 284 286 250 214 127 251 2 302 15Z"/>
+    <path d="M144 252 284 252 374 346 337 383 259 305 242 305 242 420 187 420 187 305 170 305 92 383 54 346Z"/>
+  </g>
+  <text x="330" y="132" font-family="Inter, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="76" font-weight="700" letter-spacing="7" fill="#ede9f7">CONSTITUTION</text>
+  <text x="334" y="184" font-family="Inter, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="25" fill="#b794f6">Steal every admin key. You still cannot break the rules.</text>
+  <text x="334" y="226" font-family="Inter, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="19" fill="#a9a5b8">Keyless upgrade authority for smart contracts · NEAR · Base · Intel TDX</text>
+</svg>
