@@ -114,7 +114,7 @@ Claim, then the story of one attack and one honest upgrade, then the mechanism, 
 
 ### 5.3 Navigation
 
-Single line at 1280: `Start here, How it works, Rules, Timelock, Evidence, Limits, Docs` plus the outlined `Open app` (to `/app`). Below 74rem the links collapse into a native `details` disclosure, which also holds `Check it yourself`; the app button stays visible. On `/app` the button reads `Try the attack` and moves focus to the run panel. The header is sticky with a paper background; `scroll-padding-top` equals its height so focused elements and anchors are never hidden.
+Single line at 1280: `Start here, How it works, Rules, Timelock, Evidence, Limits, Docs` plus the outlined `Open app` (to `/app`). Below 74rem the links collapse into a native `details` disclosure, which also holds `Check it yourself`; the app button stays visible. On `/app` the button reads `Try the attack` and moves focus to the run panel; in a build with no demo gate there is no panel, so it reads `The story` and goes to the home page. The header is sticky with a paper background; `scroll-padding-top` equals its height so focused elements and anchors are never hidden.
 
 ### 5.4 `/app`: the live demo gate
 

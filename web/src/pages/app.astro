@@ -75,7 +75,7 @@ const runtime =
   title="Live demo gate: try to break the rules"
   description="Connect a NEAR wallet and run live attacks against a demo gate on NEAR testnet. Each one is refused by a different rule."
 >
-  <Header slot="header" page="app" />
+  <Header slot="header" page="app" runnable={config !== null} />
   <div class="app container" id="top">
     <header class="app-head">
       <p class="app-eyebrow">
