@@ -287,10 +287,11 @@ checks did not prove testnet honest upgrades or AI certification.
 deployment now uses this v2 manifest and the same immutable gate wasm as the
 final gate, with demo CVM `cvm_VKZRaXKr` and its own service image/compose.
 Four CLI attacks were rejected by R2/20, R1/10, R3/30 and R4/41 without signing
-or changing the demo proxy. Honest V1→V2→V3 testnet upgrades and the keyless
-demo audit remain planned; the retained-key audit FAILs only the key check.
-See the [live-demo evidence](../../README.md#live-demo-gate). The final gate,
-manifest and CVM/compose remain unchanged.
+or changing the demo proxy. [V, exercised on testnet 2026-11-12] The founder's
+wallet runs (proposals 5–8) were also rejected; the demo gate's key was then
+deleted and the keyless demo audit exited 0. Honest V1→V2→V3 testnet upgrades
+remain planned. See the [evidence table](../../README.md#proof-not-promises).
+The final gate and manifest remain unchanged; its CVM was retired 2026-11-12.
 
 
 
