@@ -1,7 +1,6 @@
 ---
 import { getAddress } from "viem";
 import {
-  baseTxUrl,
   finalEvm,
   finalGate,
   finalRuns,
@@ -12,17 +11,15 @@ import {
 import { site } from "../../data/site.ts";
 import "../live/live.css";
 import HashText from "../ui/HashText.astro";
-import Marker from "../ui/Marker.astro";
 import StatusBadge from "../ui/StatusBadge.astro";
 
 /**
- * Recorded evidence for the final gate (DESIGN 7.2 `Testnet, recorded`): values saved on
- * 2026-11-10 and shown as constants. Nothing here is read by the page; the live ledger beside it
- * is the `Observed` source. Explorer links go to the recorded hashes and say so.
+ * Recorded deployment facts of the final gate (DESIGN 7.2 `Testnet, recorded`): values saved on
+ * 2026-11-10 and shown as constants. Nothing here is read by the page; the live ledger above it is
+ * the `Observed` source. The three runs are in FinalRuns and the headline figures in Evidence.
  */
-const { drain, governance, honest, preDeletionAudit, keyDeletion, keylessAudit } = finalRuns;
+const { preDeletionAudit, keyDeletion, keylessAudit } = finalRuns;
 const near = (hash: string) => nearTxUrl(site.nearExplorer, hash);
-const base = (hash: string) => baseTxUrl(site.baseExplorer, hash);
 
 const deployment = [
   { label: "Gate account", value: finalGate.account, kind: "near" as const },
@@ -62,23 +59,18 @@ const implementations = [
   { label: "VaultV2Drain", value: getAddress(finalEvm.vaultV2Drain) },
 ];
 
-const eta = governance.applicableFromUtc;
-const etaText = `${eta.slice(0, 10)} ${eta.slice(11, 19)} UTC`;
 const appraisal = finalVerifier.appraisal.join(", ");
 const keyDeletedAt = `${keyDeletion.timeUtc.slice(0, 10)} ${keyDeletion.timeUtc.slice(11, 23)} UTC`;
 ---
 
 <article id="receipt-final" class="live-surface final" aria-labelledby="final-title">
-  <h3 id="final-title">The final deployment, recorded.</h3>
+  <h4 id="final-title">The final deployment, recorded.</h4>
   <StatusBadge tone="recorded">
     Testnet, recorded <time datetime={RECORDED_ON}>{RECORDED_ON}</time>
   </StatusBadge>
   <p class="live-intro">
-    These are saved values from the final testnet run, written into this page as constants. This
-    page did not read them; the live ledger further down is the observed source. On{" "}
-    <time datetime={RECORDED_ON}>{RECORDED_ON}</time>{" "}the gate's only access key was deleted, and
-    the recorded audit then reported zero access keys. The <strong>Gate access keys</strong> row
-    in the live ledger is the authority: zero keys means the gate is keyless.
+    Saved values from the final testnet run, written into this page as constants. This page did
+    not read them; the live ledger above is the observed source.
   </p>
 
   <dl aria-label="Recorded deployment facts">
@@ -132,162 +124,6 @@ const keyDeletedAt = `${keyDeletion.timeUtc.slice(0, 10)} ${keyDeletion.timeUtc.
     }
   </dl>
 
-  <h4 class="final__runs-title">Three recorded runs on this gate</h4>
-  <ol class="final__runs">
-    <li>
-      <article id="receipt-drain" class="run" aria-labelledby="run-drain-title">
-        <h5 id="run-drain-title">Receipt {drain.proposalId}: {drain.fixture}</h5>
-        <StatusBadge tone="recorded">Testnet receipt, recorded</StatusBadge>
-        <p class="run__verdict run__verdict--refuse">
-          <Marker state="refused" />
-          <span>Refused under {drain.ruleId} {drain.ruleName}, reason {drain.reasonCode}</span>
-        </p>
-        <p class="run__text">
-          R1 passed and R2 failed. The verifier signed a Reject, the gate recorded Rejected and no
-          signature was requested. The proxy implementation stayed the original VaultV1.
-        </p>
-        <dl>
-          <div class="live-row">
-            <dt>Rule results</dt>
-            <dd>R1 Pass, R2 Fail (reason {drain.reasonCode}). Verifier run {drain.verifierSeconds} s.</dd>
-          </div>
-          <div class="live-row">
-            <dt>NEAR propose transaction</dt>
-            <dd>
-              <HashText value={drain.proposeTx} kind="near" label="Drain propose transaction" href={near(drain.proposeTx)} />
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>NEAR verdict transaction</dt>
-            <dd>
-              <HashText value={drain.verdictTx} kind="near" label="Drain verdict transaction" href={near(drain.verdictTx)} />
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Signature</dt>
-            <dd>Not requested</dd>
-          </div>
-          <div class="live-row">
-            <dt>Proxy implementation</dt>
-            <dd>
-              Unchanged, VaultV1{" "}
-              <HashText value={getAddress(finalEvm.vaultV1)} kind="address" label="Proxy implementation after the drain" />
-            </dd>
-          </div>
-        </dl>
-      </article>
-    </li>
-
-    <li>
-      <article id="receipt-governance" class="run" aria-labelledby="run-governance-title">
-        <h5 id="run-governance-title">Receipt, change {governance.changeId}: {governance.kind}</h5>
-        <StatusBadge tone="recorded">Testnet receipt, recorded</StatusBadge>
-        <p class="run__verdict run__verdict--refuse">
-          <Marker state="refused" />
-          <span>Early apply refused: TimelockNotElapsed</span>
-        </p>
-        <p class="run__text">
-          A harmless parameter change was scheduled. Applying it early was refused with
-          <span class="mono">{governance.refusedCode}</span>. No role can shorten the delay.
-          <a href="#timelock">Read the live queue</a>.
-        </p>
-        <dl>
-          <div class="live-row">
-            <dt>Schedule transaction</dt>
-            <dd>
-              <HashText value={governance.scheduleTx} kind="near" label="Governance schedule transaction" href={near(governance.scheduleTx)} />
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Applicable from</dt>
-            <dd>
-              <time datetime={eta}>{etaText}</time>
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Early apply transaction</dt>
-            <dd>
-              <HashText value={governance.earlyApplyTx} kind="near" label="Early apply transaction" href={near(governance.earlyApplyTx)} />
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Result</dt>
-            <dd>Refused, <span class="mono">{governance.refusedCode}</span></dd>
-          </div>
-        </dl>
-      </article>
-    </li>
-
-    <li>
-      <article id="receipt-honest" class="run" aria-labelledby="run-honest-title">
-        <h5 id="run-honest-title">Receipt {honest.proposalId}: {honest.fixture}</h5>
-        <StatusBadge tone="recorded">Testnet receipt, recorded</StatusBadge>
-        <p class="run__verdict run__verdict--pass">
-          <Marker state="done" />
-          <span>Executed on Base Sepolia, block {honest.block.toLocaleString("en-US")}</span>
-        </p>
-        <p class="run__text">
-          R1 to R5 passed. A private AI review returned {honest.aiCandidates} candidates and none
-          reproduced. The verifier signed a Pass certificate, the gate requested a NEAR MPC
-          signature, and the signed transaction executed through the executor.
-        </p>
-        <dl>
-          <div class="live-row">
-            <dt>Rule results</dt>
-            <dd>R1 to R5 Pass</dd>
-          </div>
-          <div class="live-row">
-            <dt>Private AI review</dt>
-            <dd>
-              NEAR AI Cloud, <span class="mono">provider_tee</span>. Candidates reproduced: {honest.aiReproduced} of {honest.aiCandidates}. Review took {honest.aiSeconds} s.
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Initializer call</dt>
-            <dd class="mono">{honest.initCall}</dd>
-          </div>
-          <div class="live-row">
-            <dt>NEAR propose transaction</dt>
-            <dd>
-              <HashText value={honest.proposeTx} kind="near" label="Honest propose transaction" href={near(honest.proposeTx)} />
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>NEAR verdict transaction</dt>
-            <dd>
-              <HashText value={honest.verdictTx} kind="near" label="Honest verdict transaction" href={near(honest.verdictTx)} />
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Base Sepolia transaction</dt>
-            <dd>
-              <HashText value={honest.baseTx} label="Honest upgrade Base Sepolia transaction" href={base(honest.baseTx)} />
-              <span class="live-meta">
-                Status success · gas used {honest.gasUsed.toLocaleString("en-US")} · nonce {honest.nonce} · sent by the MPC-derived signer
-              </span>
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Proxy implementation before</dt>
-            <dd>
-              <HashText value={getAddress(finalEvm.vaultV1)} kind="address" label="Proxy implementation before the honest upgrade" />
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Proxy implementation after</dt>
-            <dd>
-              <HashText value={getAddress(finalEvm.vaultV2Honest)} kind="address" label="Proxy implementation after the honest upgrade" />
-            </dd>
-          </div>
-          <div class="live-row">
-            <dt>Run total</dt>
-            <dd>{honest.totalSeconds} s</dd>
-          </div>
-        </dl>
-      </article>
-    </li>
-  </ol>
-
   <p class="live-meta final__audit">
     Keyless audit, recorded: <span class="mono">constitution audit</span> exited{" "}
     {keylessAudit.exitCode} with {keylessAudit.lines} lines, including{" "}
@@ -304,62 +140,15 @@ const keyDeletedAt = `${keyDeletion.timeUtc.slice(0, 10)} ${keyDeletion.timeUtc.
     justify-items: start;
   }
 
-  .final > :where(dl, ol, p) {
+  .final > :where(dl, p) {
     justify-self: stretch;
   }
 
-  .final__runs-title {
-    margin-top: var(--space-6);
-    font-size: var(--text-lg);
-    letter-spacing: var(--tracking-tight);
-  }
-
-  .final__runs {
-    display: grid;
-    gap: var(--space-6);
-    margin: var(--space-4) 0 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .run {
-    display: grid;
-    gap: var(--space-3);
-    justify-items: start;
-    padding: var(--space-5);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius-md);
-    background: var(--surface);
-  }
-
-  .run > :where(dl, p) {
-    justify-self: stretch;
-  }
-
-  .run h5 {
+  .final h4 {
     margin: 0;
     font-size: var(--text-lg);
     letter-spacing: var(--tracking-tight);
-  }
-
-  .run__verdict {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    font-weight: 600;
-  }
-
-  .run__verdict--refuse {
-    color: var(--refuse);
-  }
-
-  .run__verdict--pass {
-    color: var(--pass);
-  }
-
-  .run__text {
-    color: var(--ink-muted);
-    font-size: var(--text-sm);
+    line-height: 1.2;
   }
 
   .final__audit {

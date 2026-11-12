@@ -252,12 +252,9 @@ export function surfaceView(state: SurfaceState, ctx: SurfaceContext = {}): Surf
   switch (state.kind) {
     case "idle":
       title = ctx.fixture ? `Submit ${fixture}` : "Watch a proposal";
-      body =
-        fixture === "VaultV2Drain"
-          ? "Looks like a fee update. Contains a hidden path that lets one address withdraw the whole vault. Submit it with the demo key and watch the constitution decide."
-          : ctx.fixture
-            ? "Adds a feature with append-only storage. It is built to pass every committed rule. Submit it and watch what the constitution decides."
-            : "Enter a proposal id to read its observed gate state and Base Sepolia execution.";
+      body = ctx.fixture
+        ? "Submit it and watch the constitution decide."
+        : "Enter a proposal id to read its observed gate state and Base Sepolia execution.";
       tone = "neutral";
       live = "off";
       break;
@@ -266,7 +263,7 @@ export function surfaceView(state: SurfaceState, ctx: SurfaceContext = {}): Surf
       body =
         state.step === "sealing"
           ? "Sealing the source bundle for the attested verifier. Nothing has been recorded on NEAR yet."
-          : "Signing with the demo key and sending it to NEAR testnet. Waiting for the gate to record a proposal id.";
+          : "Signing with your session key and sending it to NEAR testnet. Waiting for the gate to record a proposal id.";
       break;
     case "verifying":
       title = "Verifying";
@@ -370,6 +367,14 @@ export function surfaceView(state: SurfaceState, ctx: SurfaceContext = {}): Surf
         case "run_evicted":
           title = "Verifier run no longer available";
           body = `${state.detail}. Start a new verifier run with the CLI to review this proposal.`;
+          break;
+        case "session_key":
+          title = "Session key unavailable";
+          body = `${state.detail} Nothing was recorded on NEAR.`;
+          break;
+        case "wallet_declined":
+          title = "Wallet confirmation cancelled";
+          body = `${state.detail} Run it again whenever you are ready.`;
           break;
         case "run_refused":
           title = "Verifier run refused";

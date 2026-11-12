@@ -86,7 +86,7 @@ One page, one `h1`, static HTML as the baseline, live reads as enhancement. Land
 
 | # | Section (id) | Contents | Live data |
 | --- | --- | --- | --- |
-| 0 | Header | Mark and wordmark, nav (Start here, How it works, Rules, Timelock, Evidence, Limits), scope chip `Testnet · Not audited`, filled `Try it` | none |
+| 0 | Header | Mark and wordmark, nav (Start here, How it works, Rules, Timelock, Evidence, Limits), scope chip `Testnet · Not audited`, outlined `Open app` | none |
 | 1 | Hero (`top`) | h1 one-liner, authority line art, plain pitch of at most 30 words (what the key problem is and the fix), `See the attack`, `Read the rules`, `New here? Start in plain words` | none |
 | 1b | Plain words (`plain`) | For a reader who has never met an upgradeable contract: the weak spot, the fix and the proof as three cards; one analogy labeled `An analogy, not the mechanism`; three starting points by reader (understand, build, judge). The keyless statement is conditional on activation | none |
 | 2 | Story (`story`) | Pinned lavender scroll story, two acts of three steps, labeled illustration | none |
@@ -94,24 +94,19 @@ One page, one `h1`, static HTML as the baseline, live reads as enhancement. Land
 | 3 | How it works (`how`) | Six numbered steps on a rail: propose, verify, red-team, gate, Chain Signature, execute; the verdict fork | none |
 | 4 | Rules (`rules`) | R1 to R5 rows: large rule id, what it checks, where it stops, and a labeled schematic figure per rule; the AI veto note; committed manifest facts read at build from `rules/manifest.json` | gate `get_constitution` once configured |
 | 5 | Timelock (`timelock`) | Deployment-selected 1–30-day immutable delay (default 3), roles (governor schedules, guardian cancels, nobody applies early), `E53_TIMELOCK_NOT_ELAPSED`, the queue | gate `get_config` and `list_changes` once configured |
-| 6 | Evidence (`evidence`) | Four recorded figures, each with its source label (spike signature, its gas, local gate tests, committed rules); status ledger per component; the final deployment card (`receipt-final`: deployment facts and three `Testnet, recorded` receipts `receipt-drain`, `receipt-governance`, `receipt-honest`, hashes with Full and Copy, explorer links to the recorded transactions); recorded spike receipt with a live re-check of the Base Sepolia transaction and proxy slot; live gate ledger including `Gate access keys` (6.19); proposal watcher | Base Sepolia RPC; gate and verifier when configured |
-| 7 | Try it (`try`) | In the browser: while the run configuration is absent, a notice that live runs are closed on this gate (why, and what a reader can still do: read the recorded receipts, the live ledger and timelock queue, watch proposal ids 0 and 1, run `constitution audit` and `constitution receipt <id>` from a checkout) and two recorded-outcome cards linking to the receipts; with a complete configuration, the `Run the attack` and `Run the honest upgrade` cards (PRD F10) with the stages a run reports. From a checkout: a terminal window with the Human/Agent commands that wrap instead of scrolling sideways, and `/llms.txt` | gate, verifier and Base Sepolia when configured |
+| 6 | Evidence (`evidence`) | Three large recorded figures with a transaction link each (`0 access keys`, `Attack refused`, `Honest upgrade executed`), then the spike receipt and the final gate side by side (`FinalRuns`: deployment facts and the `Testnet, recorded` receipts `receipt-drain`, `receipt-governance`, `receipt-honest`, hashes with Full and Copy, explorer links); status ledger per component; live gate ledger including `Gate access keys` (6.19) | Base Sepolia RPC; gate when configured |
+| 7 | Try it (`try`) | One terminal-style block with tabs (audit, status, receipt, appraise), a single Copy button, a sentence on `/llms.txt` for agents, and `Run the attacks live` linking to `/app` | none |
 | 8 | Limits (`limits`) | G1 to G4, trust assumptions, not claimed | none |
 | 8b | Words (`words`) | One plain sentence per term, in the order a first-time reader meets them; reached from the footer | none |
 | 9 | Footer | links, scope, build time, then the full-width mark and wordmark; repo and X links only when configured | none |
 
-**Run surfaces and activation.** The in-browser Attack and Honest upgrade runs, the QR "take it" key (5.1) and the audit panel (6.18) need a gate that can still accept a proposal, the CVM verifier and the disposable demo key. The final gate cannot: its proxy was already upgraded and the committed manifest's reference source is VaultV1, so a new proposal is refused at rule 0 (`current source runtime mismatch`) before R2 can run. Until the run configuration is complete, the run section renders the closed state: a notice with that reason and the list of what a reader can still do, plus two cards badged `Recorded, not runnable`, each stating the recorded outcome and linking to its receipt; there is no button, no stage ladder and no demo key, and nothing claims a run is available. A build without a gate account shows `No gate configured` on the live gate surfaces, never `Awaiting activation`. With a complete configuration, the same cards run `web/src/lib/run-flow.ts` (seal, `propose` with the demo key, verifier run, gate and Base observation, relay of a Signed transaction, slot readback) and render the state matrix below; a reload resumes observing and never resubmits. The QR card and the audit panel are not rendered. Their specs below stay binding.
+**Run surfaces.** The landing page has no in-browser run. The final gate cannot accept a new proposal (its proxy was already upgraded and the committed manifest's reference source is VaultV1, so a new proposal is refused at rule 0 `current source runtime mismatch`), so it only shows recorded evidence. Live attacks live on `/app` against the separate demo gate (5.4).
 
-**Configuration (all optional, read at build):** `PUBLIC_NEAR_RPC`, `PUBLIC_GATE_ACCOUNT`, `PUBLIC_VERIFIER_URL`, `PUBLIC_BASE_RPC` (default `https://sepolia.base.org` for reads), `PUBLIC_REPO_URL`, `PUBLIC_X_POST_URL`. The run cards additionally need `PUBLIC_DEMO_ACCOUNT_ID`, `PUBLIC_DEMO_SECRET_KEY` (the disposable D17 function-call key, public on purpose) and `PUBLIC_{ATTACK,HONEST}_{IMPL,CODEHASH,CURRENT_IMPL,INIT_CALLDATA}`; any missing or malformed value keeps them in the closed state. A missing gate account means `No gate configured`, never a sample value.
+**Configuration (all optional, read at build):** `PUBLIC_NEAR_RPC`, `PUBLIC_GATE_ACCOUNT`, `PUBLIC_VERIFIER_URL`, `PUBLIC_BASE_RPC` (default `https://sepolia.base.org` for reads), `PUBLIC_REPO_URL`, `PUBLIC_X_POST_URL` for the final gate; `PUBLIC_DEMO_GATE_ACCOUNT` and `PUBLIC_DEMO_VERIFIER_URL` plus `deployments/demo-gallery.json` for `/app` (5.4). A missing gate account means `No gate configured`, never a sample value.
 
-### 5.1 QR "take it" card (activation-gated)
+### 5.1 QR "take it" card (removed)
 
-- `figure` containing the QR as inline SVG with `role="img"` and a text alternative: `QR code. Encodes a disposable, testnet-only NEAR key that holds the demo governor role. Not a production key.` The key itself is not put in `alt` (too long).
-- `figcaption` states: `This key is public on purpose. It can only act on the demo. Never reuse it.`
-- Text alternative for people who cannot scan: `button` "Copy key" and a `details` "Show key as text" that reveals the key in `code`. A keyboard and screen-reader user has full parity.
-- Size: at least 280 px square at 1280, 220 px at 390 [I], dark modules on light quiet zone in every direction.
-- Never shown: any production key, any full-access key of the gate, the MPC-derived EVM key or any founder wallet (PRD never-cut demo, step 1).
-- The key never persists: no localStorage, no cookies.
+The shared disposable demo key and its QR were removed with the move to per-visitor session keys (5.4). No shared key, QR or `Show key as text` exists on any page.
 
 ### 5.2 Section order rationale
 
@@ -119,20 +114,48 @@ Claim, then the story of one attack and one honest upgrade, then the mechanism, 
 
 ### 5.3 Navigation
 
-Single line at 1280: `How it works, Rules, Timelock, Evidence, Limits` plus the filled `Try it`. At 390 the links collapse into a native `details` disclosure; the filled `Try it` stays visible. The header is sticky with a paper background; `scroll-padding-top` equals its height so focused elements and anchors are never hidden.
+Single line at 1280: `Start here, How it works, Rules, Timelock, Evidence, Limits` plus the outlined `Open app` (to `/app`). Below 74rem the links collapse into a native `details` disclosure, which also holds `Check it yourself`; `Open app` stays visible. The header is sticky with a paper background; `scroll-padding-top` equals its height so focused elements and anchors are never hidden.
+
+### 5.4 `/app`: the live demo gate
+
+A second page, `/app`, lets a judge attack a **separate demo gate** (`PUBLIC_DEMO_GATE_ACCOUNT`, planned `constitution-demo.testnet`) with their own NEAR wallet. The final gate stays untouched on the home page as permanent evidence; nothing run on `/app` appears there and the home page never replays demo runs. The page has no honest-upgrade button: the founder records the two honest upgrades (V1 to V2 to V3) from the CLI.
+
+**Build-time inputs, no fallbacks.** `PUBLIC_DEMO_GATE_ACCOUNT`, `PUBLIC_DEMO_VERIFIER_URL`, `deployments/demo-gallery.json` (attacks with expected rule and reason, sealed source file list, implementation address and codehash, initializer calldata, optional observed record) and the contract sources it names, read from `contracts/`. If any is absent or they disagree (gate mismatch, malformed gallery, a listed source missing) the page renders `Demo gate not deployed yet` and names exactly what is missing or invalid. No sample data is ever shown as live.
+
+**Layout.** Header (`Open app` becomes `The story`), hero (h1 `Try to break the rules.`, a line saying the final gate is untouched), verifier status (online with its label, offline with `Check again`), then two columns at 1280 and one at 390 (account first): `Your account` stepper (1 Connect, 2 Enable live runs, 3 Run an attack) beside `4 attacks, 4 different rules`. Each attack card shows the rule, a one-sentence summary, a `The change` disclosure with the lines the attack adds to VaultV1 (computed at build from the sealed source, never hand-written), the expected rule and reason, `Run live`, and a stage ladder plus verdict once run. Below: the demo gate ledger and timelock queue (live reads), `Look up a proposal` by id, `Active rule set: Vault pack` (R1 to R5 and the demo rule-set hash read from the gate; other packs labeled `planned`), and `Bring your own (CLI)` with the real subcommands (`propose`, `verifier run`, `status`, `receipt`, `audit --deployment --manifest`).
+
+**One confirmation, then no popups.** `Enable live runs` makes one wallet request (a batch where the wallet supports it, otherwise sequential): `deposit_credit` on the demo gate plus an `AddKey` for a function-call key limited to `propose` on that gate (allowance 0.25 NEAR) that the page generated and keeps in `localStorage`. `propose` then signs locally and pays from credit, so each attack needs no wallet popup. Amounts come from the gate views (`get_required_credit`, `get_proposal_fee`, `get_credit_entry_fee`); nothing is hard-coded. `Withdraw credit` and `Remove session key` are always offered. After a declined or partial batch only the missing part is asked again, and success is only ever taken from re-read chain state.
+
+**State matrix (each state has a recovery path).**
+
+| State | Shown | Recovery |
+| --- | --- | --- |
+| Demo gate not deployed | `Demo gate not deployed yet`, the missing or invalid inputs | link to the story and the final evidence |
+| Verifier offline | `Demo verifier offline`, attacks locked | `Check again` |
+| Verifier busy (one run at a time) | `The verifier is busy with another run. Your proposal is recorded; trying again in about N s.` in the card, honoring `Retry-After` (60 s per wait, 15 min total) | automatic; the proposal is never proposed twice |
+| Wallet not connected / dismissed | `The wallet connection was cancelled` | `Connect wallet` again |
+| Wallet confirmation cancelled | `You cancelled in the wallet. Nothing was changed.` (a run says `Wallet confirmation cancelled`) | repeat the action |
+| Insufficient credit | the shortfall in NEAR and how many attacks it covers | `Enable live runs` with a larger amount |
+| Active proposal exists | the proposal id and its deadline | `Watch this proposal`; `Release it` once past its deadline |
+| Session key missing or out of allowance | key status in step 2 | `Enable live runs` re-adds the key |
+| Gate or verifier refusal | the verifier's code in plain words | per-code recovery; a reload resumes the run without reproposing |
+
+**Mobile at 390.** One column, 44 px targets, account stepper first, attack cards stacked, code in a scrollable `pre` with `tabindex="0"`, no horizontal page overflow; the wallet picker is the connector's own bottom sheet.
+
+**Motion.** Status and stage changes are not animated beyond the existing ladder transitions; `prefers-reduced-motion` needs nothing extra.
 
 ## 6. State matrix
 
 ### 6.0 Machine and sources
 
-Attack and Honest upgrade share one machine. The page never presumes the outcome: the Attack surface can end in a verdict other than Rejected if the verifier does not reproduce a counterexample, and the copy must stay outcome-neutral until a verdict is observed.
+The machine is shared by every attack on `/app` (the honest upgrade has no web surface; the founder runs it from the CLI). The page never presumes the outcome: an attack surface can end in a verdict other than Rejected if the verifier does not reproduce a counterexample, and the copy must stay outcome-neutral until a verdict is observed. Wherever this section says `the demo key`, read `your session key` (5.4).
 
 Mapping from observed data to UI state (sources from ARCHITECTURE.md and SMART-CONTRACT.md):
 
 | UI state | Observed source |
 | --- | --- |
 | idle | no active run for this surface |
-| submitting | `propose` sent with the demo key, no proposal id observed yet |
+| submitting | `propose` sent with the visitor's session key (or one wallet confirmation when the key is unavailable), no proposal id observed yet |
 | verifying | verifier run status `GET /v1/runs/{run_id}` stage in `queued`, `unsealing`, `compiling`, `r1_layout`, `r2_solvency`, `r3_filter`, `r4_initializer`, `r5_replay` |
 | ai review | stage `ai_review` or `reproducing` |
 | certified | verdict `Pass` recorded on the gate |
@@ -164,7 +187,7 @@ Verifier stages `signing`, `submitting` and `done` are the verifier's own tail (
 
 - **Trigger:** no active run.
 - **Visual:** quiet panel, fixture description, one primary button, empty stage list in `Pending` state, recorded receipt link if one exists.
-- **Copy, Attack:** title `Submit VaultV2Drain`. Body `Looks like a fee update. Contains a hidden path that lets one address withdraw the whole vault. Submit it with the demo key and watch the constitution decide.` Button `Submit VaultV2Drain`. Helper `Uses the public demo key. Nothing here can touch anything but the demo vault.`
+- **Copy, Attack:** title `Submit VaultV2Drain`. Body `Looks like a fee update. Contains a hidden path that lets one address withdraw the whole vault. Submit it and watch the constitution decide.` Button `Submit VaultV2Drain`. Helper `Signed by your session key. Nothing here can touch anything but the demo vault.`
 - **Copy, Upgrade:** title `Submit VaultV2Honest`. Body `Adds a feature with append-only storage. It is built to pass every committed rule. Submit it and watch what the constitution decides.` Button `Submit VaultV2Honest`. Helper as above.
 - **Live:** none.
 - **Recovery:** if a previous run for this surface exists, link `View the last receipt` (anchor to `#receipt-{id}`).
@@ -173,7 +196,7 @@ Verifier stages `signing`, `submitting` and `done` are the verifier's own tail (
 
 - **Trigger:** `propose` broadcast, proposal id not yet observed. If the page seals the source bundle in the browser, the first sub-stage is `Sealing the source bundle` (see Q1).
 - **Visual:** stage ladder with the first stage `In progress`; button `aria-disabled` reading `Submitted`.
-- **Copy:** title `Registering the proposal`. Body `Signing with the demo key and sending it to NEAR testnet. Waiting for the gate to record a proposal id.`
+- **Copy:** title `Registering the proposal`. Body `Signing with your session key and sending it to NEAR testnet. Waiting for the gate to record a proposal id.`
 - **Live:** polite, once on entry.
 - **Recovery:** none while in flight (cannot cancel a broadcast). After 60 s without observation: `Still waiting for NEAR testnet to report this proposal. The transaction may still land.` plus the transaction hash as plain text (link only after NEAR reports it). Action `Check again`.
 
@@ -413,7 +436,7 @@ Footer: `Download receipt JSON` (the exact bytes rendered, `download` attribute)
 Targets: WCAG 2.2 AA minimum, AAA contrast for body text where the palette allows (section 3 measures ink at 15.92:1 on paper).
 
 **Keyboard and focus**
-- [ ] Tab order follows DOM order: skip link, header nav, hero links, story (no controls), section links and copy buttons, evidence re-check, try-it toggle and copy, footer links. After activation: QR copy and disclosure, Attack and Upgrade submit, receipt expand and copy, audit run.
+- [ ] Tab order follows DOM order: skip link, header nav, hero links, story (no controls), section links and copy buttons, evidence re-check, try-it tabs and copy, footer links. On `/app`: skip link, header, verifier check, connect, enable live runs, then each attack card (change disclosure, Run live, stage disclosure), the ledger, queue and watcher, the CLI guide.
 - [ ] Focus ring: 2 px solid `--violet` with 3 px offset on light grounds (6.41:1 on paper), `--ink` on lavender (7.37:1), `--lav` on night (7.70:1). Never removed.
 - [ ] No sticky element obscures focus (2.4.11): `scroll-padding-top` on `html` equals the sticky header height.
 - [ ] Every control reachable and operable with keyboard only; no hover-only information anywhere (tooltips are replaced by visible text or Expand buttons).
@@ -424,7 +447,7 @@ Targets: WCAG 2.2 AA minimum, AAA contrast for body text where the palette allow
 - [ ] `table` with `caption`, `th scope`; `ol` for timelines and queues; `dl` for receipt fields; `article` for receipts; `time datetime` for every timestamp.
 - [ ] One `output` (implicit status role) per interactive surface, plus explicit `aria-live` where needed. Live regions exist in the DOM before content changes. Text in them is full sentences. Countdowns are never in a live region.
 - [ ] `lang="en"`; descriptive `title`; every link text states its destination.
-- [ ] QR has a text alternative and a text-key fallback (section 5.1).
+- [ ] `/app` has no QR and no shared key: the only key is the visitor's own session key, generated in the browser (5.4).
 - [ ] No letter-by-letter DOM splitting of headings; split headlines in the story are two real text nodes inside one heading.
 
 **Color and contrast**
@@ -517,8 +540,8 @@ No `transition: all`. Never animate from `scale(0)`. Interruptible CSS transitio
 - **Q2. Explorer.** Canonical: `https://sepolia.basescan.org` (docs.base.org, read 2026-10-26). Fallback: `https://base-sepolia.blockscout.com`. Both are configuration; links appear only for observed hashes.
 - **Q3. Verifier status from the browser.** Yes. The verifier serves CORS for the configured page origin on `GET /v1/identity`, `GET /v1/runs/{id}`, `GET /v1/runs/{id}/evidence` and the rate-limited `POST /v1/runs`.
 - **Q4. Receipts.** Two sources, labeled distinctly: `Observed` receipts assembled live in the browser from gate views, verifier run status and Base Sepolia reads; `Recorded` receipts from committed `receipts/*.json` (rehearsal and submission runs) bundled at build time.
-- **Q5. Governance on the page.** One preset action, "Try to change the rules now": schedules a harmless preset `SetParams` change with the demo key and immediately calls `apply_change`, showing the real `E53_TIMELOCK_NOT_ELAPSED` refusal. The queue is otherwise read-only.
-- **Q6. Writes allowed.** The demo key may call `propose`, `schedule_change` and `apply_change` only. The page may also broadcast an already signed raw transaction to Base Sepolia (permissionless) and re-post a run to the verifier. `retry_sign` and `bump_fee` are shown as copyable CLI commands, not buttons.
+- **Q5. Governance on the page (superseded 2026-11-12).** The page has no governance write. The timelock queue is read-only; `E53_TIMELOCK_NOT_ELAPSED` is shown from the recorded final run, and the CLI wraps `schedule_change` and `apply_change`.
+- **Q6. Writes allowed (superseded 2026-11-12).** The only write the page makes is `propose` on the separate demo gate, signed by the visitor's own session key (5.4). `deposit_credit`, `withdraw_credit`, `add_key` and `delete_key` go through the visitor's wallet. It may also re-post a run to the verifier. `retry_sign` and `bump_fee` are shown as copyable CLI commands, not buttons.
 - **Q7. Footer links.** Repo link from `PUBLIC_REPO_URL`, hidden until the founder publishes the repository (B6). The X post link comes from `PUBLIC_X_POST_URL` and stays hidden until the founder publishes.
 
 **Status of this document for D8 (hosting, undecided).** Nothing here depends on server features. Headers such as CSP and caching depend on the host; if the host cannot set headers, use a `meta` CSP [U].

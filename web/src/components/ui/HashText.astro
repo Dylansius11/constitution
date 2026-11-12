@@ -1,6 +1,7 @@
 ---
 import { type HashKind, shortValue, spokenValue } from "../../lib/display.ts";
 import CopyButton from "./CopyButton.astro";
+import "./hash.css";
 
 /**
  * A hash, address or NEAR id: shortened per DESIGN 7.5 (narrow under 640 px, wide above), an
@@ -49,91 +50,3 @@ const truncated = wide !== value || narrow !== value;
     )
   }
 </span>
-
-<style is:global>
-  .hash {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-3);
-    max-width: 100%;
-  }
-
-  .hash__details {
-    min-width: 0;
-  }
-
-  .hash__details summary {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    list-style: none;
-    cursor: pointer;
-    border-radius: 2px;
-  }
-
-  .hash__details summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .hash__short {
-    font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums slashed-zero;
-  }
-
-  .hash__wide {
-    display: none;
-  }
-
-  @media (min-width: 40rem) {
-    .hash__narrow {
-      display: none;
-    }
-
-    .hash__wide {
-      display: inline;
-    }
-  }
-
-  .hash__more {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: var(--tracking-mono);
-    color: var(--ink-muted);
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
-  }
-
-  .hash__details[open] .hash__short {
-    display: none;
-  }
-
-  .hash__opened,
-  .hash__details[open] .hash__closed {
-    display: none;
-  }
-
-  .hash__details[open] .hash__opened {
-    display: inline;
-  }
-
-  .hash__full {
-    display: block;
-    margin-top: var(--space-1);
-    font-size: var(--text-sm);
-    overflow-wrap: anywhere;
-    word-break: break-all;
-  }
-
-  .hash__link {
-    font-size: var(--text-sm);
-  }
-
-  .hash--dark .hash__more {
-    color: var(--night-muted);
-  }
-
-  .hash--dark .hash__link {
-    color: var(--lav);
-  }
-</style>

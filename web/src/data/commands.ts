@@ -1,39 +1,81 @@
-import type { CodeLine } from "../components/ui/code-types.ts";
+import type { CodeLine, CodeTab } from "../components/ui/code-types.ts";
+import { finalRuns, finalVerifier } from "./final-evidence.ts";
 
-/** Run from the repository root; activation-dependent reads never use spike values. */
-export const humanCommands: CodeLine[] = [
-  { note: "Today, from a checkout (Rust/Foundry: Linux or WSL2; web: native pnpm):" },
-  // docs/BUILD-PLAN.md:143; README.md:44-53 (sandbox/toolchain prerequisites).
-  { cmd: "cargo test -p constitution-gate" },
-  // docs/BUILD-PLAN.md:36-37; README.md:85 (--root selects the Foundry project).
-  { cmd: "forge test --root contracts" },
-  // web/package.json:12 (test = vitest run).
-  { cmd: "pnpm --dir web test" },
-  // crates/cli/src/main.rs:80-84,169-173; docs/technical/ARCHITECTURE.md:235.
-  { cmd: "cargo run -p constitution-cli -- rules hash rules/manifest.json" },
-  { note: "Read the final gate (record: deployments/testnet.json). Build contracts first, set GATE_ACCOUNT=constitution-gate.testnet, and PROPOSAL_ID=0 (refused drain) or 1 (executed upgrade). See README.md." },
-  // crates/cli/src/main.rs:96-122 (record/artifact and both public RPCs have defaults).
-  { cmd: "cargo run -p constitution-cli -- audit --deployment deployments/testnet.json" },
-  { note: "On 2026-11-10 the audit exited 0 with gate_has_no_access_keys passing; state can change, so read every check, not only the exit code." },
-  // crates/cli/src/main.rs:60-69,211-235; README.md:101-106 (actual id and gate required).
-  { cmd: 'cargo run -p constitution-cli -- status "$PROPOSAL_ID" --gate "$GATE_ACCOUNT"' },
-  // crates/cli/src/main.rs:70-79,211-235; README.md:108-110 (read-only JSON receipt).
-  { cmd: 'cargo run -p constitution-cli -- receipt "$PROPOSAL_ID" --gate "$GATE_ACCOUNT" --json' },
-  // Makefile:12-40 requires twelve explicit inputs; short make commands would be misleading.
-  { note: "make attack / make upgrade write to testnet and may spend inference credits; this gate refuses new proposals at rule 0 (see Try it). Inputs: docs/technical/ARCHITECTURE.md, Demo runner operation." },
+/**
+ * The read-only CLI checks shown in "Check it yourself", one tab each. Every flag was read from the
+ * clap definitions in crates/cli/src/main.rs and the documented invocations in README.md ("Verify
+ * it yourself", "Read public state without a signing key"). Run from the repository root with the
+ * CLI built as in the README's local quickstart. Nothing here signs, spends or writes to a chain.
+ */
+const CLI = "./target/debug/constitution";
+const GATE = "constitution-gate.testnet";
+// README.md, line 32: the single verifier instance of the final run. It may not stay online.
+const VERIFIER_URL =
+  "https://d72d204232fe1d3a56c6b4a1b1f83d33cc867168-8787.dstack-pha1-prod9.phala.network";
+
+const { keylessAudit } = finalRuns;
+
+export const cliTabs: CodeTab[] = [
+  {
+    id: "audit",
+    label: "audit",
+    lines: [
+      {
+        note: "Reads the final gate and compares it with the committed deployment record and rules.",
+      },
+      // crates/cli/src/main.rs:95-122 (--deployment and --manifest; no --network flag).
+      { cmd: `${CLI} audit --deployment deployments/testnet.json --manifest rules/manifest.json` },
+      {
+        note: `Recorded 2026-11-10: exit ${keylessAudit.exitCode}, ${keylessAudit.lines} lines, ${keylessAudit.check} ${keylessAudit.result}. State can change: read every check.`,
+      },
+    ],
+  },
+  {
+    id: "status",
+    label: "status",
+    lines: [
+      {
+        note: "Reads a proposal from the gate. Id 0 is the refused drain, id 1 the executed upgrade.",
+      },
+      // crates/cli/src/main.rs:60-69,211-235 (id and --gate required; --network defaults to testnet).
+      { cmd: `${CLI} status 0 --gate ${GATE}` },
+      { cmd: `${CLI} status 1 --gate ${GATE}` },
+    ],
+  },
+  {
+    id: "receipt",
+    label: "receipt",
+    lines: [
+      { note: "Assembles the receipt for a proposal from public state and prints it as JSON." },
+      // crates/cli/src/main.rs:70-79,211-235 (read-only; --json prints constitution.receipt/1).
+      { cmd: `${CLI} receipt 0 --gate ${GATE} --json` },
+      { cmd: `${CLI} receipt 1 --gate ${GATE} --json` },
+    ],
+  },
+  {
+    id: "appraise",
+    label: "appraise",
+    lines: [
+      {
+        note: "Checks the verifier's Intel TDX attestation against its recorded compose hash. The endpoint may not stay online.",
+      },
+      // crates/cli/src/main.rs:85-89,175-186 (url and --expect-compose-hash; README.md:218).
+      {
+        cmd: `${CLI} verifier appraise ${VERIFIER_URL} --expect-compose-hash ${finalVerifier.composeHash}`,
+      },
+    ],
+  },
 ];
 
-export const agentCommands: CodeLine[] = [
-  { note: "Give your agent this page's /llms.txt, then ask it to verify each claim." },
-  { note: "From a checkout: start with docs/PRD.md and docs/BUILD-PLAN.md. Local tests are not activation evidence." },
-  // crates/cli/src/main.rs:80-84,169-173; docs/technical/ARCHITECTURE.md:235.
-  { cmd: "cargo run -p constitution-cli -- rules hash rules/manifest.json" },
-  // docs/BUILD-PLAN.md:143; README.md:44-53 (run Rust checks on Linux or WSL2).
+/** Local test and manifest-hash commands. They are not on the page; the agent guide lists them. */
+export const localChecks: CodeLine[] = [
+  { note: "Local checks from a checkout (Rust/Foundry: Linux or WSL2; web: native pnpm):" },
+  // README.md:150 (the documented gate test invocation; sandbox prerequisites at README.md:44-53).
   { cmd: "cargo test -p constitution-gate" },
-  // web/package.json:12 (run web checks using the native pnpm installation).
+  // README.md:151 (--root selects the Foundry project).
+  { cmd: "forge test --root contracts" },
+  // web/package.json (test = vitest run).
   { cmd: "pnpm --dir web test" },
-  { note: "Read the final gate with the audit and receipt commands (PROPOSAL_ID 0 or 1, GATE_ACCOUNT=constitution-gate.testnet):" },
-  { cmd: "cargo run -p constitution-cli -- audit --deployment deployments/testnet.json" },
-  { cmd: 'cargo run -p constitution-cli -- receipt "$PROPOSAL_ID" --gate "$GATE_ACCOUNT" --json' },
-  { note: "Do not deploy, sign, spend, or treat a spike or local result as the final deployment's evidence." },
+  // README.md:134; crates/cli/src/main.rs:80-84,169-173.
+  { cmd: `${CLI} rules hash rules/manifest.json` },
 ];

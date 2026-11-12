@@ -10,9 +10,18 @@ interface Props {
   id?: string;
   proposalId?: number;
   runId?: number;
+  /** The gate and verifier to read; default to the final gate of this build. */
+  gate?: string | null;
+  verifier?: string | null;
 }
 
-const { id = "proposal-watch", proposalId, runId } = Astro.props;
+const {
+  id = "proposal-watch",
+  proposalId,
+  runId,
+  gate = site.gateAccount,
+  verifier = site.verifierUrl,
+} = Astro.props;
 const initial = surfaceView({ kind: "idle" });
 const fields = [
   ["id", "Proposal id"],
@@ -39,15 +48,15 @@ const fields = [
 ---
 
 {
-  site.gateAccount !== null && (
+  gate !== null && (
     <div
       id={id}
       class="live-surface proposal-watch"
       data-watch
-      data-gate={site.gateAccount}
+      data-gate={gate}
       data-near-rpc={site.nearRpc}
       data-base-rpc={site.baseRpc}
-      data-verifier={site.verifierUrl}
+      data-verifier={verifier}
       data-explorer={site.baseExplorer}
       data-initial-id={proposalId}
       data-run-id={runId}

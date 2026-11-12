@@ -1,13 +1,15 @@
 ---
-import { agentCommands, humanCommands } from "../../data/commands.ts";
-import RunConsole from "../live/RunConsole.astro";
+import { cliTabs } from "../../data/commands.ts";
+import { site } from "../../data/site.ts";
+import Button from "../ui/Button.astro";
 import CodeBlock from "../ui/CodeBlock.astro";
 
 /**
- * Try it (DESIGN 5 row 7): two ways to check the claims. In the browser, read the recorded runs
- * and the live gate (new runs are refused at rule 0 on the final gate); from a checkout, run the
- * tests and the read-only audit and receipt commands.
+ * Check it yourself (DESIGN 5 row 7): one block of read-only CLI commands, one tab each, plus the
+ * way into /app for the live attacks. The final gate takes no new runs, so nothing here runs a
+ * proposal; the commands only read public state.
  */
+const quickstart = site.repoUrl ? `${site.repoUrl}#local-quickstart` : null;
 ---
 
 <section id="try" class="try" aria-labelledby="try-title">
@@ -15,40 +17,30 @@ import CodeBlock from "../ui/CodeBlock.astro";
     <div class="try__head" data-reveal>
       <h2 id="try-title">Check it yourself.</h2>
       <p class="lede">
-        The recorded runs cannot be replayed on this gate, so checking them means reading. In the
-        browser, read the receipts and the live gate. From a checkout, run the audit and receipt
-        commands and the test suites yourself.
+        Four commands read the final gate and its receipts straight from public state. None of them
+        signs or spends.
       </p>
     </div>
 
-    <div class="try__browser" data-reveal>
-      <h3 class="try__sub">In the browser</h3>
-      <RunConsole />
+    <div class="try__block" data-reveal>
+      <CodeBlock id="try-code" label="Command" title="~/constitution" tabs={cliTabs} />
+      <p class="muted try__note">
+        Run from a checkout with the CLI built, on Linux or WSL2, as in the{" "}
+        {quickstart ? <a href={quickstart}>local quickstart</a> : "README's local quickstart"}.
+        Agents: <a href="/llms.txt">/llms.txt</a> holds the status, the limits and the commands to
+        verify each claim.
+      </p>
     </div>
 
-    <div class="try__grid">
-      <div class="try__text" data-reveal>
-        <h3 class="try__sub">From a checkout</h3>
-        <p>
-          The gate, contract and page tests run from a checkout, and so do the read-only audit and
-          receipt commands against the final gate.
-        </p>
-        <p class="muted try__agents">
-          Agents get a plain-text guide at <a href="/llms.txt">/llms.txt</a>: what the system is, its
-          honest status, its limits and the commands to verify each claim.
-        </p>
+    <aside class="try__app" aria-labelledby="try-app-title" data-reveal>
+      <div class="try__app-text">
+        <h3 id="try-app-title">Rather break it yourself?</h3>
+        <p>Connect a NEAR wallet and attack a separate demo gate. The final gate stays untouched.</p>
       </div>
-      <CodeBlock
-        id="try-code"
-        label="Audience"
-        title="~/constitution"
-        class="try__code"
-        tabs={[
-          { id: "human", label: "Human", lines: humanCommands },
-          { id: "agent", label: "Agent", lines: agentCommands },
-        ]}
-      />
-    </div>
+      <Button href="/app" variant="ink" size="lg" class="try__app-go">
+        Run the attacks live <span aria-hidden="true">→</span>
+      </Button>
+    </aside>
   </div>
 </section>
 
@@ -62,48 +54,69 @@ import CodeBlock from "../ui/CodeBlock.astro";
     display: grid;
     gap: var(--space-5);
     max-width: 50rem;
-    margin-bottom: var(--space-8);
+    margin-bottom: var(--space-7);
   }
 
   h2 {
     font-size: var(--text-3xl);
   }
 
-  .try__sub {
-    margin-bottom: var(--space-4);
-    font-size: var(--text-xl);
-    letter-spacing: var(--tracking-tight);
-  }
-
-  .try__browser {
-    margin-bottom: var(--space-9);
-  }
-
-  .try__grid {
-    display: grid;
-    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
-    gap: var(--space-8);
-    align-items: start;
-  }
-
-  .try__text {
+  .try__block {
     display: grid;
     gap: var(--space-4);
-    max-width: 34rem;
-  }
-
-  .try__agents {
-    font-size: var(--text-sm);
-  }
-
-  .try__code {
+    max-width: 62rem;
     min-width: 0;
   }
 
-  @media (max-width: 56rem) {
-    .try__grid {
-      grid-template-columns: 1fr;
-      gap: var(--space-6);
+  .try__note {
+    max-width: 62ch;
+    font-size: var(--text-sm);
+    line-height: 1.55;
+  }
+
+  .try__app {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4) var(--space-6);
+    max-width: 62rem;
+    margin-top: var(--space-8);
+    padding: var(--space-6);
+    border-radius: var(--radius-md);
+    background: var(--lav);
+    color: var(--ink-on-lav);
+  }
+
+  .try__app-text {
+    display: grid;
+    gap: var(--space-2);
+    max-width: 40ch;
+  }
+
+  .try__app h3 {
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-tight);
+    color: var(--ink);
+  }
+
+  .try__app-text p {
+    font-size: var(--text-base);
+    line-height: 1.45;
+  }
+
+  /* The ink button sits on lavender: keep its focus ring visible against both grounds. */
+  .try__app :global(.btn):focus-visible {
+    outline-color: var(--ink);
+  }
+
+  @media (max-width: 36rem) {
+    .try__app {
+      padding: var(--space-5);
+    }
+
+    .try__app :global(.try__app-go) {
+      width: 100%;
     }
   }
 </style>

@@ -5,38 +5,36 @@
 const guarantees = [
   {
     id: "G1",
-    text: "Against implementations that cannot write arbitrary proxy storage, the proxy changes implementation only through ConstitutionExecutor, which accepts only transactions signed for the gate's derived address.",
+    text: "For implementations that cannot write arbitrary proxy storage, the proxy upgrades only through ConstitutionExecutor, which accepts only transactions signed for the gate's derived address.",
     caveat:
-      "An implementation that can write a computed storage slot can bypass that path. The executor's tracker is not a storage-write guard.",
+      "An implementation that can write a computed storage slot bypasses this path. The executor's tracker is not a storage-write guard.",
   },
   {
     id: "G2",
-    text: "The gate requests a signature only for the exact executor call bound to a certificate from an allowlisted verifier over the active rule set.",
+    text: "The gate asks for a signature only for the exact executor call named in a certificate from an allowlisted verifier, over the active rule set.",
   },
   {
     id: "G3",
-    text: "Rules, the verifier allowlist and authority change only after a public delay selected at initialization (1 to 30 days, default 3), immutable thereafter. Guardian actions can only reduce authority.",
+    text: "Rules, the verifier allowlist and authority change only after a public delay: 1 to 30 days, chosen at initialization, default 3, then immutable. The guardian can only reduce authority.",
     caveat:
-      "A certified transaction that nobody relays delays later ones until someone does. Delay only: no signature is created without a certificate.",
+      "A certified transaction that nobody relays delays later ones until someone does. It is a delay only: no signature exists without a certificate.",
   },
   { id: "G4", text: "AI output can only cause a refusal, never a certification." },
 ];
 
 const assumptions = [
   "The NEAR MPC network signs honestly and stays available. Its threshold signatures are not post-quantum.",
-  "The TEE vendors and attestation chains hold. Attestation proves which code ran on which input, not that its conclusion is right.",
-  "Rules protect only what they declare. A dormant flaw outside R1 to R5, or beyond their bounds, can pass.",
-  "Behaviour that depends on a later block time or block value is outside the checks.",
-  "The AI review is nondeterministic. Its find rate comes from rehearsals and is not promised.",
-  "Outages of the MPC network, the verifier or the AI delay upgrades. They never produce a signature without a certificate.",
-  "The page can only read public data. A compromised page host cannot produce certificates or signatures.",
+  "The TEE vendors and attestation chains hold. Attestation shows which code ran on which input, not that its conclusion is right.",
+  "Rules protect only what they declare. A dormant flaw outside R1 to R5, or beyond their bounds, can pass. So can behaviour that depends on a later block time or value.",
+  "The AI review is nondeterministic. No find rate is promised.",
+  "Outages of the MPC network, the verifier or the AI only delay upgrades. They never produce a signature without a certificate.",
+  "The page reads public data only. A compromised page host cannot produce certificates or signatures.",
 ];
 
 const notClaimed = [
   "Full formal verification.",
   "Prevention of Bybit-style incidents.",
-  "Protection of any contract other than the one configured proxy.",
-  "Protection against bugs the declared rules do not cover.",
+  "Protection of any other contract, or against bugs the declared rules do not cover.",
   "An audit. This is a testnet build and has not been audited.",
 ];
 ---
@@ -47,7 +45,6 @@ const notClaimed = [
       <h2 id="limits-title">What it guarantees, and what it does not.</h2>
       <p class="lede muted">
         The claim is narrow on purpose: one proxy, on testnet, under stated trust assumptions.
-        Everything below comes from the product requirements, word for word where it matters.
       </p>
     </div>
 

@@ -3,15 +3,15 @@ import type { CodeTab } from "./code-types.ts";
 import CopyButton from "./CopyButton.astro";
 
 /**
- * Command block with optional audience tabs (the "Human / Agent" pattern). Each tab holds real
- * commands; Copy copies the selected tab's commands without prompts or comments.
- * Without JavaScript every tab renders stacked under its own label.
+ * Command block with tabs. Each tab holds real commands; the one Copy button in the bar copies the
+ * selected tab's commands without prompts or notes. Without JavaScript the tab list and Copy are
+ * hidden and every tab renders stacked under its own label.
  */
 
 interface Props {
   /** Unique on the page; prefixes ids. */
   id: string;
-  /** Accessible name of the tab list, for example "Audience". */
+  /** Accessible name of the tab list, for example "Command". */
   label: string;
   tabs: CodeTab[];
   /** Window title shown in the bar, for example the working directory. */
@@ -24,6 +24,8 @@ const copyText = (tab: CodeTab): string =>
   tab.lines
     .flatMap((line) => (line.cmd ? [line.cmd] : []))
     .join("\n");
+const copyLabel = (tab: CodeTab): string => `${tab.label.toLowerCase()} commands`;
+const [first] = tabs;
 ---
 
 <div class:list={["code", className]} data-code-tabs>
@@ -40,6 +42,8 @@ const copyText = (tab: CodeTab): string =>
               aria-controls={`${id}-panel-${tab.id}`}
               aria-selected={index === 0 ? "true" : "false"}
               tabindex={index === 0 ? 0 : -1}
+              data-command-text={copyText(tab)}
+              data-command-label={copyLabel(tab)}
             >
               {tab.label}
             </button>
@@ -47,6 +51,7 @@ const copyText = (tab: CodeTab): string =>
         </div>
       )
     }
+    {first && <CopyButton class="code__copy" label={copyLabel(first)} value={copyText(first)} tone="dark" />}
   </div>
   {
     tabs.map((tab, index) => (
@@ -58,9 +63,6 @@ const copyText = (tab: CodeTab): string =>
         data-initial={index === 0 ? "true" : "false"}
       >
         {tabs.length > 1 && <p class="code__nojs-label">{tab.label}</p>}
-        <div class="code__head">
-          <CopyButton label={`${tab.label.toLowerCase()} commands`} value={copyText(tab)} tone="dark" />
-        </div>
         <pre tabindex="0" aria-label={`${tab.label} commands`}><code>{tab.lines.map((line, i) =>
           line.cmd ? (
             <span class="code__line" style={`--i:${i}`}><span class="code__prompt" aria-hidden="true">$ </span>{line.cmd}</span>
@@ -95,6 +97,7 @@ const copyText = (tab: CodeTab): string =>
     }
     const list = root.querySelector<HTMLElement>("[role=tablist]");
     if (!list) continue;
+    const copy = root.querySelector<HTMLButtonElement>(".code__copy");
     const tabs = [...list.querySelectorAll<HTMLButtonElement>("[role=tab]")];
     const select = (next: HTMLButtonElement, focus: boolean): void => {
       for (const tab of tabs) {
@@ -103,6 +106,13 @@ const copyText = (tab: CodeTab): string =>
         tab.tabIndex = on ? 0 : -1;
         const panel = document.getElementById(tab.getAttribute("aria-controls") ?? "");
         if (panel) panel.hidden = !on;
+      }
+      // The single Copy button always copies the visible tab.
+      const label = next.dataset["commandLabel"];
+      if (copy && label) {
+        copy.dataset["copyValue"] = next.dataset["commandText"] ?? "";
+        copy.dataset["copyLabel"] = label;
+        copy.setAttribute("aria-label", `Copy ${label}`);
       }
       if (focus) next.focus();
     };
@@ -143,25 +153,19 @@ const copyText = (tab: CodeTab): string =>
 
   .code__bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-4);
-    min-height: 3.25rem;
-    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
+    gap: var(--space-1) var(--space-4);
+    padding: var(--space-1) var(--space-3) var(--space-1) var(--space-5);
     border-bottom: 1px solid color-mix(in oklab, var(--night-text) 10%, transparent);
   }
 
   .code__title {
-    margin-right: auto;
+    margin-right: var(--space-2);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     letter-spacing: var(--tracking-mono);
     color: var(--night-muted);
-  }
-
-  @media (max-width: 36rem) {
-    .code__title {
-      display: none;
-    }
   }
 
   .code__title::before {
@@ -175,12 +179,17 @@ const copyText = (tab: CodeTab): string =>
     vertical-align: 0.05em;
   }
 
+  /* Tabs and Copy sit on the right of the title; without a title they still hug the right edge. */
   .code__tabs {
     display: inline-flex;
-    margin-right: 6.5rem;
-    padding: 3px;
+    min-width: 0;
+    max-width: 100%;
+    margin-block: var(--space-1);
+    padding: 5px;
     border: 1px solid color-mix(in oklab, var(--night-text) 14%, transparent);
-    border-radius: calc(var(--radius-sm) + 3px);
+    border-radius: calc(var(--radius-sm) + 5px);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 
   .code__tabs[hidden] {
@@ -188,14 +197,17 @@ const copyText = (tab: CodeTab): string =>
   }
 
   .code__tabs button {
-    min-height: 2.25rem;
+    flex: none;
+    min-height: 2.75rem;
     padding: 0 var(--space-4);
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--night-muted);
+    font-family: var(--font-mono);
     font-size: var(--text-sm);
     font-weight: 500;
+    letter-spacing: var(--tracking-mono);
     cursor: pointer;
     transition:
       background-color var(--dur-base) ease,
@@ -214,6 +226,40 @@ const copyText = (tab: CodeTab): string =>
   .code__tabs button:focus-visible {
     outline-color: var(--lav);
     outline-offset: 2px;
+  }
+
+  .code__copy,
+  .code__tabs {
+    margin-left: auto;
+  }
+
+  .code__tabs + .code__copy {
+    margin-left: 0;
+  }
+
+  /* A phone gives the tabs their own row; the title and Copy share the row under them. */
+  @media (max-width: 36rem) {
+    .code__bar {
+      padding-left: var(--space-3);
+    }
+
+    .code__tabs {
+      order: -1;
+      flex: 1 1 100%;
+      margin: 0;
+    }
+
+    .code__tabs button {
+      padding: 0 var(--space-3);
+    }
+
+    .code__title {
+      padding-left: var(--space-2);
+    }
+
+    .code__tabs + .code__copy {
+      margin-left: auto;
+    }
   }
 
   .code__panel {
@@ -241,17 +287,7 @@ const copyText = (tab: CodeTab): string =>
     display: none;
   }
 
-  .code__head {
-    position: absolute;
-    top: var(--space-3);
-    right: var(--space-3);
-  }
-
-  .is-tabbed .code__head {
-    top: calc(-3.25rem + var(--space-2) + 1px);
-  }
-
-  /* Long commands wrap with a hanging indent under the prompt instead of scrolling sideways. */
+  /* Long commands wrap with a hanging indent under the prompt; a stray long token scrolls instead. */
   pre {
     margin: 0;
     padding: var(--space-5) var(--space-5) var(--space-3);
@@ -259,6 +295,7 @@ const copyText = (tab: CodeTab): string =>
     line-height: 1.7;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    overflow-x: auto;
     tab-size: 2;
   }
 
@@ -275,6 +312,12 @@ const copyText = (tab: CodeTab): string =>
 
   .code__note:first-child {
     margin-top: 0;
+  }
+
+  @media (max-width: 36rem) {
+    pre {
+      padding-inline: var(--space-4);
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
