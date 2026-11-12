@@ -1,54 +1,76 @@
 ---
-import { agentCommands, humanCommands } from "../../data/commands.ts";
-import RunConsole from "../live/RunConsole.astro";
+import { cliTabs } from "../../data/commands.ts";
+import { site } from "../../data/site.ts";
+import Button from "../ui/Button.astro";
 import CodeBlock from "../ui/CodeBlock.astro";
 
 /**
- * Try it (DESIGN 5 row 7): two ways to check the claims. In the browser, read the recorded runs
- * and the live gate (new runs are refused at rule 0 on the final gate); from a checkout, run the
- * tests and the read-only audit and receipt commands.
+ * Check it yourself (DESIGN 5 row 7): what each check proves beside one tabbed terminal block, then
+ * the way into /app for the live attacks. Nothing here runs a proposal; the commands read public
+ * state, and the terminal UI opens the same reads on one screen each.
  */
+const quickstart = site.repoUrl ? `${site.repoUrl}#local-quickstart` : null;
+const checks = [
+  {
+    name: "Terminal UI",
+    text: "One command opens every screen: overview, proposals, run, audit and receipt, on the demo or the final gate.",
+  },
+  {
+    name: "audit",
+    text: "Proves the gate has no access keys and that its state matches the committed deployment record and rules.",
+  },
+  {
+    name: "status and receipt",
+    text: "Rebuild any proposal's verdict and receipt from public state, without asking anyone.",
+  },
+  {
+    name: "appraise",
+    text: "Verifies the verifier's own hardware attestation against its recorded compose hash.",
+  },
+];
 ---
 
 <section id="try" class="try" aria-labelledby="try-title">
   <div class="container">
-    <div class="try__head" data-reveal>
-      <h2 id="try-title">Check it yourself.</h2>
-      <p class="lede">
-        The recorded runs cannot be replayed on this gate, so checking them means reading. In the
-        browser, read the receipts and the live gate. From a checkout, run the audit and receipt
-        commands and the test suites yourself.
-      </p>
-    </div>
-
-    <div class="try__browser" data-reveal>
-      <h3 class="try__sub">In the browser</h3>
-      <RunConsole />
-    </div>
-
     <div class="try__grid">
       <div class="try__text" data-reveal>
-        <h3 class="try__sub">From a checkout</h3>
-        <p>
-          The gate, contract and page tests run from a checkout, and so do the read-only audit and
-          receipt commands against the final gate.
+        <h2 id="try-title">Check it yourself.</h2>
+        <p class="lede">
+          Nothing here asks for trust. Each check reads public chain state; none of them signs or
+          spends.
         </p>
-        <p class="muted try__agents">
-          Agents get a plain-text guide at <a href="/llms.txt">/llms.txt</a>: what the system is, its
-          honest status, its limits and the commands to verify each claim.
+        <ol class="try__checks" aria-label="What each check proves">
+          {
+            checks.map((check) => (
+              <li class="try__check">
+                <h3>{check.name}</h3>
+                <p>{check.text}</p>
+              </li>
+            ))
+          }
+        </ol>
+        <p class="muted try__note">
+          Run from a checkout with the CLI built, on Linux or WSL2, as in the{" "}
+          {quickstart ? <a href={quickstart}>local quickstart</a> : "README's local quickstart"}, or
+          follow the <a href="/docs">docs</a>. Agents: <a href="/llms.txt">/llms.txt</a> holds the
+          status, the limits and the commands to verify each claim.
         </p>
       </div>
-      <CodeBlock
-        id="try-code"
-        label="Audience"
-        title="~/constitution"
-        class="try__code"
-        tabs={[
-          { id: "human", label: "Human", lines: humanCommands },
-          { id: "agent", label: "Agent", lines: agentCommands },
-        ]}
-      />
+
+      <div class="try__block" data-reveal style="--i:1">
+        <CodeBlock id="try-code" label="Command" title="~/constitution" tabs={cliTabs} />
+      </div>
     </div>
+
+    <aside class="try__app" aria-labelledby="try-app-title" data-reveal>
+      <div class="try__app-text">
+        <h3 id="try-app-title">Rather break it yourself?</h3>
+        <p>Connect a NEAR wallet and attack a separate demo gate. The final gate stays untouched.</p>
+      </div>
+      <Button href="/app" variant="ink" size="lg" class="try__app-go">
+        Run the attacks live <span aria-hidden="true">→</span>
+      </Button>
+    </aside>
   </div>
 </section>
 
@@ -58,52 +80,123 @@ import CodeBlock from "../ui/CodeBlock.astro";
     background: var(--paper-2);
   }
 
-  .try__head {
-    display: grid;
-    gap: var(--space-5);
-    max-width: 50rem;
-    margin-bottom: var(--space-8);
-  }
-
-  h2 {
-    font-size: var(--text-3xl);
-  }
-
-  .try__sub {
-    margin-bottom: var(--space-4);
-    font-size: var(--text-xl);
-    letter-spacing: var(--tracking-tight);
-  }
-
-  .try__browser {
-    margin-bottom: var(--space-9);
-  }
-
   .try__grid {
     display: grid;
-    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
     gap: var(--space-8);
     align-items: start;
   }
 
   .try__text {
     display: grid;
-    gap: var(--space-4);
-    max-width: 34rem;
-  }
-
-  .try__agents {
-    font-size: var(--text-sm);
-  }
-
-  .try__code {
+    gap: var(--space-5);
     min-width: 0;
   }
 
-  @media (max-width: 56rem) {
+  h2 {
+    font-size: var(--text-3xl);
+  }
+
+  .try__checks {
+    display: grid;
+    gap: 0;
+    list-style: none;
+    border-top: 1px solid var(--ink);
+  }
+
+  .try__check {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .try__check h3 {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    letter-spacing: var(--tracking-mono);
+  }
+
+  .try__check p {
+    max-width: 46ch;
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    color: var(--ink-muted);
+  }
+
+  .try__block {
+    min-width: 0;
+    position: sticky;
+    top: calc(var(--header-h) + var(--space-5));
+  }
+
+  /* Tabs hold different amounts of text; one height keeps the block from jumping as they change. */
+  @media (min-width: 62.0625rem) {
+    .try__block :global(pre) {
+      min-height: 16rem;
+    }
+  }
+
+  .try__note {
+    max-width: 52ch;
+    font-size: var(--text-sm);
+    line-height: 1.55;
+  }
+
+  .try__app {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4) var(--space-6);
+    margin-top: var(--space-8);
+    padding: var(--space-6) var(--space-7);
+    border-radius: var(--radius-md);
+    background: var(--lav);
+    color: var(--ink-on-lav);
+  }
+
+  .try__app-text {
+    display: grid;
+    gap: var(--space-2);
+    max-width: 52ch;
+  }
+
+  .try__app h3 {
+    font-size: var(--text-xl);
+    letter-spacing: var(--tracking-tight);
+    color: var(--ink);
+  }
+
+  .try__app-text p {
+    font-size: var(--text-base);
+    line-height: 1.45;
+  }
+
+  /* The ink button sits on lavender: keep its focus ring visible against both grounds. */
+  .try__app :global(.btn):focus-visible {
+    outline-color: var(--ink);
+  }
+
+  @media (max-width: 62rem) {
     .try__grid {
-      grid-template-columns: 1fr;
-      gap: var(--space-6);
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-7);
+    }
+
+    .try__block {
+      position: static;
+    }
+  }
+
+  @media (max-width: 36rem) {
+    .try__app {
+      padding: var(--space-5);
+    }
+
+    .try__app :global(.try__app-go) {
+      width: 100%;
     }
   }
 </style>

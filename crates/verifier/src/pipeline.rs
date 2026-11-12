@@ -604,6 +604,26 @@ fn attribute_failure(
     run.record(stage.name(), StageStatus::Incomplete, code, start);
     Err(code)
 }
+/// References are tried in manifest order. Only a reproduced observed runtime is current.
+fn select_reference<'a>(
+    manifest: &'a RuleSetManifest,
+    observed_hash: &[u8; 32],
+    tools: &dyn crate::tools::Toolchain,
+) -> Result<Option<(&'a Reference, Vec<u8>)>, String> {
+    for reference in manifest.references() {
+        match tools.runtime(&reference.contract_name) {
+            Ok(runtime) if &keccak(&runtime) == observed_hash => {
+                return Ok(Some((reference, runtime)));
+            }
+            Err(error) if crate::tools::infrastructure_error(&error).is_some() => {
+                return Err(error);
+            }
+            _ => {}
+        }
+    }
+    Ok(None)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_stages(
     repo: &Path,
@@ -729,9 +749,10 @@ fn run_stages(
         );
         return Ok(Some((0, 2)));
     }
-    let current = match tools.runtime(&m.reference.contract_name) {
-        Ok(current) if keccak(&current) == p.current_impl_codehash.0 => current,
-        Err(e) if crate::tools::infrastructure_error(&e).is_some() => {
+    let (reference, current) = match select_reference(m, &p.current_impl_codehash.0, tools.as_ref())
+    {
+        Ok(Some(selected)) => selected,
+        Err(e) => {
             let code = infra(&e, "tool_unavailable");
             return attribute_failure(
                 ctx,
@@ -768,7 +789,7 @@ fn run_stages(
     let layout_before = ctx.canary_health.fresh(SandboxStage::Layout);
     let (status, log) = match tools.layout(
         &b.contract_name,
-        &m.reference.contract_name,
+        &reference.contract_name,
         &m.r1.unsafe_allow,
     ) {
         Ok(result) => result,
@@ -934,7 +955,7 @@ fn run_stages(
     }
     run.begin("ai_review");
     let start = Instant::now();
-    let report = ai_evidence(repo, m, p, &b, ctx, &current, &runtime);
+    let report = ai_evidence(repo, m, reference, p, &b, ctx, &current, &runtime);
     run.record("ai_review", report.status, &report.detail, start);
     deadline_check(ctx, run, "ai_review")?;
     run.begin("reproducing");
@@ -960,9 +981,11 @@ fn run_stages(
     Ok(rejection)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn ai_evidence(
     repo: &Path,
     m: &RuleSetManifest,
+    reference: &Reference,
     p: &LocalProposal,
     bundle: &constitution_types::bundle::SourceBundle,
     ctx: &RunContext,
@@ -978,7 +1001,7 @@ fn ai_evidence(
         return crate::ai::Report::incomplete("AI incomplete; unsupported committed policy");
     }
     use crypto_box::aead::rand_core::{OsRng, RngCore};
-    let files = match bundle
+    let mut files = match bundle
         .files
         .iter()
         .map(|(path, bytes)| {
@@ -992,9 +1015,29 @@ fn ai_evidence(
         Ok(files) => files,
         Err(_) => return Report::incomplete("AI incomplete; source is not UTF-8"),
     };
+    if m.version == 2 {
+        for name in reference.source_sha256s.keys() {
+            if !files.iter().any(|file| &file.path == name) {
+                let Some(bytes) = bundle::trusted_reference(name, m) else {
+                    return Report::incomplete(
+                        "AI incomplete; current reference source unavailable",
+                    );
+                };
+                let Ok(content) = std::str::from_utf8(bytes) else {
+                    return Report::incomplete(
+                        "AI incomplete; current reference source is not UTF-8",
+                    );
+                };
+                files.push(SourceFile {
+                    path: name.clone(),
+                    content: content.into(),
+                });
+            }
+        }
+    }
     let mut nonce = [0; 32];
     OsRng.fill_bytes(&mut nonce);
-    let request = ReviewRequest {
+    let mut request = ReviewRequest {
         files,
         rules: vec![
             "R1: append-only storage layout".into(),
@@ -1007,6 +1050,9 @@ fn ai_evidence(
         max_candidates: m.ai.max_candidates,
         timeout_s: m.ai.timeout_s,
     };
+    if m.version == 2 {
+        request.rules.push(format!("Current implementation reference: {}; candidate: {}; R1/R5 compare against this reproduced current reference.", reference.contract_name, bundle.contract_name));
+    }
     let corpus_bytes = match std::fs::read(repo.join("rules/r5/corpus.json")) {
         Ok(bytes) => bytes,
         Err(_) => return Report::incomplete("AI incomplete; committed corpus unavailable"),
@@ -2067,5 +2113,105 @@ mod replay_stage_tests {
         assert!(run.error_code.is_none());
         assert!(run.certificate_b64.is_some());
         assert!(run.signature_b64.is_some());
+    }
+    #[test]
+    fn unmatched_current_lineage_rejects_rule_zero_reason_four() {
+        let identity = Identity::new();
+        let (_, mut p, sealed) = sealed_fixture(&identity, false);
+        let m: RuleSetManifest =
+            serde_json::from_str(include_str!("../../../rules/demo/manifest.json")).unwrap();
+        p.current_impl_codehash = Hex32([0; 32]);
+        p.new_impl_codehash = Hex32(keccak(RUNTIME));
+        let backend = FakeBackend {
+            proposal: Behavior::healthy(),
+            canary: Behavior::healthy(),
+            opened: Default::default(),
+        };
+        let run = execute_observed(
+            &repo_root(),
+            &m,
+            &identity,
+            &p,
+            &sealed,
+            1,
+            context(None, &backend, 0, later()),
+        );
+        assert_eq!(
+            run.verdict,
+            Some(Verdict::Reject {
+                rule_id: 0,
+                reason_code: 4
+            })
+        );
+        assert_eq!(
+            run.evidence.as_ref().unwrap().r1.status,
+            StageStatus::Skipped
+        );
+        assert_eq!(
+            run.stages
+                .iter()
+                .find(|stage| stage.name == "compiling")
+                .unwrap()
+                .detail,
+            "current source runtime mismatch"
+        );
+    }
+}
+
+#[cfg(test)]
+mod lineage_tests {
+    use super::*;
+    struct Runtimes(std::cell::RefCell<Vec<String>>);
+    impl crate::tools::Toolchain for Runtimes {
+        fn compile(&self) -> Result<Vec<u8>, String> {
+            unreachable!()
+        }
+        fn runtime(&self, name: &str) -> Result<Vec<u8>, String> {
+            self.0.borrow_mut().push(name.into());
+            Ok(if name.contains("VaultV1.sol:") {
+                vec![0x60, 1]
+            } else {
+                vec![0x60, 2]
+            })
+        }
+        fn layout(&self, _: &str, _: &str, _: &[String]) -> Result<(StageStatus, Vec<u8>), String> {
+            unreachable!()
+        }
+        fn solvency(
+            &self,
+            _: &RuleSetManifest,
+            _: &constitution_types::bundle::SourceBundle,
+        ) -> Result<(StageStatus, u16, Vec<u8>), String> {
+            unreachable!()
+        }
+    }
+    #[test]
+    fn lineage_selects_observed_current_runtime_in_committed_order() {
+        let m: RuleSetManifest =
+            serde_json::from_str(include_str!("../../../rules/demo/manifest.json")).unwrap();
+        let tools = Runtimes(Default::default());
+        let (reference, runtime) = select_reference(&m, &keccak(&[0x60, 2]), &tools)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            reference.contract_name,
+            "src/demo/VaultV2Honest.sol:VaultV2Honest"
+        );
+        assert_eq!(runtime, [0x60, 2]);
+        assert_eq!(
+            *tools.0.borrow(),
+            [
+                "src/demo/VaultV1.sol:VaultV1",
+                "src/demo/VaultV2Honest.sol:VaultV2Honest"
+            ]
+        );
+        assert!(select_reference(&m, &[0; 32], &tools).unwrap().is_none());
+        let v1: RuleSetManifest =
+            serde_json::from_str(include_str!("../../../rules/manifest.json")).unwrap();
+        assert!(
+            select_reference(&v1, &keccak(&[0x60, 2]), &tools)
+                .unwrap()
+                .is_none()
+        );
     }
 }

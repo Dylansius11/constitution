@@ -411,8 +411,13 @@ pub fn sealing_key(verifier: &crate::rpc::Verifier) -> Result<[u8; 32], Failure>
     appraised_transport_key(identity)
 }
 
+/// Structured appraisal for interactive callers; shares exactly the command's failure policy.
+pub fn collect(url: &str, pccs: &str, expected: Option<Hex32>) -> Vec<Check> {
+    observe(url, pccs, expected).unwrap_or_else(unavailable)
+}
+
 pub fn appraise(url: &str, pccs: &str, expected: Option<Hex32>, json: bool) -> Result<(), Failure> {
-    let checks = observe(url, pccs, expected).unwrap_or_else(unavailable);
+    let checks = collect(url, pccs, expected);
     let ok = checks.iter().all(|check| check.ok);
     if json {
         println!(

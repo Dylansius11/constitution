@@ -5,21 +5,23 @@ import "./live.css";
 
 interface Props {
   id?: string;
+  /** The gate to read; defaults to the final gate of this build. */
+  gate?: string | null;
 }
 
-const { id = "timelock-queue" } = Astro.props;
+const { id = "timelock-queue", gate = site.gateAccount } = Astro.props;
 ---
 
 <div
   id={id}
   class="live-surface timelock-queue"
   data-timelock
-  data-gate={site.gateAccount}
+  data-gate={gate}
   data-near-rpc={site.nearRpc}
 >
   <p class="live-intro">The initialization-selected delay is immutable. No role can shorten it.</p>
   {
-    site.gateAccount === null ? (
+    gate === null ? (
       <StatusBadge tone="awaiting">No gate configured</StatusBadge>
     ) : (
       <>

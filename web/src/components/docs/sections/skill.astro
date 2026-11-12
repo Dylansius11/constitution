@@ -1,0 +1,83 @@
+---
+import { skillFiles } from "../../../data/docs.ts";
+import CopyButton from "../../ui/CopyButton.astro";
+
+/**
+ * AI skill. Describes skills/constitution/SKILL.md (front matter: name "constitution" plus the
+ * trigger description) and its references/refusals.md. The files are served byte for byte from
+ * web/public/skills/constitution/. Where your agent loads skills from is that agent's own setting, so
+ * the page names no product or folder.
+ */
+const layout = skillFiles.map((file, index) => ({
+  id: `docs-skill-path-${index}`,
+  path: `constitution/${file.path}`,
+}));
+---
+
+<div class="docs-prose">
+  <p>
+    A skill is a folder of instructions that a coding agent loads when a task matches it. This one is
+    named <code>constitution</code>. It tells an agent how to write an upgrade for a
+    CONSTITUTION-protected proxy, check it against R1 to R5, propose it to the demo gate, read the
+    verdict or receipt, and explain a refusal such as R2/20, R1/10, R3/30 or R4/41. It covers the
+    local checks, the honest VaultV2 and VaultV3 examples, demo submission and fail-closed recovery.
+  </p>
+  <p class="docs-note">
+    <strong>It is a workflow, not a permission.</strong> The skill tells the agent to ask you for the
+    applicable authorization before any write, to stay on testnet, never to read or print the contents
+    of a key file and never to weaken a committed rule or a trusted reference to make a check pass.
+  </p>
+
+  <h3>Download</h3>
+  <ul class="docs-downloads">
+    {
+      skillFiles.map((file) => (
+        <li>
+          <a class="docs-downloads__link" href={file.href} download>
+            <span class="docs-downloads__name">{file.path}</span>
+            <span class="docs-downloads__use">{file.purpose}</span>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+
+  <h3>Use it</h3>
+  <ol>
+    <li>
+      Download both files and keep them in one folder named <code>constitution</code>, with {" "}
+      <code>refusals.md</code> inside a <code>references</code> folder beside {" "}
+      <code>SKILL.md</code>, as in the layout below.
+    </li>
+    <li>
+      Put that folder where your agent loads skills from. The location is your agent's own setting,
+      so check its documentation.
+    </li>
+    <li>
+      Open the agent in your checkout of the repository. The skill links to the committed rules, the
+      deployment records and the guide by relative path, and it works best when they are there.
+    </li>
+    <li>
+      Ask in plain words, for example: write an upgrade for the demo gate's vault, check this
+      implementation against the five rules, or explain why a proposal was refused with R2/20.
+    </li>
+  </ol>
+
+  <div class="docs-paths">
+    <p class="docs-label">Layout inside your agent's skills folder</p>
+    <ul>
+      {
+        layout.map((entry) => (
+          <li>
+            <code id={entry.id}>{entry.path}</code>
+            <CopyButton label="path" target={entry.id} />
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+  <p class="muted">
+    The same two files are the repository's <code>skills/constitution/</code>. If your checkout has
+    them, copy that folder instead of downloading.
+  </p>
+</div>

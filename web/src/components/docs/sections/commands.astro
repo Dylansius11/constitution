@@ -1,0 +1,99 @@
+---
+import { commandGroups, demoVerifier } from "../../../data/docs.ts";
+import type { CodeTab } from "../../ui/code-types.ts";
+import Card from "../../ui/Card.astro";
+import CodeBlock from "../../ui/CodeBlock.astro";
+
+/**
+ * Headless commands. Subcommands and flags are those the clap definitions in crates/cli/src/main.rs
+ * (and demo.rs) declare; see data/docs.ts for the line ranges each command was read from. Examples
+ * follow docs/GUIDE.md: the binary is on PATH as `constitution`, and writes name their account and
+ * key-file path through DEMO_ACCOUNT and DEMO_KEY_FILE, never a key.
+ */
+const environment: CodeTab[] = [
+  {
+    id: "env",
+    label: "Environment",
+    lines: [
+      { note: "Public endpoints and an approved measurement, not secrets. The CLI does not load .env for you." },
+      { cmd: `export VERIFIER_URL=${demoVerifier.url}` },
+      { cmd: `export EXPECT_COMPOSE_HASH=${demoVerifier.composeHash}` },
+      {
+        note: "Before a write, set DEMO_ACCOUNT to your authorized testnet account and DEMO_KEY_FILE to the path of its near-cli key file. Never put key contents in a variable, a command, a chat or a screenshot.",
+      },
+    ],
+  },
+];
+---
+
+<div class="docs-prose">
+  <p>
+    Build the CLI as in the quickstart so that <code>constitution</code> is on your {" "}
+    <code>PATH</code>, then run every command from the repository root. A flag marked {" "}
+    <em>also read from</em> falls back to that environment variable, so you can set it once per shell. {" "}
+    <code>constitution --help</code> lists the commands, and <code>constitution demo --help</code> {" "}
+    and <code>constitution verifier --help</code> describe their own inputs. Run with no arguments
+    in a terminal, the same binary opens the <a href="#tui">terminal UI</a> instead.
+  </p>
+  <p class="docs-note docs-note--refuse">
+    <strong>Reads are safe to run. Writes are not safe to paste blindly.</strong> Creating or funding
+    an account, signing, deploying an implementation and paid inference each need the operator's
+    explicit authorization, and nothing on this page grants it. Every write here targets NEAR testnet
+    and Base Sepolia. Never point one at mainnet: <code>--network</code> only labels the evidence and
+    does not restrict an endpoint.
+  </p>
+  <p class="docs-note">
+    <strong>Set these once.</strong> The examples use <code>$VERIFIER_URL</code>. {" "}
+    {
+      demoVerifier.fromBuild
+        ? " This build was configured with the live demo's verifier address."
+        : " The README recorded this demo verifier on 2026-11-11, and it may not stay online."
+    } {" "}
+    A write to a remote verifier also needs <code>EXPECT_COMPOSE_HASH</code>: the CLI appraises the
+    verifier against it before it seals any source, and refuses when it is unset. Use the
+    owner-approved hash, never the one the endpoint reports about itself.
+  </p>
+  <CodeBlock id="docs-env" label="Environment" tabs={environment} title="bash or WSL" />
+
+  {
+    commandGroups.map((group) => (
+      <section class="docs-group" aria-labelledby={`group-${group.id}`}>
+        <h3 id={`group-${group.id}`}>{group.title}</h3>
+        <p class="muted">{group.summary}</p>
+        <ul class="docs-commands">
+          {group.commands.map((command) => (
+            <Card as="li">
+              <article class="docs-command" aria-labelledby={`cmd-${command.id}`}>
+                <h4 class="docs-command__title" id={`cmd-${command.id}`}>
+                  <code>{command.usage}</code>
+                  <span class="docs-access">{command.access}</span>
+                </h4>
+                <p>{command.purpose}</p>
+                <CodeBlock
+                  id={`docs-cmd-${command.id}`}
+                  label="Command"
+                  tabs={[command.tab, ...(command.moreTabs ?? [])]}
+                  title="repository root"
+                />
+                {command.note !== undefined && <p class="docs-note">{command.note}</p>}
+                <details class="docs-flags">
+                  <summary>Arguments and flags</summary>
+                  <dl>
+                    {command.flags.map((flag) => (
+                      <div>
+                        <dt>
+                          <code>{flag.flag}</code>
+                        </dt>
+                        <dd>{flag.note}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+              </article>
+            </Card>
+          ))}
+        </ul>
+      </section>
+    ))
+  }
+</div>

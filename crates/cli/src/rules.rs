@@ -90,4 +90,19 @@ mod tests {
         assert!(e.to_string().starts_with("error: cannot read"));
         assert!(e.to_string().contains("\nnext: "));
     }
+    #[test]
+    fn version_two_lineage_hashes_and_rejects_unknown_versions() {
+        let demo: Value =
+            serde_json::from_str(include_str!("../../../rules/demo/manifest.json")).unwrap();
+        let first = hash(&demo).unwrap();
+        let mut changed = demo.clone();
+        changed["reference_lineage"][1]["source_sha256s"]["src/demo/VaultV2Honest.sol"] =
+            json!(format!("0x{}", "33".repeat(32)));
+        assert_ne!(hash(&changed).unwrap(), first);
+        changed["version"] = 3.into();
+        assert!(hash(&changed).is_err());
+        let mut extra = demo;
+        extra["surprise"] = json!(1);
+        assert!(hash(&extra).is_err());
+    }
 }

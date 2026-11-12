@@ -71,3 +71,41 @@ export function accessKeyState(count: number): AccessKeyState {
     text: `${count} access key(s) present: this gate can be redeployed. Not keyless.`,
   };
 }
+
+const CHANGE_NAMES: Record<string, string> = {
+  SetRuleSet: "Rule-set change",
+  AddVerifier: "Verifier addition",
+  RemoveVerifier: "Verifier removal",
+  SetParams: "Parameter change",
+  SetGovernor: "Governor change",
+  SetGuardian: "Guardian change",
+  MigrateAuthority: "Authority migration",
+  Unpause: "Unpause",
+};
+
+/** The slice of a gate change that the one-line summary needs. */
+export interface ChangeLine {
+  id: number;
+  kind: { kind: string };
+  eta_ns: bigint;
+  status: string;
+}
+
+/**
+ * One sentence for the ledger: `1 change pending: Rule-set change #3, applicable from 2026-11-14
+ * 18:00:00 UTC.` The gate lists at most `listed` entries, so a full page is not claimed to be complete.
+ */
+export function pendingSummary(changes: readonly ChangeLine[], complete = true): string {
+  const pending = changes.filter((change) => change.status === "Pending");
+  if (pending.length === 0) {
+    return complete ? "No change pending." : "No change pending in the entries read.";
+  }
+  const lines = pending
+    .sort((a, b) => a.id - b.id)
+    .map((change) => {
+      const name = CHANGE_NAMES[change.kind.kind] ?? change.kind.kind;
+      return `${name} #${change.id}, applicable from ${utcStamp(Number(change.eta_ns / 1_000_000n))}`;
+    });
+  const head = `${pending.length} ${pending.length === 1 ? "change" : "changes"} pending`;
+  return `${head}: ${lines.join("; ")}.`;
+}

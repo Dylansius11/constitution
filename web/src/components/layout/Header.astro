@@ -2,19 +2,32 @@
 import Button from "../ui/Button.astro";
 import Logo from "../ui/Logo.astro";
 
+interface Props {
+  /** Section links point back at the landing page from every other page. */
+  page?: "landing" | "app" | "docs";
+  /** On /app: false when this build has no demo gate, so there is no run panel to go to. */
+  runnable?: boolean;
+}
+
+const { page = "landing", runnable = true } = Astro.props;
+const prefix = page === "landing" ? "" : "/";
 const links = [
-  { href: "#plain", label: "Start here" },
-  { href: "#how", label: "How it works" },
-  { href: "#rules", label: "Rules" },
-  { href: "#timelock", label: "Timelock" },
-  { href: "#evidence", label: "Evidence" },
-  { href: "#limits", label: "Limits" },
+  { href: `${prefix}#plain`, label: "Start here" },
+  { href: `${prefix}#how`, label: "How it works" },
+  { href: `${prefix}#rules`, label: "Rules" },
+  { href: `${prefix}#timelock`, label: "Timelock" },
+  { href: `${prefix}#evidence`, label: "Evidence" },
+  { href: `${prefix}#limits`, label: "Limits" },
+  { href: "/docs", label: "Docs" },
 ];
+
+// The wide bar has no room for another link next to the app button; the compact menu does.
+const menuLinks = [...links, { href: `${prefix}#try`, label: "Check it yourself" }];
 ---
 
 <header class="header">
   <div class="header__inner container">
-    <Logo href="#top" class="header__logo" />
+    <Logo href={page === "landing" ? "#top" : "/"} class="header__logo" />
     <span class="header__scope">Testnet · Not audited</span>
     <nav class="header__nav" aria-label="Sections">
       <ul>
@@ -25,11 +38,21 @@ const links = [
       <summary>Menu</summary>
       <nav aria-label="Sections, compact">
         <ul>
-          {links.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+          {menuLinks.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
         </ul>
       </nav>
     </details>
-    <Button href="#try" class="header__cta">Try it</Button>
+    {
+      page === "app" ? (
+        runnable ? (
+          <Button href="#run" class="header__cta">Try the attack</Button>
+        ) : (
+          <Button href="/" variant="secondary" class="header__cta">The story</Button>
+        )
+      ) : (
+        <Button href="/app" class="header__cta">Open app</Button>
+      )
+    }
   </div>
 </header>
 
@@ -146,7 +169,7 @@ const links = [
     width: 100%;
   }
 
-  @media (max-width: 60rem) {
+  @media (max-width: 74rem) {
     .header__nav {
       display: none;
     }
@@ -156,13 +179,41 @@ const links = [
     }
   }
 
-  @media (max-width: 34rem) {
+  /* The scope chip moves into the hero below this width, so the bar keeps room for the app button. */
+  @media (max-width: 48rem) {
     .header__scope {
       display: none;
     }
+  }
 
+  @media (max-width: 34rem) {
     .header__inner {
-      gap: var(--space-3);
+      gap: var(--space-2);
+    }
+
+    .header__inner :global(.header__logo) {
+      font-size: 1.125rem;
+    }
+
+    .header__menu summary {
+      padding: 0 var(--space-3);
+    }
+
+    .header__inner :global(.header__cta) {
+      padding: 0 var(--space-3);
+    }
+  }
+
+  /* Smallest phones: the mark alone stands for the logo; the link keeps its accessible name. */
+  @media (max-width: 21rem) {
+    .header__inner :global(.header__logo .logo__word) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
   }
 </style>

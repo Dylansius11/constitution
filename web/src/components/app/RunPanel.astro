@@ -1,0 +1,254 @@
+---
+import { site } from "../../data/site.ts";
+import { reasonText, ruleLabel } from "../../lib/reasons.ts";
+import { buildSteps } from "../../lib/run-steps.ts";
+
+/**
+ * The one run panel of /app: the selected attack's header, a twelve-step stepper (wallet, pipeline,
+ * verdict), the controls of the current step, the result, and the attack picker. Static markup with
+ * data hooks; `app.ts` owns every state change and re-reads the chain before it claims anything.
+ */
+interface Attack {
+  id: string;
+  title: string;
+  summary: string;
+  contract: string;
+  expectedRule: number;
+  expectedReason: number;
+  initCalldata: string;
+  snippet: string[];
+  observed: { proposalId: number; nearTx: string; observedAt: string } | null;
+}
+
+interface Props {
+  gate: string;
+  allowanceNear: string;
+  attacks: Attack[];
+}
+
+const { gate, allowanceNear, attacks } = Astro.props;
+const steps = buildSteps({ connected: false, connecting: false, connectFailed: false, standing: null }, null);
+const GLYPHS = ["pending", "active", "pass", "refused", "error", "notrun"] as const;
+const selector = (calldata: string): { value: string; bytes: number } | null => {
+  const bytes = (calldata.length - 2) / 2;
+  return bytes >= 4 ? { value: calldata.slice(0, 10), bytes } : null;
+};
+---
+
+<section id="run" class="rp" aria-label="Run an attack" data-run-panel data-wallet="idle" tabindex="-1">
+  {
+    attacks.map((attack, index) => {
+      const reason = reasonText(attack.expectedReason);
+      const init = selector(attack.initCalldata);
+      return (
+        <div class="rp-head" data-attack-view={attack.id} hidden={index !== 0}>
+          <p class="rp-head__rule">
+            <span class="rp-rulechip">{ruleLabel(attack.expectedRule)}</span>
+            <span class="rp-head__reason">Expected: refused, reason {attack.expectedReason}</span>
+          </p>
+          <h2>{attack.title}</h2>
+          <p class="rp-head__summary">{attack.summary}</p>
+          {reason !== null && <p class="rp-head__why">{reason}</p>}
+          <details class="rp-change">
+            <summary>The change this attack adds</summary>
+            <pre class="app-code" tabindex="0" aria-label={`Source added by ${attack.title}`}><code>{attack.snippet.map((line) => <span class="app-code__add">{line}</span>)}</code>{init !== null && <span class="app-code__note">Initializer call: {init.value}… ({init.bytes} bytes)</span>}</pre>
+          </details>
+          {attack.observed !== null && (
+            <p class="rp-head__seen">
+              Recorded on testnet: proposal {attack.observed.proposalId},{" "}
+              <a href={`${site.nearExplorer}/txns/${attack.observed.nearTx}`} rel="noopener">
+                propose transaction on NEAR testnet
+              </a>
+              .
+            </p>
+          )}
+        </div>
+      );
+    })
+  }
+
+  <ol class="rp-steps" aria-label="Progress of this run" data-steps>
+    {
+      steps.map((step) => (
+        <li class="rp-step" data-step={step.id} data-state={step.state}>
+          <span class="rp-step__icon" aria-hidden="true">
+            <svg viewBox="0 0 20 20" width="22" height="22" focusable="false">
+              {GLYPHS.map((glyph) => (
+                <g data-glyph={glyph}>
+                  {glyph === "pending" && <circle cx="10" cy="10" r="7" />}
+                  {glyph === "active" && (
+                    <>
+                      <circle cx="10" cy="10" r="7" />
+                      <circle cx="10" cy="10" r="3" class="fill" />
+                    </>
+                  )}
+                  {glyph === "pass" && (
+                    <>
+                      <circle cx="10" cy="10" r="8" class="fill" />
+                      <path d="M6 10.4 8.8 13 14 7.2" class="knock" />
+                    </>
+                  )}
+                  {glyph === "refused" && (
+                    <>
+                      <path d="M10 2 16.5 4.6V10c0 3.7-2.7 6.3-6.5 8-3.8-1.7-6.5-4.3-6.5-8V4.6Z" class="fill" />
+                      <path d="M7.4 7.8 12.6 13M12.6 7.8 7.4 13" class="knock" />
+                    </>
+                  )}
+                  {glyph === "error" && (
+                    <>
+                      <path d="M10 2.6 18 16.4H2Z" />
+                      <path d="M10 8v4M10 14.2v.1" />
+                    </>
+                  )}
+                  {glyph === "notrun" && (
+                    <>
+                      <circle cx="10" cy="10" r="7" class="dash" />
+                      <path d="M7 10h6" />
+                    </>
+                  )}
+                </g>
+              ))}
+            </svg>
+          </span>
+          <span class="rp-step__label">{step.label}</span>
+          <span class="rp-step__target" data-step-target hidden>Target</span>
+          <span class="rp-step__status" data-step-status>{step.status}</span>
+          <span class="rp-step__time" data-step-time />
+        </li>
+      ))
+    }
+  </ol>
+
+  <div class="rp-body">
+    <div class="rp-pane" data-pane="connect">
+      <div class="rp-pane__text">
+        <h3>Connect a NEAR wallet</h3>
+        <p data-connect-help>
+          Pick any wallet in the list that supports NEAR testnet. Nothing here touches mainnet funds.
+        </p>
+      </div>
+      <div class="rp-pane__action">
+        <button type="button" class="app-btn" data-connect>Connect wallet</button>
+      </div>
+      <p class="app-message" data-wallet-message role="status" hidden></p>
+    </div>
+
+    <div class="rp-pane" data-pane="enable" hidden>
+      <div class="rp-pane__text">
+        <h3>Enable live runs</h3>
+        <p>
+          One wallet confirmation prepays credit on the demo gate and adds a session key to your
+          account, so the attacks do not ask you again.
+        </p>
+        <p data-deposit-note>Reading the gate's fees.</p>
+        <details class="rp-key">
+          <summary>What the session key can do</summary>
+          <p>
+            It is a function-call key limited to <code>propose</code> on <code>{gate}</code>, with a
+            gas allowance of {allowanceNear} NEAR. It cannot move funds, withdraw credit or call any
+            other contract. It lives in this browser's storage; remove it under Your account at any
+            time. Credit is yours to withdraw whenever no proposal of yours is in flight.
+          </p>
+        </details>
+      </div>
+      <div class="rp-pane__action">
+        <label class="app-field">
+          <span>Prepay for</span>
+          <select data-attempts>
+            <option value="5">5 attacks</option>
+            <option value="10" selected>10 attacks</option>
+            <option value="25">25 attacks</option>
+          </select>
+        </label>
+        <button type="button" class="app-btn" data-enable aria-disabled="true">Enable live runs</button>
+      </div>
+    </div>
+
+    <div class="rp-pane rp-pane--run" data-pane="run" hidden>
+      <div class="rp-run">
+        <div class="rp-run__status">
+          <p class="rp-run__title" data-run-title aria-live="polite">Ready</p>
+          <p class="rp-run__body" data-run-body>Ready to run.</p>
+          <p class="app-message" data-run-wait hidden></p>
+        </div>
+        <div class="rp-run__action">
+          <p class="rp-timer">
+            <span class="rp-timer__label">Run time</span>
+            <output class="rp-timer__value" data-run-timer role="timer">0:00</output>
+          </p>
+          <button type="button" class="app-btn" data-run aria-disabled="true">Run this attack live</button>
+          <p class="rp-run__hint" data-run-hint>Connect a wallet to run this attack.</p>
+        </div>
+      </div>
+
+      <div class="rp-result" data-result hidden>
+        <p class="rp-result__title" data-result-title></p>
+        <p data-result-reason></p>
+        <p class="rp-result__match" data-result-match></p>
+      </div>
+
+      <p class="rp-links">
+        <a data-run-near hidden rel="noopener">Propose transaction on NEAR</a>
+        <a data-run-watch hidden href="#watch">Look up this proposal</a>
+      </p>
+    </div>
+
+    <div class="app-active" data-active-panel hidden>
+      <p data-active-text></p>
+      <button type="button" class="app-btn app-btn--quiet app-btn--inline" data-expire hidden>
+        Release it
+      </button>
+      <p class="app-message" data-active-message role="status" hidden></p>
+    </div>
+
+    <p class="app-message" data-setup-message role="status" hidden></p>
+  </div>
+
+  <p class="rp-note">
+    The verifier works on one run at a time. If it is busy, your proposal waits in line: the Queued
+    step stays active and shows when it will try again. Times are as this page saw them.
+  </p>
+
+  <fieldset class="rp-pick" data-picker>
+    <legend>Choose an attack</legend>
+    <div class="rp-pick__grid">
+      {
+        attacks.map((attack, index) => (
+          <label class="rp-card">
+            <input type="radio" name="attack" value={attack.id} checked={index === 0} />
+            <span class="rp-card__body">
+              <span class="rp-card__rule">{ruleLabel(attack.expectedRule)}</span>
+              <span class="rp-card__title">{attack.title}</span>
+              <span class="rp-card__status" data-pick-status={attack.id}>Not run yet</span>
+            </span>
+          </label>
+        ))
+      }
+    </div>
+    <p class="rp-pick__lock" data-pick-lock hidden>Selection is locked while an attack is running.</p>
+  </fieldset>
+
+  <details class="rp-account" data-account-details hidden>
+    <summary>
+      <span>Your account</span>
+      <span class="rp-account__summary" data-account-summary></span>
+    </summary>
+    <div class="rp-account__body">
+      <div class="app-account__id">
+        <code data-account-id></code>
+        <button type="button" class="app-btn app-btn--quiet app-btn--inline" data-disconnect>Disconnect</button>
+      </div>
+      <dl class="app-facts">
+        <div><dt>Credit on the gate</dt><dd data-fact="credit">Not read</dd></div>
+        <div><dt>Attacks it covers</dt><dd data-fact="runs">Not read</dd></div>
+        <div><dt>Session key</dt><dd data-fact="key">Not read</dd></div>
+        <div><dt>Cost per attack</dt><dd data-fact="fee">Not read</dd></div>
+      </dl>
+      <div class="app-actions" data-manage>
+        <button type="button" class="app-btn app-btn--quiet app-btn--inline" data-withdraw>Withdraw credit</button>
+        <button type="button" class="app-btn app-btn--quiet app-btn--inline" data-remove-key>Remove session key</button>
+        <button type="button" class="app-btn app-btn--quiet app-btn--inline" data-refresh>Refresh</button>
+      </div>
+    </div>
+  </details>
+</section>

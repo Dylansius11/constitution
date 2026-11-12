@@ -1,6 +1,6 @@
 # CONSTITUTION: smart contract specification
 
-**Status: production gate NOT DEPLOYED; not audited.** This is the protocol contract between the gate, executor, verifier, CLI, page and tests. Local and spike-testnet evidence is labeled below; it is not production activation evidence. Production deployment is recorded only after observed addresses, transaction hashes and reproducible code hashes are added.
+**Status: testnet final gate deployed and keyless; not independently audited.** [V, exercised on testnet 2026-11-10] Final activation and the passing keyless audit are recorded under "Deployment and measured costs". This is the protocol contract between the gate, executor, verifier, CLI, page and tests. Local tests, spike/staging runs and the separate live-demo deployment are labeled separately; none is mainnet or production-security evidence.
 
 Labels: [V] primary source read 2026-10-26 (sources at the end), [I] design decision of this foundation, [U] unverified until the named spike.
 
@@ -356,6 +356,21 @@ Rule ids and reason codes (shared enum in `constitution-types`):
 | 5 | R5 differential replay | 50 behavior diverged, 51 witness incomplete (fails closed) |
 | 6 | AI review | none on-chain: an incomplete required review is not a rejection; the verifier emits no certificate and the proposal stays `Pending` until retried or expired |
 
+[I, separate live-demo verifier format; no gate ABI change] V1 manifest bytes and
+the final gate's rule-set commitment remain unchanged. V2 appends an ordered
+`reference_lineage` after the v1 policy fields with `version = 2`; the first
+entry must equal the retained `reference` harness baseline. The complete v2
+Borsh bytes, including lineage names and source digests, are hashed by SHA-256.
+See ARCHITECTURE "Version 2: committed current-reference lineage" for exact format
+and bounded-policy limits. `VERIFIER_MANIFEST` is repo-relative and defaults to
+`rules/manifest.json`; paths escaping the repository are refused at startup.
+Rule 0 checks committed reference sources and selects the first reproduced
+lineage runtime matching the observed current implementation, otherwise (0,4).
+R1/R5/AI use that selected current reference; no proposal supplies a trusted
+reference name or runtime hash. The demo manifest additionally supports a proxy
+currently at V2 or V3 without changing the existing immutable gate wasm.
+
+
 ## Exact EVM transaction
 
 The gate builds, never accepts, every byte. omni-transaction 0.5.0, EVM feature only [V API names]:
@@ -504,9 +519,9 @@ Bypass analysis (each item has a test or audit check in "Test matrix"):
 | OZ Upgrades Core | 1.47.0 | `npm view` |
 | Halmos | 0.3.3, Python >= 3.11 (3.12 selected), z3-solver 4.12.6.0, yices 2.6.4.x | PyPI JSON; GitHub release |
 
-## Test matrix (planned, not run)
+## Test matrix (planned acceptance; observed results in BUILD-PLAN)
 
-Commands are planned interfaces from BUILD-PLAN; none exists yet.
+Commands and acceptance ids below define the test contract, not a claim of a new run. Dated local and testnet results are recorded in BUILD-PLAN; the final-gate deployment evidence is below. The separate demo gate's observed attacks and pending honest upgrades/keyless audit are tracked under F12/P3.7.
 
 | Id | Layer | Case | Expected |
 | --- | --- | --- | --- |

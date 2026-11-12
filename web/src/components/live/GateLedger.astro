@@ -5,9 +5,23 @@ import "./live.css";
 
 interface Props {
   id?: string;
+  /** The gate to read; defaults to the final gate of this build. */
+  gate?: string | null;
+  /** Accessible name of the list: say which gate it is. */
+  label?: string;
+  /** Row keys to leave out. */
+  omit?: string[];
+  /** Flow the rows into two columns on wide screens. */
+  columns?: boolean;
 }
 
-const { id = "gate-ledger" } = Astro.props;
+const {
+  id = "gate-ledger",
+  gate = site.gateAccount,
+  label = "Production deployment status",
+  omit = [],
+  columns = false,
+} = Astro.props;
 const rows = [
   ["gate", "Gate account"],
   ["accessKeys", "Gate access keys"],
@@ -15,24 +29,24 @@ const rows = [
   ["verifiers", "Verifier allowlist"],
   ["changes", "Timelock queue"],
   ["proxy", "Protected proxy implementation"],
-];
+].filter(([key]) => !omit.includes(key as string));
 ---
 
 <div
   id={id}
   class="live-surface"
   data-ledger
-  data-gate={site.gateAccount}
+  data-gate={gate}
   data-near-rpc={site.nearRpc}
   data-base-rpc={site.baseRpc}
 >
-  <dl aria-label="Production deployment status">
+  <dl aria-label={label} class:list={columns && "live-cols"}>
     {
       rows.map(([key, label]) => (
         <div class="live-row" data-ledger-row={key}>
           <dt>{label}</dt>
           <dd>
-            {site.gateAccount === null ? (
+            {gate === null ? (
               <StatusBadge tone="awaiting">No gate configured</StatusBadge>
             ) : (
               <>
@@ -47,7 +61,7 @@ const rows = [
     }
   </dl>
   {
-    site.gateAccount === null ? (
+    gate === null ? (
       <p class="live-intro">
         This build has no gate account configured, so these rows read no chain. Set PUBLIC_GATE_ACCOUNT at build time to read a gate.
       </p>

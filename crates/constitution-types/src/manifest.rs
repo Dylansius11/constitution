@@ -9,12 +9,167 @@ macro_rules! record {
         pub struct $name { $($fields)* }
     };
 }
-record!(RuleSetManifest {
+record!(RuleSetManifestV1 {
     pub version: u32, pub name: String, pub solc: String, pub evm_version: String,
     pub optimizer_runs: u32, pub tools: Tools, pub reference: Reference,
     pub r1: LayoutRule, pub r2: SolvencyRule, pub r3: FilterRule, pub r4: InitializerRule,
     pub r5: ReplayRule, pub ai: AiPolicy, pub max_cert_ttl_s: u64,
 });
+
+/// Version two appends a committed, ordered lineage to the unchanged v1 policy fields.
+/// `reference` remains the harness baseline and must equal the first lineage entry.
+#[derive(
+    Debug, Clone, PartialEq, Eq, borsh::BorshSerialize, borsh::BorshDeserialize, serde::Serialize,
+)]
+pub struct RuleSetManifestV2 {
+    #[serde(flatten)]
+    pub policy: RuleSetManifestV1,
+    pub reference_lineage: Vec<Reference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
+pub enum RuleSetManifest {
+    V1(RuleSetManifestV1),
+    V2(RuleSetManifestV2),
+}
+
+impl<'de> serde::Deserialize<'de> for RuleSetManifest {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // One strict wire schema preserves unknown-field diagnostics. Serde flatten
+        // plus an untagged enum would silently accept unknown v2 policy fields.
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            version: u32,
+            name: String,
+            solc: String,
+            evm_version: String,
+            optimizer_runs: u32,
+            tools: Tools,
+            reference: Reference,
+            r1: LayoutRule,
+            r2: SolvencyRule,
+            r3: FilterRule,
+            r4: InitializerRule,
+            r5: ReplayRule,
+            ai: AiPolicy,
+            max_cert_ttl_s: u64,
+            #[serde(default, deserialize_with = "present_lineage")]
+            reference_lineage: Option<Vec<Reference>>,
+        }
+        fn present_lineage<'de, D: serde::Deserializer<'de>>(
+            d: D,
+        ) -> Result<Option<Vec<Reference>>, D::Error> {
+            <Vec<Reference> as serde::Deserialize>::deserialize(d).map(Some)
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        let policy = RuleSetManifestV1 {
+            version: wire.version,
+            name: wire.name,
+            solc: wire.solc,
+            evm_version: wire.evm_version,
+            optimizer_runs: wire.optimizer_runs,
+            tools: wire.tools,
+            reference: wire.reference,
+            r1: wire.r1,
+            r2: wire.r2,
+            r3: wire.r3,
+            r4: wire.r4,
+            r5: wire.r5,
+            ai: wire.ai,
+            max_cert_ttl_s: wire.max_cert_ttl_s,
+        };
+        match (policy.version, wire.reference_lineage) {
+            (1, None) => Ok(Self::V1(policy)),
+            (2, Some(reference_lineage)) => Ok(Self::V2(RuleSetManifestV2 {
+                policy,
+                reference_lineage,
+            })),
+            (1, Some(_)) => Err(serde::de::Error::custom(
+                "unknown field `reference_lineage` in v1 manifest",
+            )),
+            (2, None) => Err(serde::de::Error::missing_field("reference_lineage")),
+            _ => Err(serde::de::Error::custom("unsupported manifest version")),
+        }
+    }
+}
+
+impl std::ops::Deref for RuleSetManifest {
+    type Target = RuleSetManifestV1;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::V1(m) => m,
+            Self::V2(m) => &m.policy,
+        }
+    }
+}
+impl std::ops::DerefMut for RuleSetManifest {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::V1(m) => m,
+            Self::V2(m) => &mut m.policy,
+        }
+    }
+}
+impl RuleSetManifest {
+    pub fn references(&self) -> &[Reference] {
+        match self {
+            Self::V1(m) => std::slice::from_ref(&m.reference),
+            Self::V2(m) => &m.reference_lineage,
+        }
+    }
+}
+impl borsh::BorshSerialize for RuleSetManifest {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> Result<(), borsh::io::Error> {
+        match self {
+            Self::V1(m) if m.version == 1 => borsh::BorshSerialize::serialize(m, writer),
+            Self::V2(m) if m.policy.version == 2 => borsh::BorshSerialize::serialize(m, writer),
+            _ => Err(borsh::io::Error::new(
+                borsh::io::ErrorKind::InvalidData,
+                "unsupported manifest version",
+            )),
+        }
+    }
+}
+impl borsh::BorshDeserialize for RuleSetManifest {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> Result<Self, borsh::io::Error> {
+        let policy = RuleSetManifestV1::deserialize_reader(reader)?;
+        match policy.version {
+            1 => Ok(Self::V1(policy)),
+            2 => Ok(Self::V2(RuleSetManifestV2 {
+                policy,
+                reference_lineage: Vec::<Reference>::deserialize_reader(reader)?,
+            })),
+            _ => Err(borsh::io::Error::new(
+                borsh::io::ErrorKind::InvalidData,
+                "unsupported manifest version",
+            )),
+        }
+    }
+}
+
+pub fn validate_rule_set(m: &RuleSetManifest) -> Result<(), &'static str> {
+    match m {
+        RuleSetManifest::V1(m) if m.version != 1 => return Err("unsupported manifest version"),
+        RuleSetManifest::V2(m) => {
+            if m.policy.version != 2 || m.reference_lineage.first() != Some(&m.policy.reference) {
+                return Err("lineage must start with the reference baseline");
+            }
+            let mut names = std::collections::BTreeSet::new();
+            for reference in &m.reference_lineage {
+                if reference.contract_name.is_empty()
+                    || reference.source_sha256s.is_empty()
+                    || !names.insert(&reference.contract_name)
+                {
+                    return Err("empty or duplicate lineage reference");
+                }
+            }
+        }
+        _ => {}
+    }
+    validate_policy(m)
+}
 record!(Tools { pub foundry: String, pub halmos: String, pub upgrades_core: String, pub z3: String, pub yices: String });
 record!(Reference { pub contract_name: String, pub source_sha256s: std::collections::BTreeMap<String, Hex32> });
 // [I] R1 exceptions are committed; R3 independently rejects dangerous opcodes.
@@ -66,9 +221,10 @@ record!(AiEvidence {
 record!(AiCandidate { pub sha256: Hex32, pub reproduced: bool });
 record!(EvidenceBlock { pub number: u64, pub hash: Hex32 });
 
-/// The rule-set schema both the verifier and the CLI accept. A manifest that fails here has
-/// no meaningful `rule_set_hash`: unresolved R2 commitments and unsupported tools are refused.
-pub fn validate_rule_set(m: &RuleSetManifest) -> Result<(), &'static str> {
+fn validate_policy(m: &RuleSetManifestV1) -> Result<(), &'static str> {
+    if m.reference.contract_name.is_empty() || m.reference.source_sha256s.is_empty() {
+        return Err("empty reference");
+    }
     let r = &m.r2;
     if r.harness_sha256.is_none()
         || r.invariant_depth.is_none()
@@ -81,8 +237,7 @@ pub fn validate_rule_set(m: &RuleSetManifest) -> Result<(), &'static str> {
     {
         return Err("R2 commitment unresolved: null fields refuse startup");
     }
-    if m.version != 1
-        || m.solc != "0.8.38"
+    if m.solc != "0.8.38"
         || m.evm_version != "prague"
         || m.tools.foundry != "1.8.6"
         || m.tools.halmos != "0.3.3"

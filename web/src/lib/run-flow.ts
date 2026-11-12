@@ -1,9 +1,9 @@
-import type { keccak256 } from "viem";
 import type { BaseClient, ProxyRead, ProxyReads } from "./base.ts";
 import type { SourceBundle } from "./bundle.ts";
 import type { GateClient } from "./gate.ts";
-import type { Config, EvmTx } from "./gate-types.ts";
-import type { AcceptedProposal, DemoSignerConfig, ProposeArgs } from "./near-write.ts";
+import type { Config } from "./gate-types.ts";
+import { type AcceptedProposal, GateWriteError, type ProposeArgs, type ProposeSigner } from "./near-write.ts";
+import { reasonText } from "./reasons.ts";
 import type {
   reduceSurface,
   Source,
@@ -12,30 +12,45 @@ import type {
   SurfaceState,
 } from "./state.ts";
 import type { SurfaceView, surfaceView } from "./surface-view.ts";
-import type { VerifierClient } from "./verifier.ts";
-import { isAccountId } from "./wire.ts";
+import type { RunRefusedError, VerifierClient } from "./verifier.ts";
 
-export type FlowKind = "attack" | "honest";
+/** What one attack proposes. Every value comes from the gallery; nothing is invented here. */
 export interface ProposalInput {
   newImpl: string;
   newImplCodehash: string;
-  expectedCurrentImpl: string;
   /** Explicitly configured, including empty `0x`; never invent an initializer. */
   initCalldata: string;
-  /** Omit to use the build-time embedded contracts/src fixture tree for this kind. */
-  bundle?: SourceBundle;
+  bundle: SourceBundle;
 }
-export interface RunFlowConfig extends DemoSignerConfig {
+
+export interface RunFlowConfig {
+  nearRpc: string;
+  gateAccount: string;
   verifierUrl: string;
   baseRpc: string;
-  proposals: Record<FlowKind, ProposalInput>;
+  /** Contract name shown in the view, for example `VaultV2Drain`. */
+  label: string;
+  /** `localStorage` key that remembers this run across reloads. One key per account and attack. */
+  storageKey: string;
+  proposal: ProposalInput;
 }
+
+/** The verifier is occupied; the proposal is recorded and the page is waiting to start its run. */
+export interface RunWaiting {
+  reason: "verifier_busy";
+  retryAtMs: number;
+}
+
 export interface RunFlowUpdate {
   state: SurfaceState;
   view: SurfaceView;
   proposalId: number | null;
   nearTxHash: string | null;
+  waiting: RunWaiting | null;
+  /** The gate's recorded rejection, once observed; the card compares it with the gallery's expectation. */
+  rejection: { ruleId: number; reasonCode: number } | null;
 }
+
 export interface RunFlow {
   start(): Promise<void>;
   dispose(): void;
@@ -45,10 +60,9 @@ export type FlowTimer = number | NodeJS.Timeout;
 export interface RunFlowDeps {
   gate: Pick<GateClient, "getConfig" | "getProposal">;
   verifier: Pick<VerifierClient, "identity" | "startRun" | "getRun">;
-  base: BaseClient;
-  propose(config: DemoSignerConfig, args: ProposeArgs): Promise<AcceptedProposal>;
+  base: Pick<BaseClient, "readImplementation">;
+  propose: ProposeSigner;
   seal(bytes: Uint8Array, transportPubkey: string): Promise<Uint8Array>;
-  relay(config: Config, evm: EvmTx): Promise<string>;
   storage: Pick<Storage, "getItem" | "setItem">;
   now(): number;
   setTimer(callback: () => void, ms: number): FlowTimer;
@@ -57,60 +71,12 @@ export interface RunFlowDeps {
   subscribeVisibility(callback: () => void): () => void;
 }
 
-/** All deployment values are explicit. No production-like defaults or sample addresses. */
-export function readFlowConfig(env: Record<string, string | undefined>): RunFlowConfig | null {
-  const nearRpc = env.PUBLIC_NEAR_RPC;
-  const gateAccount = env.PUBLIC_GATE_ACCOUNT;
-  const verifierUrl = env.PUBLIC_VERIFIER_URL;
-  const baseRpc = env.PUBLIC_BASE_RPC;
-  const demoAccountId = env.PUBLIC_DEMO_ACCOUNT_ID;
-  const demoSecretKey = env.PUBLIC_DEMO_SECRET_KEY;
-  if (!nearRpc || !gateAccount || !verifierUrl || !baseRpc || !demoAccountId || !demoSecretKey)
-    return null;
-  if (!isAccountId(gateAccount) || !isAccountId(demoAccountId)) return null;
-  // Base58-encoded 64-byte Ed25519 secret (seed + public key). Decode length without a crypto SDK.
-  if (!/^ed25519:[1-9A-HJ-NP-Za-km-z]+$/.test(demoSecretKey)) return null;
-  const key = demoSecretKey.slice(8);
-  if (key.length < 64 || key.length > 88) return null;
-  let integer = 0n;
-  const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  for (const char of key) integer = integer * 58n + BigInt(alphabet.indexOf(char));
-  const leading = key.match(/^1*/)?.[0].length ?? 0;
-  const byteLength = integer === 0n ? 0 : Math.ceil(integer.toString(16).length / 2);
-  if (leading + byteLength !== 64) return null;
-  for (const value of [nearRpc, verifierUrl, baseRpc]) {
-    try {
-      const url = new URL(value);
-      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.hash)
-        return null;
-    } catch {
-      return null;
-    }
-  }
-  const proposals = {} as Record<FlowKind, ProposalInput>;
-  for (const kind of ["attack", "honest"] as const) {
-    const prefix = `PUBLIC_${kind.toUpperCase()}`;
-    const newImpl = env[`${prefix}_IMPL`];
-    const newImplCodehash = env[`${prefix}_CODEHASH`];
-    const expectedCurrentImpl = env[`${prefix}_CURRENT_IMPL`];
-    const initCalldata = env[`${prefix}_INIT_CALLDATA`];
-    if (!newImpl || !newImplCodehash || !expectedCurrentImpl || initCalldata === undefined)
-      return null;
-    if (
-      ![newImpl, expectedCurrentImpl].every(
-        (value) => /^0x[0-9a-f]{40}$/.test(value) && !/^0x0{40}$/.test(value),
-      )
-    )
-      return null;
-    if (
-      !/^0x[0-9a-f]{64}$/.test(newImplCodehash) ||
-      !/^0x(?:[0-9a-f]{2}){0,1024}$/.test(initCalldata)
-    )
-      return null;
-    proposals[kind] = { newImpl, newImplCodehash, expectedCurrentImpl, initCalldata };
-  }
-  return { nearRpc, gateAccount, verifierUrl, baseRpc, demoAccountId, demoSecretKey, proposals };
-}
+/** Refusals that mean "not now": the proposal stays recorded and the same run is posted again. */
+const BUSY_CODES = ["queue_full", "busy", "rate_limited"] as const;
+const DEFAULT_RETRY_S = 8;
+const MAX_RETRY_S = 60;
+/** The gate's proposal TTL is an hour; stop well inside it and leave recovery to the visitor. */
+const MAX_BUSY_WAIT_MS = 15 * 60_000;
 
 interface SavedRun {
   version: 1;
@@ -138,12 +104,15 @@ function unavailable<T>(source: Source<T>, error: string): Source<T> {
   };
 }
 
-/** Click-only state machine. start resolves after setup + first observation, not after finality. */
+/**
+ * Click-only state machine for one attack. `start` resolves after setup and the first
+ * observation, not after finality. It never proposes twice: a stored proposal id is resumed, and a
+ * proposal whose verifier run was never recorded gets its run posted again, nothing else.
+ */
 export function createRunFlow(
-  kind: FlowKind,
   config: RunFlowConfig,
   onUpdate: (update: RunFlowUpdate) => void,
-  injected: Partial<RunFlowDeps> = {},
+  injected: Partial<RunFlowDeps> & Pick<RunFlowDeps, "propose">,
 ): RunFlow {
   let disposed = false;
   let stopped = false;
@@ -152,13 +121,10 @@ export function createRunFlow(
   let timer: FlowTimer | undefined;
   let unsubscribe: (() => void) | undefined;
   let deps: RunFlowDeps;
-  let gateConfig: Config;
-  let runtime: {
-    reduceSurface: typeof reduceSurface;
-    surfaceView: typeof surfaceView;
-    keccak256: typeof keccak256;
-  };
+  let RunRefused: typeof RunRefusedError;
+  let runtime: { reduceSurface: typeof reduceSurface; surfaceView: typeof surfaceView };
   let current: SurfaceState = { kind: "idle" };
+  let waiting: RunWaiting | null = null;
   let saved: SavedRun = {
     version: 1,
     attempted: true,
@@ -167,8 +133,6 @@ export function createRunFlow(
     bootId: null,
     nearTxHash: null,
   };
-  const storageKey = `constitution:run:${config.gateAccount}:${kind}`;
-  let relayedHash: string | null = null;
   const input: SurfaceInput = {
     submission: { phase: "none" },
     proposal: { status: "idle" },
@@ -183,17 +147,25 @@ export function createRunFlow(
     current = runtime.reduceSurface(input, current.kind);
     const observedRun = last(input.run)?.value;
     const observedProposal = last(input.proposal)?.value;
+    const rejection = observedProposal?.rejection ?? null;
+    const reason = rejection === null ? null : reasonText(rejection.reason_code);
     onUpdate({
       state: current,
       view: runtime.surfaceView(current, {
-        fixture: kind === "attack" ? "VaultV2Drain" : "VaultV2Honest",
+        fixture: config.label,
         ...(saved.proposalId === null ? {} : { proposalId: saved.proposalId }),
         ...(observedRun ? { runStages: observedRun.stages } : {}),
         verifierObserved: observedRun !== undefined && observedRun !== null,
         ...(observedProposal ? { ruleSetHash: observedProposal.rule_set_hash } : {}),
+        ...(reason === null ? {} : { ruleReason: reason }),
       }),
       proposalId: saved.proposalId,
       nearTxHash: saved.nearTxHash,
+      waiting,
+      rejection:
+        rejection === null
+          ? null
+          : { ruleId: rejection.rule_id, reasonCode: rejection.reason_code },
     });
     if (["executed", "rejected", "expired", "reverted", "error"].includes(current.kind)) {
       stopped = true;
@@ -207,7 +179,7 @@ export function createRunFlow(
   }
 
   function persist(): void {
-    deps.storage.setItem(storageKey, JSON.stringify(saved));
+    deps.storage.setItem(config.storageKey, JSON.stringify(saved));
   }
 
   function schedule(): void {
@@ -229,6 +201,17 @@ export function createRunFlow(
     }
   }
 
+  /** Resolves `false` when the flow was disposed while waiting. */
+  function sleep(ms: number): Promise<boolean> {
+    const { promise, resolve } = Promise.withResolvers<boolean>();
+    const wake = deps.setTimer(() => resolve(!disposed), ms);
+    if (disposed) {
+      deps.clearTimer(wake);
+      resolve(false);
+    }
+    return promise;
+  }
+
   async function observe(): Promise<void> {
     if (disposed || stopped || saved.proposalId === null) return;
     try {
@@ -243,13 +226,20 @@ export function createRunFlow(
       try {
         const run = await deps.verifier.getRun(saved.runId);
         if (disposed) return;
-        if (run !== null && (run.gate_account !== config.gateAccount ||
-            run.proposal_id !== saved.proposalId || run.boot_id !== saved.bootId)) {
+        if (
+          run !== null &&
+          (run.gate_account !== config.gateAccount ||
+            run.proposal_id !== saved.proposalId ||
+            run.boot_id !== saved.bootId)
+        ) {
           saved.runId = null;
           saved.bootId = null;
           persist();
           input.run = { status: "idle" };
-          fail("verifier_unreachable", "The saved verifier run belongs to a different proposal or verifier boot. Inspect the proposal with the CLI.");
+          fail(
+            "verifier_unreachable",
+            "The saved verifier run belongs to a different proposal or verifier boot. Inspect the proposal with the CLI.",
+          );
           return;
         }
         input.run = { status: "ok", value: run, observedAtMs: deps.now() };
@@ -259,44 +249,16 @@ export function createRunFlow(
     }
     if (disposed) return;
     const proposal = last(input.proposal)?.value;
-    if (kind === "attack" && proposal?.evm !== null && proposal?.evm !== undefined) {
+    // Every demo run is an attack: a signing record means a rule failed to hold. Never relay it.
+    if (proposal?.evm !== null && proposal?.evm !== undefined) {
       fail(
         "other",
         "The attack proposal unexpectedly has a signing record. Do not relay it; inspect the gate and its accepted certificate.",
       );
       return;
     }
-    if (proposal?.state === "Signed" && proposal.evm?.signed_tx) {
-      const hash = runtime.keccak256(proposal.evm.signed_tx as `0x${string}`);
-      if (relayedHash !== hash) {
-        try {
-          await deps.relay(gateConfig, proposal.evm);
-          relayedHash = hash;
-        } catch {
-          if (!disposed)
-            fail(
-              "broadcast_failed",
-              "The signed transaction could not be broadcast. Inspect this proposal and relay with the CLI; do not repropose.",
-            );
-          return;
-        }
-      }
-      if (disposed) return;
-      try {
-        const observation = await deps.base.readTransaction(hash);
-        if (disposed) return;
-        input.evm = { status: "ok", value: observation, observedAtMs: deps.now() };
-      } catch {
-        input.evm = unavailable(input.evm, "Base RPC is unreachable");
-      }
-    }
-    if (disposed) return;
     // Rejection needs observed before/after reads too, not a claim inferred from no signature.
-    if (
-      proposal?.state === "Rejected" ||
-      proposal?.state === "Expired" ||
-      (proposal?.state === "Signed" && last(input.evm)?.value.status === "included")
-    ) {
+    if (proposal?.state === "Rejected" || proposal?.state === "Expired") {
       try {
         const after = await deps.base.readImplementation(gateConfig.proxy);
         if (disposed) return;
@@ -305,60 +267,121 @@ export function createRunFlow(
       } catch {
         input.proxy = unavailable(input.proxy, "Base implementation read is unavailable");
         // Do not permanently stop at a rejection whose requested final observation failed.
-        if (input.proxy.status === "unavailable" && input.proxy.failures < 3) {
-          return;
-        }
+        if (input.proxy.status === "unavailable" && input.proxy.failures < 3) return;
       }
     }
     if (disposed) return;
     emit();
   }
 
+  let gateConfig: Config;
+
+  /**
+   * Seals the bundle and posts the run for `proposalId`. A busy verifier is waited out in place;
+   * any other refusal ends the attempt with a recovery that never involves proposing again.
+   */
+  async function postRun(proposalId: number, sealed?: Uint8Array): Promise<boolean> {
+    let bytes = sealed;
+    if (bytes === undefined) {
+      const { encodeSourceBundle } = await import("./bundle.ts");
+      const identity = await deps.verifier.identity();
+      if (disposed) return false;
+      bytes = await deps.seal(encodeSourceBundle(config.proposal.bundle), identity.transport_pubkey);
+    }
+    const waitStart = deps.now();
+    for (;;) {
+      if (disposed) return false;
+      try {
+        const run = await deps.verifier.startRun({
+          gate: config.gateAccount,
+          proposalId,
+          sealedBundle: bytes,
+        });
+        if (
+          run.gateAccount !== config.gateAccount ||
+          run.proposalId !== proposalId ||
+          !/^[0-9a-f]{64}$/.test(run.bootId)
+        )
+          throw new Error("Verifier run binding mismatch");
+        saved.bootId = run.bootId;
+        saved.runId = run.runId;
+        persist();
+        waiting = null;
+        return true;
+      } catch (error) {
+        if (disposed) return false;
+        if (!(error instanceof RunRefused)) {
+          waiting = null;
+          fail(
+            "verifier_unreachable",
+            "Your proposal is recorded on NEAR, but the verifier did not accept a recorded run. Check the demo verifier below and try again; this page will not propose twice.",
+          );
+          return false;
+        }
+        if ((BUSY_CODES as readonly string[]).includes(error.code)) {
+          const seconds = Math.min(error.retryAfterSeconds ?? DEFAULT_RETRY_S, MAX_RETRY_S);
+          if (deps.now() - waitStart + seconds * 1000 > MAX_BUSY_WAIT_MS) {
+            waiting = null;
+            fail(
+              "run_refused",
+              "The verifier stayed busy. Your proposal is recorded and still pending; reload this page to try posting its run again",
+            );
+            return false;
+          }
+          waiting = { reason: "verifier_busy", retryAtMs: deps.now() + seconds * 1000 };
+          emit();
+          if (!(await sleep(seconds * 1000))) return false;
+          continue;
+        }
+        waiting = null;
+        // The proposal already moved on (for example it was decided): reading the gate is enough.
+        if (error.code === "proposal_not_pending") return true;
+        fail(
+          "run_refused",
+          error.code === "cooling_down"
+            ? `The verifier is cooling down after earlier failed runs${
+                error.retryAfterSeconds === null
+                  ? ""
+                  : `; it accepts this proposal again in about ${Math.ceil(error.retryAfterSeconds / 60)} min`
+              }`
+            : `The verifier refused the run (${error.code})`,
+        );
+        return false;
+      }
+    }
+  }
+
   async function start(): Promise<void> {
-    // state→verifier→seal currently has static heavy dependencies. Keep the ENTIRE runtime
-    // behind the click boundary, not just the NEAR SDK. Type imports above erase completely.
-    const [state, view, viem] = await Promise.all([
+    // The state machine and the verifier client pull in heavy modules; keep them behind the click.
+    const [state, view, verifier] = await Promise.all([
       import("./state.ts"),
       import("./surface-view.ts"),
-      import("viem"),
-    ]);
-    runtime = {
-      reduceSurface: state.reduceSurface,
-      surfaceView: view.surfaceView,
-      keccak256: viem.keccak256,
-    };
-    if (disposed) return;
-    const [gate, verifier, base, writer, sealing] = await Promise.all([
-      injected.gate ? undefined : import("./gate.ts"),
       import("./verifier.ts"),
+    ]);
+    runtime = { reduceSurface: state.reduceSurface, surfaceView: view.surfaceView };
+    RunRefused = verifier.RunRefusedError;
+    if (disposed) return;
+    const [gate, base, sealing] = await Promise.all([
+      injected.gate ? undefined : import("./gate.ts"),
       injected.base ? undefined : import("./base.ts"),
-      import("./near-write.ts"),
       injected.seal ? undefined : import("./seal.ts"),
     ]);
     if (disposed) return;
     try {
       const gateClient =
-        injected.gate ??
-        gate?.createGateClient({ rpcUrl: config.nearRpc, gate: config.gateAccount });
+        injected.gate ?? gate?.createGateClient({ rpcUrl: config.nearRpc, gate: config.gateAccount });
       const verifierClient =
-        injected.verifier ?? verifier?.createVerifierClient({ baseUrl: config.verifierUrl });
+        injected.verifier ?? verifier.createVerifierClient({ baseUrl: config.verifierUrl });
       const baseClient = injected.base ?? base?.createBaseClient({ rpcUrl: config.baseRpc });
       const seal = injected.seal ?? sealing?.sealBundle;
-      if (!gateClient || !verifierClient || !baseClient || !seal)
-        throw new Error("Flow runtime is unavailable");
+      if (!gateClient || !baseClient || !seal) throw new Error("Flow runtime is unavailable");
       deps = {
         gate: gateClient,
         verifier: verifierClient,
         base: baseClient,
-        propose: injected.propose ?? writer.proposeWithDemoKey,
+        propose: injected.propose,
         seal,
-        relay:
-          injected.relay ??
-          (async (cfg, evm) => {
-            const { relaySignedTransaction } = await import("./relay.ts");
-            return relaySignedTransaction(config.baseRpc, cfg, evm);
-          }),
-        storage: injected.storage ?? globalThis.sessionStorage,
+        storage: injected.storage ?? globalThis.localStorage,
         now: injected.now ?? Date.now,
         setTimer: injected.setTimer ?? ((callback, ms) => setTimeout(callback, ms)),
         clearTimer: injected.clearTimer ?? clearTimeout,
@@ -371,7 +394,7 @@ export function createRunFlow(
             return () => document.removeEventListener("visibilitychange", callback);
           }),
       };
-      const stored = deps.storage.getItem(storageKey);
+      const stored = deps.storage.getItem(config.storageKey);
       if (stored !== null) {
         const value: SavedRun = JSON.parse(stored);
         const validId = (id: unknown) =>
@@ -387,7 +410,10 @@ export function createRunFlow(
         )
           throw new Error("Invalid saved run");
         saved = value;
-        if (saved.runId !== null && (typeof saved.bootId !== "string" || !/^[0-9a-f]{64}$/.test(saved.bootId))) {
+        if (
+          saved.runId !== null &&
+          (typeof saved.bootId !== "string" || !/^[0-9a-f]{64}$/.test(saved.bootId))
+        ) {
           saved.runId = null;
           saved.bootId = null;
           persist();
@@ -395,17 +421,10 @@ export function createRunFlow(
         if (saved.proposalId === null) {
           fail(
             "other",
-            "The earlier NEAR submission is uncertain. Inspect the demo account before starting a new run; this page will not submit it again.",
+            "The earlier NEAR submission is uncertain. Check your account's active proposal below before starting a new run; this page will not submit it again.",
           );
           return;
         }
-        if (saved.runId === null)
-          input.submission = {
-            phase: "failed",
-            cause: "verifier_unreachable",
-            detail:
-              "The accepted proposal has no recorded verifier run. Inspect it with the CLI; this page will not re-post or repropose automatically.",
-          };
       } else {
         input.submission = { phase: "sealing" };
         emit();
@@ -414,73 +433,52 @@ export function createRunFlow(
       gateConfig = (await deps.gate.getConfig()).value;
       if (disposed) return;
       if (gateConfig.chain_id !== 84532) throw new Error("Gate is not configured for Base Sepolia");
+      let sealed: Uint8Array | undefined;
       if (saved.proposalId === null) {
-        const candidate = config.proposals[kind];
+        const candidate = config.proposal;
         const { encodeSourceBundle, sourceCommitment } = await import("./bundle.ts");
-        const bundle =
-          candidate.bundle ?? (await import("../data/flow-sources.ts")).fixtureBundle(kind);
-        const bytes = encodeSourceBundle(bundle);
+        const bytes = encodeSourceBundle(candidate.bundle);
         const commitment = await sourceCommitment(bytes);
         if (disposed) return;
         const identity = await deps.verifier.identity();
         if (disposed) return;
-        const sealed = await deps.seal(bytes, identity.transport_pubkey);
+        sealed = await deps.seal(bytes, identity.transport_pubkey);
         if (disposed) return;
         saved.before = await deps.base.readImplementation(gateConfig.proxy);
         if (disposed) return;
-        if (saved.before.implementation !== candidate.expectedCurrentImpl)
-          throw new Error("Current implementation differs from configured proposal");
         saved.beforeObservedAtMs = deps.now();
-        input.proxy = {
-          status: "ok",
-          value: { before: saved.before },
-          observedAtMs: saved.beforeObservedAtMs,
-        };
-        // Refuse to write without durable session storage; uncertainty survives reload.
+        // Refuse to write without durable storage; uncertainty survives reload.
         persist();
         input.submission = { phase: "registering" };
         emit();
         if (disposed) return;
-        const accepted = await deps.propose(config, {
+        const args: ProposeArgs = {
           new_impl: candidate.newImpl,
           new_impl_codehash: candidate.newImplCodehash,
-          expected_current_impl: candidate.expectedCurrentImpl,
+          expected_current_impl: saved.before.implementation,
           init_calldata: candidate.initCalldata,
           source_commitment: commitment,
-        });
+        };
+        const accepted: AcceptedProposal = await deps.propose(args);
         saved.proposalId = accepted.proposalId;
         saved.nearTxHash = accepted.nearTxHash;
         persist();
         if (disposed) return;
         input.submission = { phase: "none" };
-        try {
-          const run = await deps.verifier.startRun({
-            gate: config.gateAccount,
-            proposalId: accepted.proposalId,
-            sealedBundle: sealed,
-          });
-          if (run.gateAccount !== config.gateAccount || run.proposalId !== accepted.proposalId ||
-              !/^[0-9a-f]{64}$/.test(run.bootId)) throw new Error("Verifier run binding mismatch");
-          saved.bootId = run.bootId;
-          saved.runId = run.runId;
-          persist();
-        } catch (error) {
-          if (disposed) return;
-          const refused = error instanceof verifier.RunRefusedError;
-          fail(
-            refused ? "run_refused" : "verifier_unreachable",
-            "Your proposal is recorded on NEAR, but the verifier did not accept a recorded run. Inspect this proposal with the CLI; do not repropose.",
-          );
-          return;
-        }
       }
-      if (disposed) return;
       if (saved.before !== undefined && saved.beforeObservedAtMs !== undefined)
         input.proxy = {
           status: "ok",
           value: { before: saved.before },
           observedAtMs: saved.beforeObservedAtMs,
         };
+      if (saved.runId === null) {
+        input.submission = { phase: "none" };
+        emit();
+        const posted = await postRun(saved.proposalId, sealed);
+        if (disposed || stopped || !posted) return;
+      }
+      if (disposed) return;
       unsubscribe = deps.subscribeVisibility(() => {
         if (disposed || stopped) return;
         if (deps.isHidden()) {
@@ -491,11 +489,11 @@ export function createRunFlow(
       await poll();
     } catch (error) {
       if (disposed) return;
-      if (error instanceof writer.GateWriteError) fail(error.cause, error.detail);
+      if (error instanceof GateWriteError) fail(error.cause, error.detail);
       else
         fail(
           "other",
-          "The run could not start. Check deployment configuration and session storage, then inspect the demo account before submitting again.",
+          "The run could not start. Check your connection and account state below, then try again; nothing was proposed unless a proposal id is shown.",
         );
     }
   }

@@ -10,9 +10,18 @@ interface Props {
   id?: string;
   proposalId?: number;
   runId?: number;
+  /** The gate and verifier to read; default to the final gate of this build; the final verifier is retired, so no verifier by default. */
+  gate?: string | null;
+  verifier?: string | null;
 }
 
-const { id = "proposal-watch", proposalId, runId } = Astro.props;
+const {
+  id = "proposal-watch",
+  proposalId,
+  runId,
+  gate = site.gateAccount,
+  verifier = null,
+} = Astro.props;
 const initial = surfaceView({ kind: "idle" });
 const fields = [
   ["id", "Proposal id"],
@@ -39,15 +48,15 @@ const fields = [
 ---
 
 {
-  site.gateAccount !== null && (
+  gate !== null && (
     <div
       id={id}
       class="live-surface proposal-watch"
       data-watch
-      data-gate={site.gateAccount}
+      data-gate={gate}
       data-near-rpc={site.nearRpc}
       data-base-rpc={site.baseRpc}
-      data-verifier={site.verifierUrl}
+      data-verifier={verifier}
       data-explorer={site.baseExplorer}
       data-initial-id={proposalId}
       data-run-id={runId}
@@ -71,7 +80,7 @@ const fields = [
       <output aria-live="polite" data-watch-status>
         Enter a proposal id. This page only reads; it cannot submit, sign or relay a proposal.
       </output>
-      <article aria-labelledby={`${id}-title`} data-watch-record>
+      <article aria-labelledby={`${id}-title`} data-watch-record hidden>
         <h3 id={`${id}-title`} class="live-verdict" tabindex="-1">
           <Marker state="pending" />
           <span data-watch-title>{initial.title}</span>
@@ -95,7 +104,7 @@ const fields = [
         <a data-watch-explorer hidden rel="noopener">View on Base Sepolia explorer</a>
         <span class="live-meta" data-watch-explorer-note hidden>Opens the explorer.</span>
         <p class="live-meta">
-          This is a partial record of public chain reads, not a canonical receipt. Use
+          This is a partial record of public chain reads, not a canonical receipt. Use{" "}
           <code>constitution receipt &lt;proposal id&gt;</code> for the complete receipt and evidence.
         </p>
       </article>

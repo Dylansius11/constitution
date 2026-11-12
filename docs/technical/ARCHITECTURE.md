@@ -127,6 +127,8 @@ All rows observed 2026-10-26. "Index" = official crates.io sparse index (`https:
 | CLI NEAR client | near-api | 0.8.6 | index | Rust NEAR RPC and signing |
 | CLI/verifier EVM client | alloy | 2.5.0 (MSRV 1.94.1) | docs.rs manifest | Base reads, prestate fetch, broadcast |
 | CLI args | clap | 4.6.7 | index | |
+| CLI interactive rendering | ratatui | 0.30.2 (exact workspace pin) | [crates.io API](https://crates.io/api/v1/crates/ratatui), verified 2026-11-12 | [V] Latest stable non-yanked release observed; `default-features = false`, Crossterm 0.29 backend |
+| CLI terminal events | crossterm | 0.29.0 (exact workspace pin) | [crates.io API](https://crates.io/api/v1/crates/crossterm), verified 2026-11-12 | [V] Latest stable non-yanked release observed; raw-mode/alternate-screen restoration on error and panic |
 | HTTP | reqwest 0.13.5, axum 0.8.9, tokio 1.54.1 | as listed | index | Verifier API and clients |
 | Verifier EVM | revm | 43.0.3 (MSRV 1.91.0) | docs.rs manifest | Native in CVM, default features acceptable outside WASI |
 | Verifier signing | ed25519-dalek | 3.0.0 | index | Certificate signatures; gate verifies with `env::ed25519_verify` [V] |
@@ -238,6 +240,61 @@ R2 as committed [I; local measurements in `crates/verifier/evidence/depth/`]: Ha
 
 [V, exercised on testnet 2026-11-10] The deployed rule-set hash is `0x1efe635ac3eb0eb59b0df0d56c7243b2728922898b55487bc5cf8063db94a410`, matching the committed manifest in the final audit (SMART-CONTRACT).
 
+#### Version 2: committed current-reference lineage
+
+[I, implemented for the separate live demo; deployment evidence below] `RuleSetManifest`
+dispatches on the existing numeric `version`. V1 retains exactly its original Borsh
+fields and JSON; no enum discriminant is added. V2 serializes those same fields with
+`version = 2`, followed by `reference_lineage: Vec<Reference>`. Its hash is
+`sha256(borsh(v2))`; the leading little-endian u32 separates the version domains.
+JSON keeps the existing policy fields and adds `reference_lineage`. The nonempty,
+ordered lineage must start with `reference`; empty references, duplicate contract
+names, unknown versions and unsupported policy/tool values are refused.
+
+[I] `rules/demo/manifest.json` commits VaultV1, VaultV2Honest and VaultV3Honest.
+`VERIFIER_MANIFEST` selects a repository-relative file (default `rules/manifest.json`);
+absolute paths, traversal and canonicalized symlink escapes are refused. Rule 0
+reproduces reference runtimes in committed order and selects the first whose keccak
+equals the observed current runtime; no match is `Reject(0,4)`. All lineage source
+pins are checked before compilation; omitted trusted reference files are supplied
+from compiled-in bytes, never arbitrary checkout files. The selected reference
+drives R1, current-side R5 replay and the explicit AI current-reference context.
+The final gate and its original v1 manifest are unchanged.
+
+[I] The unchanged R2 harness directly deploys the candidate behind an ERC1967Proxy,
+initializes its token and V2 cap, then explores bounded deposits/withdrawals. It
+does not execute a V1-to-candidate migration. V3 inherits V2 without new storage or
+changes to existing functions; its read-only `remainingCapacity()` therefore uses
+the same R2 harness and preserves all committed R5 calls, return data, logs and
+state. R1/R5 separately check the actual current-state upgrade path. These bounded
+checks are not a proof of arbitrary migration states or untested entry points.
+
+[I] Lineage is an allowlist of reproducible *current* implementations, not a
+forward-only version rule. With empty init, same-version proposals and V3-to-V2
+can satisfy deterministic rules (the capacity-preview feature is outside R5's
+corpus); V2/V3-to-V1 removes `depositCap` and fails R1. AI Clean remains required
+for any Pass certificate. Judges cannot select an uncommitted reference or bypass
+the first-failing-rule order by naming a lineage entry in a bundle.
+
+[V, locally computed 2026-11-11] The demo v2 manifest hash is
+`0xa988551688a3c7a7c61faa25591b933a419d1233779ce6e5bac38456474d8cc8`.
+The local lineage integration passed honest V1-to-V2 and V2-to-V3 through R1–R5
+(AI withheld), and all four gallery first-failure rules at V3. Exact local
+commands, durations and non-attestation limits are in LOCAL.md. These local
+checks did not prove testnet honest upgrades or AI certification.
+
+[V, exercised on testnet 2026-11-11] The separate `constitution-demo.testnet`
+deployment now uses this v2 manifest and the same immutable gate wasm as the
+final gate, with demo CVM `cvm_VKZRaXKr` and its own service image/compose.
+Four CLI attacks were rejected by R2/20, R1/10, R3/30 and R4/41 without signing
+or changing the demo proxy. [V, exercised on testnet 2026-11-12] The founder's
+wallet runs (proposals 5–8) were also rejected; the demo gate's key was then
+deleted and the keyless demo audit exited 0. Honest V1→V2→V3 testnet upgrades
+remain planned. See the [evidence table](../../README.md#proof-not-promises).
+The final gate and manifest remain unchanged; its CVM was retired 2026-11-12.
+
+
+
 ### Evidence manifest
 
 `EvidenceManifest { certificate_fields_digest, compile: {solc, settings_hash, runtime_hash}, current: {address, runtime_hash, reproduced: bool}, r1..r5: {status: Pass|Fail|Incomplete, artifact_sha256, detail_code}, ai: {model, completion_id, request_sha256, response_sha256, signature_kind, signature, preflight_digest, candidates: [{sha256, reproduced}]}, evidence_block: {number, hash}, archive_provider }`. `evidence_root = sha256(borsh(manifest))`.
@@ -271,6 +328,7 @@ rendered deployment inputs before quote appraisal. [V, exercised on testnet 2026
 
 | Command | Effect |
 | --- | --- |
+| `constitution` / `constitution tui` | [I, implemented] Same-binary interactive terminal. No subcommand opens it only when stdout is a TTY; non-TTY prints clap help and exits 2. Explicit `tui` requires terminal stdin/stdout. Existing named subcommands retain their own output/exit behavior. |
 | `constitution propose --bundle <dir> --contract src/<file>.sol:<Name> --impl <addr> [--init <hex>] [--verifier <url>]` | Reads the gate config and implementation codehash, appraises the exact verifier identity used to seal the bundle before any NEAR write, deposits the credit shortfall, proposes and posts the run. Set `EXPECT_COMPOSE_HASH` to the owner-approved compose hash; `PCCS_URL` optionally selects the collateral service. |
 | `constitution status <id> [--run <run_id>] [--watch <s>]` | Gate state plus verifier stages; polls every 2 s until a terminal gate state, terminal run (`done` or `failed`), or timeout. `failed` exits 1 with the stable code, cause and retry command; the proposal stays Pending. Withheld AI review means no certificate; `submit: Incomplete` retains a certificate and requires inspection of relay transactions before retrying |
 | `constitution relay <id> [--change] [--watch <s>]` | Recovers sender, broadcasts the gate's `signed` raw transaction (details below) |
@@ -284,6 +342,29 @@ rendered deployment inputs before quote appraisal. [V, exercised on testnet 2026
 | `constitution demo attack\|upgrade --bundle <dir> --contract <path:Name> --impl <address> --account <id> --key-file <file> --gate <id> --network local\|testnet --near-rpc <url> --evm-rpc <url> --verifier <url> --output <new-directory> [--init <hex>] [--send-rpc <url>] [--watch <seconds>]` | Proposes once, watches the existing proposal, and retains recovery metadata plus an observed receipt. Attack never relays. Upgrade relays only Signed state through the existing sender/transaction checks; success additionally requires inclusion and candidate implementation-slot readback |
 
 `make attack` and `make upgrade` invoke this runner with explicit inputs, rather than deploying implementations or manufacturing certificates. Both print the evidence directory; a successful run prints `receipt.json`. `make audit` invokes the existing read-only audit with an explicit deployment record and RPCs. `make test` runs the Rust workspace serially; it requires the documented sandbox/Foundry/Docker prerequisites and is not a lightweight health check.
+#### Interactive terminal
+
+[I, implemented] Run from the repository root in Linux/WSL2. Five screens: **Overview, Proposals, Run, Audit, Receipt**. `Tab` or `1`–`5` navigates, `?` opens key help, `p` switches profiles, `r` refreshes, `q`/`Esc` closes an overlay/editor or returns to Overview and then exits. `j`/`k` or arrows scroll; Proposals uses up/down to select and Enter to fetch the assembled detail. Overview auto-refreshes every 30 seconds, labels its observation time, and retains explicit read errors rather than inventing values.
+
+[I, implemented] Demo is the default writable profile; Final is read-only and labels its verifier **retired** without probing it (founder retirement reported 2026-11-12). Deployment/manifest bindings come from `deployments/demo.json` + `rules/demo/manifest.json`, or `deployments/testnet.json` + `rules/manifest.json`. Only the interactive path defaults NEAR RPC to `https://near-testnet.drpc.org`; `NEAR_RPC_URL` and `BASE_SEPOLIA_RPC_URL` override interactive endpoints. Existing subcommand defaults are deliberately unchanged. Verifier endpoint availability is not attestation appraisal: the identity display says unappraised, and the existing proposal path still appraises before writes.
+
+[I, implemented] Run uses left/right to select gallery presets, `e` to edit account/key-file/bundle/contract/implementation/init, Tab/Shift+Tab between editor fields, Enter to finish editing, and `u` to choose attack versus upgrade for custom inputs. Enter outside the editor validates a regular key-file path without reading it, builds canonical source, and reads current funding/bindings for the confirmation; only `y` on that confirmation launches signing. NEAR credit/reservation/non-refundable storage, gas and possible funded verifier AI use are disclosed. Values are observations, not a promise that mutable chain state cannot change before submission.
+
+[I, implemented] `tui/app.rs` owns state and the pure event reducer; `tui/data.rs` owns background work; `tui/mod.rs` owns terminal lifecycle and input; `tui/view/**` is pure rendering, with style constants only in `view/theme.rs`. Read workers reuse RPC, rules, receipt, audit and proposal bundle functions. The write worker launches this **same executable's unchanged `demo` subcommand**, capturing stdout/stderr away from the terminal and observing its recovery artifacts and verifier/gate stages. This process boundary preserves all demo checks and allows local cancellation without modifying the signing/relay protocol.
+
+[I, implemented] Artifacts use a new create-only `scratch/tui-runs/<attack|upgrade>-<UTC>` directory; the parent is created if missing. The existing demo writes `attempt.json`, `submission.json`, `run.json`, `receipt.json` and failure metadata under its existing permission/retention policy. Ctrl+C stops the local child immediately, with one confirmation conservatively required from process launch (including appraisal), since a NEAR write may precede consumption of its stdout notification. The read-only observation worker may take its bounded request time to return. Cancellation does **not** undo NEAR credit/proposals, verifier jobs, MPC requests or Base transactions. Inspect the retained proposal before any retry. Never interpret an unobserved stage as Pass; unobserved completion stays pending with an explanation rather than inventing a not-run result.
+
+[I, implemented] Gallery attack inputs come directly from `deployments/demo-gallery.json`. Its current upgrade entries contain `from/to/impl` only, so the single demo-constants module supplies founder-confirmed V2/V3 contracts and initializers: V2 `initializeV2(1000)` (ABI-encoding regression test), V3 empty `0x`. V2 is unavailable when already current; V3 requires V2 as the current proxy implementation. Explicit future `contract`/`init_calldata` gallery fields take precedence. All deployment files remain read-only.
+
+[I, implemented] Audit Enter runs the existing F7 evaluation and displays each PASS/FAIL/WARN plus its exit result. Receipt `i` edits the proposal id, Enter fetches `constitution.receipt/1`, and `s` enters a new JSON path (Enter saves, create-only). These surfaces never manufacture certificate facts absent from observed evidence.
+
+[I, implemented] Typed presentation contract: `Snapshot.proposals` and `App.detail` expose `ProposalView` (canonical `ProposalState`, plain proposer, UTC creation/expiry, implementation/code/source/certificate/evidence fields and explorer URLs). `Refusal` uses the single numeric rule/reason meaning table copied from the guide's `skills/constitution/references/refusals.md`; unknown pairs remain explicitly unknown. `v` toggles retained raw observations rather than removing access to original JSON. `PendingChangeView` carries the change kind/status, exact `eta_ns`, `eta_utc`, saturated remaining nanoseconds and ceiling-rounded seconds. This is a **local-clock ETA countdown**, not proof that every governance-application precondition holds.
+
+[I, implemented] Overview `a` explicitly appraises the Demo verifier in a background worker using the existing seven named appraisal checks, pinned compose hash and optional `PCCS_URL`; it does not sign or start AI. `App.appraisal` retains each named result and the observation time, while `appraising` identifies pending work. Final reads `deployments/final-verifier-retired/{identity,appraisal,cvm}.json` and labels that identity/appraisal **recorded**, never probing the retired URL. Only absent files use the same recorded bindings/checks as constants; malformed or unreadable files report errors. The retained appraisal has no exact capture timestamp, so the UI says so rather than substituting the CVM/identity timestamp.
+
+[I, implemented] `Step.started_at` / `finished_at` and `App.run_started_at` / `run_finished_at` are client-observed transition times, not backfilled remote or chain execution times. Verifier-reported elapsed milliseconds remain separate. Presets expose `previous_run` only when gallery `observed.duration_ms` or `observed.duration_s` is present (with optional `observed_at`); absent timing evidence is `None`, never a latency estimate. `App.last_action_result` supplies an info/success/error message and observed time for a view-owned toast.
+
+
 
 #### Demo runner operation
 

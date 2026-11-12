@@ -1,0 +1,68 @@
+---
+import { VERIFIER_LABELS } from "../../lib/surface-view.ts";
+import StatusBadge from "../ui/StatusBadge.astro";
+
+/**
+ * The rule set the demo gate enforces. The rule texts are the verifier's own stage descriptions;
+ * the hash is read from the gate by `app.ts`. The other packs are plans, never offered.
+ */
+const rules = [
+  VERIFIER_LABELS.r1_layout,
+  VERIFIER_LABELS.r2_solvency,
+  VERIFIER_LABELS.r3_filter,
+  VERIFIER_LABELS.r4_initializer,
+  VERIFIER_LABELS.r5_replay,
+];
+const planned = ["Token pack", "Governance pack", "Lending pack"];
+---
+
+<div class="app-panel" data-ruleset>
+  <h2>Active rule set: Vault pack</h2>
+  <p class="muted">
+    Five checks guard one vault upgrade. They are committed on the gate; changing them needs a
+    timelocked governance change.
+  </p>
+  <ol class="app-rules">
+    {
+      rules.map((rule) => (
+        <li>
+          <strong>{rule.label}</strong>
+          <span>{rule.detail}</span>
+        </li>
+      ))
+    }
+  </ol>
+  <dl class="app-facts">
+    <div>
+      <dt>Rule set hash</dt>
+      <dd data-ruleset-hash>Not read</dd>
+    </div>
+  </dl>
+  <p class="live-meta muted" data-ruleset-note></p>
+  <div>
+    <h4 class="app-packs__title">Rule packs</h4>
+    <ul class="app-packs">
+      <li data-active="true">Vault pack <StatusBadge tone="observed">Active</StatusBadge></li>
+      {
+        planned.map((name) => (
+          <li>
+            {name} <StatusBadge tone="awaiting">Planned</StatusBadge>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="muted app-packs__note">Planned packs are not available and cannot be selected yet.</p>
+  </div>
+</div>
+
+<style>
+  .app-packs__title {
+    margin-bottom: var(--space-3);
+    font-size: var(--text-base);
+  }
+
+  .app-packs__note {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+  }
+</style>

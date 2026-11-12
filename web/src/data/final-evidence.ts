@@ -4,6 +4,9 @@
 
 export const RECORDED_ON = "2026-11-10";
 
+/** The final verifier CVM was deleted on this date (founder decision, budget). The gate stays keyless evidence. */
+export const VERIFIER_RETIRED_ON = "2026-11-12";
+
 export const finalGate = {
   account: "constitution-gate.testnet",
   codeHash: "GjPz45TdYvvuVX5k2NtSKDm8gdBt3gvdF7WpUJXZvLGP",
