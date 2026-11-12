@@ -1,14 +1,16 @@
 ---
 import { DEMO_RECORDED_ON, demoKeyless } from "../../../data/demo-evidence.ts";
-import { CLI, demoGate, NEAR_RPC_DEFAULT } from "../../../data/docs.ts";
+import { demoGate, NEAR_RPC_DEFAULT } from "../../../data/docs.ts";
 import { site } from "../../../data/site.ts";
 import type { CodeLine, CodeTab } from "../../ui/code-types.ts";
 import CodeBlock from "../../ui/CodeBlock.astro";
 
 /**
- * Quickstart. Prerequisites and build steps are those of README.md "Local quickstart" (Linux or
- * Ubuntu WSL2). The audit flags are from `crates/cli/src/main.rs:95-122`; its defaults point at the
- * final gate, so the demo gate needs both --deployment and --manifest.
+ * Quickstart. Prerequisites and build steps are those of docs/GUIDE.md "What you need" and "Build the
+ * CLI" (Linux or Ubuntu WSL2, Rust 1.99.1 from rust-toolchain.toml, Foundry 1.8.6, solc 0.8.38 from
+ * contracts/foundry.toml). The Ubuntu package list is README.md "Local quickstart". The audit flags
+ * are from `crates/cli/src/main.rs:95-122`; its defaults point at the final gate, so the demo gate
+ * needs both --deployment and --manifest.
  */
 const directory = site.repoUrl === null ? "constitution" : (site.repoUrl.split("/").pop() ?? "constitution");
 const clone: CodeLine[] =
@@ -48,11 +50,15 @@ const build: CodeTab[] = [
     lines: [
       ...clone,
       { cmd: `cd ${directory}` },
-      { cmd: 'export PATH="$HOME/.cargo/bin:$HOME/.foundry/bin:$PATH"' },
-      { cmd: "cargo build -p constitution-cli --locked -j 1" },
+      { cmd: 'source "$HOME/.cargo/env"' },
+      { cmd: 'export PATH="$HOME/.foundry/bin:$PATH"' },
+      { cmd: "cargo build --locked --release -p constitution-cli" },
+      { note: "Puts the binary on PATH for this shell." },
+      { cmd: 'export PATH="$PWD/target/release:$PATH"' },
+      { note: "Builds the local executor artifact that the audit needs." },
       { cmd: "forge build --root contracts" },
-      { note: "Prints the subcommands." },
-      { cmd: `${CLI} --help` },
+      { note: "Prints the headless subcommands." },
+      { cmd: "constitution --help" },
     ],
   },
 ];
@@ -64,7 +70,7 @@ const audit: CodeTab[] = [
     lines: [
       { note: `Reads ${demoGate.account} and compares it with the committed deployment record and rules.` },
       {
-        cmd: `${CLI} audit --deployment deployments/demo.json --manifest rules/demo/manifest.json --near-rpc ${site.nearRpc}`,
+        cmd: `constitution audit --deployment deployments/demo.json --manifest rules/demo/manifest.json --near-rpc ${site.nearRpc}`,
       },
     ],
   },
@@ -73,16 +79,25 @@ const audit: CodeTab[] = [
 
 <div class="docs-prose">
   <p>
-    You need Linux or Ubuntu on WSL2, not a native Windows shell. These steps build the CLI and
-    read public state. They do not need Docker, a wallet, an AI key or a signing key, and they
-    send no transaction.
+    You need Linux or Ubuntu on WSL2, not a native Windows shell: run Rust, Foundry and the NEAR
+    tools inside WSL. These steps build the CLI and read public state. They do not need Docker, a
+    wallet, an AI key or a signing key, and they send no transaction. Treat the commands on this
+    page as instructions, not as evidence that a build or a run just happened.
   </p>
 
   <h3>Before you build</h3>
   <ul>
-    <li>Git, GNU Make and Rustup. The repository pins its Rust toolchain and installs it on the first Cargo run.</li>
-    <li>Foundry <strong>1.8.6</strong>, which provides <code>forge</code> and <code>anvil</code>.</li>
+    <li>Git, GNU Make and Rustup. The repository pins <strong>Rust 1.99.1</strong> in <code>rust-toolchain.toml</code> and installs it on the first Cargo run.</li>
+    <li>
+      Foundry <strong>1.8.6</strong>, which provides <code>forge</code>, <code>cast</code> and {" "}
+      <code>anvil</code>. <code>contracts/foundry.toml</code> pins solc <strong>0.8.38</strong>, the
+      Prague EVM and the optimizer at 200 runs.
+    </li>
     <li>A C toolchain, <code>pkg-config</code> and the OpenSSL development headers.</li>
+    <li>
+      The repository checkout with its Solidity dependencies under <code>contracts/lib/</code>. If
+      your checkout omits them, fetch the repository's pinned versions. Do not substitute newer ones.
+    </li>
   </ul>
   <details class="docs-details">
     <summary>Install them on Ubuntu or WSL2</summary>
@@ -91,38 +106,61 @@ const audit: CodeTab[] = [
 
   <h3>Build the CLI</h3>
   <p>
-    The first build downloads the submodules and compiles every dependency, so it needs a network
-    connection, disk space and time. <code>-j 1</code> keeps memory use low.
+    Run this from the repository root. The first build downloads the submodules and compiles every
+    dependency, so it needs a network connection, disk space and time, and the machine has to stay
+    awake. <code>forge build</code> produces the local executor artifact that <code>audit</code> reads.
   </p>
   <CodeBlock id="docs-build" label="Build" tabs={build} title={`${directory}/`} />
   <p class="muted">
-    If <code>CARGO_TARGET_DIR</code> is set, use its <code>debug/constitution</code> binary in place
-    of <code>./target/debug/constitution</code>.
+    The binary is <code>constitution</code>. Everything after this build calls it by that name.
   </p>
 
   <h3>Audit the demo gate</h3>
   <p>
     <code>audit</code> reads the gate and the Base Sepolia proxy, then checks them against the
-    deployment record and the committed rule set. It changes nothing, and it exits 1 if any check
-    fails.
+    deployment record and the committed rule set. It changes nothing. It exits 1 if any check fails,
+    and a warning exits 0 without being a clean bill of health.
   </p>
   <CodeBlock id="docs-audit" label="Audit" tabs={audit} title={`${directory}/`} />
   <p class="muted">
     The CLI's built-in NEAR endpoint, <code>{NEAR_RPC_DEFAULT}</code>, may rate-limit (HTTP 429)
-    under load. So every example on this page passes <code>--near-rpc {site.nearRpc}</code>
+    under load. So every read on this page passes <code>--near-rpc {site.nearRpc}</code> {" "}
     explicitly, the endpoint this page itself reads through.
   </p>
   <p class="docs-note">
-    <strong>Read every line, not only the exit code.</strong> The README recorded this audit on
+    <strong>Read every line, not only the exit code.</strong> The README recorded this audit on {" "}
     {DEMO_RECORDED_ON}: it failed only <code>gate_has_no_access_keys</code>, because the demo gate's
     access key was still present. That key was deleted on {demoKeyless.date}, and the identical
     audit then exited {demoKeyless.auditExitCode} with {demoKeyless.auditChecks} checks. State
     changes, so read every line of your own run instead of relying on these records.
   </p>
 
+  <h3>What a write needs</h3>
+  <p>
+    Reading needs nothing. To send an upgrade through the demo gate you also need, and must be
+    authorized to use:
+  </p>
+  <ul>
+    <li>
+      A funded <strong>NEAR testnet account</strong> and the <strong>path</strong> to its near-cli key
+      file. The CLI reads the file; never paste its contents anywhere.
+    </li>
+    <li>
+      A matching candidate implementation already <strong>deployed on Base Sepolia</strong>. The CLI
+      does not deploy implementations.
+    </li>
+    <li>An available demo verifier, appraised against the compose hash its owner approved.</li>
+  </ul>
+  <p class="muted">
+    Only the full local verifier integration also needs Docker, a NEAR sandbox, the gate wasm and the
+    pinned verifier tool image. Account creation, funding, signing, deployment and paid inference
+    each need the operator's authorization, and none of this page grants it.
+  </p>
+
   <h3>Where to next</h3>
   <p>
-    To write an upgrade the rules accept, read the next section. To run a ready-made attack without
-    installing anything, open the <a href="/app">live demo</a>.
+    Run <code>constitution</code> with no arguments for the <a href="#tui">terminal UI</a>. To write
+    an upgrade the rules accept, read <a href="#write-an-upgrade">the rules</a>. To run a ready-made
+    attack without installing anything, open the <a href="/app">live demo</a>.
   </p>
 </div>

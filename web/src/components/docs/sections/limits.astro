@@ -1,5 +1,9 @@
 ---
-import { gateComparison, rules } from "../../../data/docs.ts";
+import { demoKeyless } from "../../../data/demo-evidence.ts";
+import { demoGate, gateComparison, rules } from "../../../data/docs.ts";
+import { finalGate } from "../../../data/final-evidence.ts";
+
+const plural = (n: number): string => `${n} ${n === 1 ? "day" : "days"}`;
 
 /**
  * Limits, in plain words. Grounded in docs/PRD.md "Risks and guarantees", README.md ("Live demo gate",
@@ -54,6 +58,37 @@ import { gateComparison, rules } from "../../../data/docs.ts";
     </li>
   </ul>
 
+  <h3>Know the boundary</h3>
+  <ul>
+    <li>
+      <strong>One proxy.</strong> Only the configured proxy is covered, and only once its upgrade
+      authority was fully migrated to the gate. A proxy whose authority was never migrated is not
+      protected.
+    </li>
+    <li>
+      <strong>Everything beside the gate.</strong> Keys and allowances outside it, the frontend
+      supply chain, unrelated contracts, Safe arbitrary signing and malware on a signing device
+      stay outside what these rules can stop.
+    </li>
+    <li>
+      <strong>Trust that remains.</strong> MPC honesty and availability, the TEE vendor and its
+      attestation, the RPC evidence policy, and the availability of the verifier and of inference.
+      A required review that does not finish withholds the certificate.
+    </li>
+    <li>
+      <strong>Governance is delayed, not impossible.</strong> A governor can schedule public
+      changes and a guardian can pause or cancel them, and a hostile guardian can halt signing
+      indefinitely. The delay is {plural(demoGate.governanceDelayDays)} on the demo gate and {" "}
+      {plural(finalGate.governanceDelayDays)} on the final gate, and no CLI switch removes these
+      assumptions.
+    </li>
+    <li>
+      <strong>Keyless is claimed per gate.</strong> The demo gate's key was deleted on {" "}
+      {demoKeyless.date} and its audit exited {demoKeyless.auditExitCode}. That says nothing about any
+      other deployment, so read the current audit of the one you rely on.
+    </li>
+  </ul>
+
   <h3>What the rules do not prove</h3>
   <p>
     Rules protect only what they declare. A flaw outside R1 to R5, or beyond their bounds, can pass.
@@ -80,8 +115,14 @@ import { gateComparison, rules } from "../../../data/docs.ts";
       from your exact initializer.
     </li>
     <li>
+      <strong>The R5 context.</strong> R5 depends on authenticated witnessed state and a pinned
+      header policy. It replays with an all-zero certificate id and the maximum deadline, which an
+      initializer could tell apart from a real certificate, and it does not compare gas.
+    </li>
+    <li>
       <strong>The AI review.</strong> It is nondeterministic. It can refuse with a counterexample the
-      verifier reproduces, and it can never approve.
+      verifier reproduces, and it can never approve. A timeout or error withholds certification, so an
+      honest deterministic pass alone cannot sign while the required review is incomplete.
     </li>
     <li>
       <strong>Attestation.</strong> It shows which code ran on which input. It does not show that the

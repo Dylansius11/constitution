@@ -1,9 +1,9 @@
 import type { CodeTab } from "../components/ui/code-types.ts";
 import { type DemoAttack, parseDemoGallery } from "../lib/demo-gallery.ts";
-import { reasonText, ruleName } from "../lib/reasons.ts";
+import { reasonText, ruleLabel, ruleName } from "../lib/reasons.ts";
 import { asString, Obj } from "../lib/wire.ts";
-import { demoGate as recordedDemoGate, demoVerifier as recordedDemoVerifier } from "./demo-evidence.ts";
-import { finalGate } from "./final-evidence.ts";
+import { demoGate as recordedDemoGate, demoKeyless, demoVerifier as recordedDemoVerifier } from "./demo-evidence.ts";
+import { finalEvm, finalGate, VERIFIER_RETIRED_ON } from "./final-evidence.ts";
 import { type ManifestFacts, parseManifest } from "./manifest.ts";
 import { site } from "./site.ts";
 
@@ -29,9 +29,19 @@ export const sections: readonly DocsSection[] = [
     summary: "Build the CLI and audit the demo gate from public state.",
   },
   {
+    id: "tui",
+    title: "TUI tour",
+    summary: "Run constitution with no arguments to inspect a gate, run an attack or an honest upgrade, audit it and read receipts.",
+  },
+  {
     id: "write-an-upgrade",
     title: "Write an upgrade that passes",
     summary: "The five rules your vault upgrade must satisfy, with the numbers the demo gate committed.",
+  },
+  {
+    id: "skill",
+    title: "AI skill",
+    summary: "Give your coding agent the same workflow: author, check and propose an upgrade, then read the verdict.",
   },
   {
     id: "commands",
@@ -167,6 +177,28 @@ export const demoGate = {
   governanceDelayDays: deployment.safe("governance_delay_days"),
 };
 export const attacks: readonly DemoAttack[] = gallery.attacks;
+
+/**
+ * The honest upgrade presets, from `deployments/demo-gallery.json` `upgrades[]`. The gallery's
+ * `observed` fields are null in this snapshot, so a preset is a reference, not proof that the demo
+ * gate already ran it. The contract path follows the repository's `src/demo/<Name>.sol:<Name>` layout.
+ */
+const upgradeRecords = new Obj(committed(galleryFiles, "deployments/demo-gallery.json"), "deployments/demo-gallery.json")
+  .arr("upgrades")
+  .map((entry, index) => new Obj(entry, `deployments/demo-gallery.json.upgrades[${index}]`));
+
+function honestUpgrade(from: string, to: string): { contract: string; impl: string } {
+  const record = upgradeRecords.find((entry) => entry.str("from") === from && entry.str("to") === to);
+  if (record === undefined) {
+    throw new Error(`docs: deployments/demo-gallery.json has no upgrade ${from} to ${to}`);
+  }
+  return { contract: `src/demo/${to}.sol:${to}`, impl: record.hex("impl", 20) };
+}
+
+export const honestV2 = honestUpgrade("VaultV1", "VaultV2Honest");
+export const honestV3 = honestUpgrade("VaultV2Honest", "VaultV3Honest");
+/** `false` while every `upgrades[].observed` in the gallery is null: the presets are then not proof of an executed demo upgrade. */
+export const honestUpgradesObserved: boolean = upgradeRecords.every((entry) => entry.raw("observed") !== null);
 
 // The demo verifier recorded in data/demo-evidence.ts (README "Live demo gate" table, 2026-11-11). The
 // page build may override the endpoint with PUBLIC_DEMO_VERIFIER_URL, the same input /app uses, so the
@@ -313,7 +345,8 @@ export const precheck: readonly string[] = [1, 2, 3, 4].map((code) => {
 // Headless commands
 // ---------------------------------------------------------------------------------------------------
 
-export const CLI = "./target/debug/constitution";
+/** The binary name as the guide invokes it: built with `cargo build --locked --release -p constitution-cli`, then on PATH. */
+export const CLI = "constitution";
 const VERIFIER = '"$VERIFIER_URL"';
 /** The CLI's compiled-in default. It answers HTTP 429 under load, so examples pass `NEAR_RPC` instead. */
 export const NEAR_RPC_DEFAULT = "https://test.rpc.fastnear.com";
@@ -356,6 +389,8 @@ export interface CommandDoc {
   purpose: string;
   access: Access;
   tab: CodeTab;
+  /** Further examples for the same command, shown as extra tabs beside `tab`. */
+  moreTabs?: readonly CodeTab[];
   flags: readonly FlagDoc[];
   note?: string;
 }
@@ -369,9 +404,17 @@ export interface CommandGroup {
 
 const days = (n: number): string => `${n} ${n === 1 ? "day" : "days"}`;
 
-function tab(label: string, lines: CodeTab["lines"]): CodeTab {
-  return { id: "run", label, lines };
+function tab(label: string, lines: CodeTab["lines"], id = "run"): CodeTab {
+  return { id, label, lines };
 }
+
+/** The flags every `demo` write passes, after the preset's own `--bundle --contract --impl --init`. */
+function demoWriteFlags(output: string): string {
+  return `--account "$DEMO_ACCOUNT" --key-file "$DEMO_KEY_FILE" --gate ${demoGate.account} --network testnet --near-rpc ${NEAR_RPC} --evm-rpc ${EVM_RPC_DEFAULT} --verifier ${VERIFIER} --output ${output} --watch 900`;
+}
+
+/** `initializeV2(uint256)` with the honest cap, the way the guide builds it. Needs Foundry's `cast`. */
+const HONEST_V2_INIT = `"$(cast calldata 'initializeV2(uint256)' 1000)"`;
 
 const drain = attacks[0];
 if (drain === undefined) throw new Error("docs: the demo gallery has no attack to show in `demo`");
@@ -388,10 +431,20 @@ export const commandGroups: readonly CommandGroup[] = [
         usage: "audit",
         purpose: "Prove the claim's preconditions from public state. Exits 1 on any failed check.",
         access: "Read-only",
-        tab: tab("audit", [
+        tab: tab("demo gate", [
           { note: "Compares the demo gate with its deployment record and committed rules." },
           { cmd: `${CLI} audit --deployment deployments/demo.json --manifest rules/demo/manifest.json --near-rpc ${NEAR_RPC}` },
         ]),
+        moreTabs: [
+          tab(
+            "final gate",
+            [
+              { note: "Recorded evidence only: the final gate is read-only and its verifier is retired." },
+              { cmd: `${CLI} audit --deployment deployments/testnet.json --manifest rules/manifest.json --near-rpc ${NEAR_RPC}` },
+            ],
+            "final",
+          ),
+        ],
         flags: [
           { flag: "--deployment <path>", note: "Deployment record written at activation. Default deployments/testnet.json." },
           { flag: "--manifest <path>", note: "Committed rule-set manifest the gate must enforce. Default rules/manifest.json." },
@@ -402,7 +455,7 @@ export const commandGroups: readonly CommandGroup[] = [
           { flag: "--near-rpc <url>", note: `NEAR RPC. Also read from NEAR_RPC_URL. Default ${NEAR_RPC_DEFAULT}.` },
           { flag: "--evm-rpc <url>", note: `Base Sepolia RPC. Also read from BASE_SEPOLIA_RPC_URL. Default ${EVM_RPC_DEFAULT}.` },
         ],
-        note: "The defaults point at the final gate, so the demo gate needs both --deployment and --manifest. Audit compares public state with your local files; it does not appraise the verifier.",
+        note: "The defaults point at the final gate, so the demo gate needs both --deployment and --manifest. There is no --network or --gate flag: the gate comes from the deployment record. Audit compares public state with your local files, which are trusted inputs, and does not appraise the verifier. FAIL exits 1; WARN alone exits 0 but is not a clean bill of health, so read every line.",
       },
       {
         id: "status",
@@ -450,19 +503,20 @@ export const commandGroups: readonly CommandGroup[] = [
     id: "send",
     title: "Send an upgrade",
     summary:
-      "These write: they spend gate credit, sign with your NEAR key, send source to the verifier or broadcast a transaction. Appraise the verifier before you seal private source to it.",
+      "These write: they spend gate credit, sign with your NEAR key, send source to the verifier or broadcast a transaction. Each needs your explicit authorization, so none of them is safe to paste blindly. Testnet only.",
     commands: [
       {
         id: "propose",
-        // crates/cli/src/main.rs:37-59 (Propose) with SignerArgs, 252-279. The doc comment says the
-        // verifier identity is not appraised, which is why `verifier appraise` comes first.
+        // crates/cli/src/main.rs:37-59 (Propose) with SignerArgs, 252-279. The clap doc comment still says
+        // the identity is not appraised; crates/cli/src/appraise.rs `sealing_key` appraises any remote
+        // verifier against EXPECT_COMPOSE_HASH before sealing, which is what the guide says. The code wins.
         usage: "propose",
         purpose: "Register your source commitment on the gate, seal the bundle to the verifier and start a run.",
         access: "Signs with your NEAR key",
         tab: tab("propose", [
-          { note: "Prints the verifier run id on success. Run it from the repository root." },
+          { note: "Submits once and starts verification. It does not watch or relay. Prints the proposal and run ids; keep them." },
           {
-            cmd: `${CLI} propose --account <you>.testnet --gate ${demoGate.account} --near-rpc ${NEAR_RPC} --bundle contracts --contract src/<File>.sol:<Contract> --impl <address of your deployed implementation> --init 0x --verifier ${VERIFIER}`,
+            cmd: `${CLI} propose --bundle contracts --contract src/<File>.sol:<Contract> --impl <address of your deployed implementation> --init 0x --account "$DEMO_ACCOUNT" --key-file "$DEMO_KEY_FILE" --gate ${demoGate.account} --network testnet --near-rpc ${NEAR_RPC} --evm-rpc ${EVM_RPC_DEFAULT} --verifier ${VERIFIER}`,
           },
         ]),
         flags: [
@@ -474,7 +528,7 @@ export const commandGroups: readonly CommandGroup[] = [
           { flag: "--evm-rpc <url>", note: `Base Sepolia RPC. Also read from BASE_SEPOLIA_RPC_URL. Default ${EVM_RPC_DEFAULT}.` },
           ...SIGNER_FLAGS,
         ],
-        note: "Proposal storage is paid from prepaid credit on the gate, so fund it first; the first step of the live demo does that. Your implementation's runtime code hash must equal what the verifier compiles from your source.",
+        note: "An alternative to demo upgrade, not the step after it. Before it seals anything the CLI appraises the verifier against EXPECT_COMPOSE_HASH and refuses if that is unset or the appraisal fails. Plaintext source is not uploaded as public chain data. Proposal storage is paid from prepaid credit on the gate: a propose-only key cannot deposit it, so fund it separately with an authorized wallet. Your implementation's runtime code hash must equal what the verifier compiles from your source.",
       },
       {
         id: "verifier-run",
@@ -496,7 +550,7 @@ export const commandGroups: readonly CommandGroup[] = [
           { flag: "--near-rpc <url>", note: `NEAR RPC. Also read from NEAR_RPC_URL. Default ${NEAR_RPC_DEFAULT}.` },
           { flag: "--verifier-url <url>", note: "Required. Verifier address. Also read from VERIFIER_URL." },
         ],
-        note: "The bundle must hash to the commitment already recorded on the gate; the verifier refuses any other.",
+        note: "The bundle must hash to the commitment already recorded on the gate; the verifier refuses any other. This is a re-seal, not a new proposal, but it can still consume verifier and inference credit: honor Retry-After and do not retry in a loop. If a submission is uncertain, inspect the gate and the relay transactions first.",
       },
       {
         id: "relay",
@@ -505,8 +559,10 @@ export const commandGroups: readonly CommandGroup[] = [
         purpose: "Broadcast the raw transaction the gate signed, after recovering its sender off-chain.",
         access: "Broadcasts a signed transaction",
         tab: tab("relay", [
-          { note: "Only a proposal the gate has Signed has a transaction to broadcast. Run it promptly." },
-          { cmd: `${CLI} relay <proposal id> --gate ${demoGate.account} --near-rpc ${NEAR_RPC} --watch 300` },
+          { note: "Only a proposal the gate has Signed has a transaction to broadcast. Never relay a rule-violating attack." },
+          {
+            cmd: `${CLI} relay <proposal id> --gate ${demoGate.account} --near-rpc ${NEAR_RPC} --evm-rpc ${EVM_RPC_DEFAULT} --send-rpc https://sepolia-sequencer.base.org --watch 900`,
+          },
         ]),
         flags: [
           { flag: "<id>", note: "Required. A proposal id, or a change id with --change." },
@@ -520,7 +576,7 @@ export const commandGroups: readonly CommandGroup[] = [
             note: "Broadcast endpoint. Also read from BASE_SEPOLIA_SEND_URL. Default https://sepolia-sequencer.base.org.",
           },
         ],
-        note: "Anyone can relay. The executor on Base Sepolia accepts only a transaction signed for the gate's derived address.",
+        note: "Anyone can relay. The executor on Base Sepolia accepts only a transaction signed for the gate's derived address. There is no --network flag. demo upgrade already relays when it is safe, so use this only after you have read the existing evidence and state. A change id with --change is an applied MigrateAuthority change, not an upgrade retry.",
       },
       {
         id: "demo",
@@ -529,12 +585,36 @@ export const commandGroups: readonly CommandGroup[] = [
         usage: "demo <attack|upgrade>",
         purpose: "Propose, watch, check the outcome and keep evidence, in one run.",
         access: "Signs with your NEAR key",
-        tab: tab("demo", [
-          { note: "attack expects a rejection with the proxy unchanged. upgrade relays an honest upgrade once Signed." },
+        tab: tab("attack", [
+          { note: `A refusal demo. It is a success only if the gate records a rejection, nothing is signed and the proxy is unchanged. The implementation address is the recorded ${drain.title.toLowerCase()} candidate, not one this page produced.` },
+          { cmd: "mkdir -p receipts" },
           {
-            cmd: `${CLI} demo attack --bundle contracts --contract ${drain.contract} --impl ${drain.impl} --init ${drain.initCalldata} --account <you>.testnet --gate ${demoGate.account} --key-file .secrets/near-credentials/testnet/<you>.testnet.json --network testnet --near-rpc ${NEAR_RPC} --evm-rpc ${EVM_RPC_DEFAULT} --verifier ${VERIFIER} --output ./demo-drain`,
+            cmd: `${CLI} demo attack --bundle contracts --contract ${drain.contract} --impl ${drain.impl} --init ${drain.initCalldata} ${demoWriteFlags("receipts/drain-001")}`,
           },
         ]),
+        moreTabs: [
+          tab(
+            "honest V2",
+            [
+              { note: "Run only when the observed current version is V1. Needs Foundry's cast for the initializer." },
+              { cmd: "mkdir -p receipts" },
+              {
+                cmd: `${CLI} demo upgrade --bundle contracts --contract ${honestV2.contract} --impl ${honestV2.impl} --init ${HONEST_V2_INIT} ${demoWriteFlags("receipts/honest-v2-001")}`,
+              },
+            ],
+            "v2",
+          ),
+          tab(
+            "honest V3",
+            [
+              { note: "Only after V2's inclusion and implementation-slot readback were observed. V3 has no initializer." },
+              {
+                cmd: `${CLI} demo upgrade --bundle contracts --contract ${honestV3.contract} --impl ${honestV3.impl} --init 0x ${demoWriteFlags("receipts/honest-v3-001")}`,
+              },
+            ],
+            "v3",
+          ),
+        ],
         flags: [
           { flag: "<attack|upgrade>", note: "Required. attack: accept only an observed rejection. upgrade: relay after Signed." },
           { flag: "--bundle <path>", note: "Required. Source directory." },
@@ -552,7 +632,7 @@ export const commandGroups: readonly CommandGroup[] = [
           { flag: "--output <dir>", note: "Required. A new directory whose parent exists. An existing path is never reused." },
           { flag: "--watch <seconds>", note: "Maximum polling time per gate or relay stage. Default 2100." },
         ],
-        note: "Demo writes never inherit endpoints or wallet defaults, and never reuse an output directory. If a run is interrupted, inspect the evidence directory and the chain before you run again.",
+        note: "Demo writes never inherit endpoints or wallet defaults. The output path's parent must exist and the path itself must not, so use a fresh name for a genuinely new run, never to retry an uncertain write. An honest upgrade succeeds only on a successful Base receipt plus a matching implementation-slot readback; Signed is not enough. After an interruption read submission.json, run.json, failure.json and any readable receipt.json, then the chain, before you run again. The examples set --watch 900 on purpose.",
       },
     ],
   },
@@ -615,7 +695,8 @@ export const commandGroups: readonly CommandGroup[] = [
   {
     id: "governance",
     title: "Governance",
-    summary: "Timelocked changes to a gate. Scheduling and cancelling need a role you do not hold on the demo gate.",
+    summary:
+      "Timelocked changes to a gate. For authorized demo operators only: scheduling needs the governor, cancelling the guardian, and the final gate has no write path here.",
     commands: [
       {
         id: "govern",
@@ -624,8 +705,10 @@ export const commandGroups: readonly CommandGroup[] = [
         purpose: "Schedule, apply or cancel a timelocked change.",
         access: "Signs with your NEAR key",
         tab: tab("govern", [
-          { note: `Anyone can apply a matured change. The demo gate's delay is ${days(demoGate.governanceDelayDays)}.` },
-          { cmd: `${CLI} govern apply <change id> --account <you>.testnet --gate ${demoGate.account} --near-rpc ${NEAR_RPC}` },
+          { note: `Anyone with a signing account can apply a matured change. The demo gate's delay is ${days(demoGate.governanceDelayDays)}.` },
+          {
+            cmd: `${CLI} govern --account "$DEMO_ACCOUNT" --key-file "$DEMO_KEY_FILE" --gate ${demoGate.account} --network testnet --near-rpc ${NEAR_RPC} apply <change id>`,
+          },
         ]),
         flags: [
           { flag: "schedule --kind <json>", note: `Governor only. For example --kind '"Unpause"'.` },
@@ -633,7 +716,7 @@ export const commandGroups: readonly CommandGroup[] = [
           { flag: "cancel <change id>", note: "Guardian only. Cancel a pending change." },
           ...SIGNER_FLAGS,
         ],
-        note: "An early apply is refused with E53_TIMELOCK_NOT_ELAPSED, as recorded on the final gate.",
+        note: "Use a change id you observed in the queue. An early apply is refused with E53_TIMELOCK_NOT_ELAPSED, as recorded on the final gate. A proposer key is not necessarily authorized for any of these. The Unpause example schedules a real change, so do not run it only to test syntax.",
       },
     ],
   },
@@ -664,7 +747,12 @@ export const gateComparison: readonly GateComparisonRow[] = [
   {
     term: "Access key",
     final: "Deleted on 2026-11-10; the keyless audit passed.",
-    demo: "Retained while the founder tests it, so its audit still fails gate_has_no_access_keys (README, 2026-11-11).",
+    demo: `Deleted on ${demoKeyless.date} (NEAR transaction ${demoKeyless.keyDeletionTx}). The same audit then exited ${demoKeyless.auditExitCode} with ${demoKeyless.auditChecks} checks.`,
+  },
+  {
+    term: "Verifier",
+    final: `Retired on ${VERIFIER_RETIRED_ON}. Recorded evidence only; there is nothing to send to.`,
+    demo: "A separate demo verifier. It was recorded online on 2026-11-11, and its availability is not promised.",
   },
   {
     term: "Purpose",
@@ -675,5 +763,208 @@ export const gateComparison: readonly GateComparisonRow[] = [
     term: "Run an attack again",
     final: "No. Its proxy now runs the honest V2, so a new proposal stops at the pre-check before R2.",
     demo: `Yes: the ${attacks.length} gallery attacks on /app.`,
+  },
+];
+
+// ---------------------------------------------------------------------------------------------------
+// TUI tour (docs/GUIDE.md "TUI tour"; keymap from crates/cli/src/tui/mod.rs key_event)
+// ---------------------------------------------------------------------------------------------------
+
+export interface TuiProfile {
+  name: string;
+  use: string;
+  account: string;
+  record: string;
+  manifest: string;
+  proxy: string;
+  delay: string;
+  writes: boolean;
+}
+
+/** Two separate deployments, not two views of one vault. The final profile has no write path. */
+export const tuiProfiles: readonly TuiProfile[] = [
+  {
+    name: "Demo gate",
+    use: "Live inspection, and attack or honest-upgrade runs you explicitly authorize.",
+    account: demoGate.account,
+    record: "deployments/demo.json",
+    manifest: "rules/demo/manifest.json",
+    proxy: demoGate.proxy,
+    delay: days(demoGate.governanceDelayDays),
+    writes: true,
+  },
+  {
+    name: "Final gate, read-only",
+    use: "Audit and inspect the recorded final evidence.",
+    account: finalGate.account,
+    record: "deployments/testnet.json",
+    manifest: "rules/manifest.json",
+    proxy: finalEvm.proxy,
+    delay: days(finalGate.governanceDelayDays),
+    writes: false,
+  },
+];
+
+export interface TuiScreen {
+  key: string;
+  name: string;
+  shows: string;
+  honesty: string;
+}
+
+export const tuiScreens: readonly TuiScreen[] = [
+  {
+    key: "1",
+    name: "Overview",
+    shows:
+      "The selected gate and protected proxy, the rule commitment, the current implementation, the authority and audit context, and any service or read errors. Compare it with the deployment record you chose.",
+    honesty: `A failing keyless prerequisite is a real failure. Deleting the final gate's key does not show that the demo gate is keyless: its own audit does, and it exited ${demoKeyless.auditExitCode} on ${demoKeyless.date}.`,
+  },
+  {
+    key: "2",
+    name: "Proposals",
+    shows:
+      "The proposals of the selected gate, each one's inputs and lifecycle, and the verifier's actual stages when a run is known.",
+    honesty:
+      "Pending means no final accepted verdict yet. Rejected carries the numeric rule and reason. SignRequested means an MPC request exists, and SignFailed needs signing diagnosis. Signed means raw transaction bytes exist, not that the proxy changed: EVM inclusion and the implementation are read separately.",
+  },
+  {
+    key: "3",
+    name: "Run",
+    shows:
+      "Demo gate only. Choose a rule-violating attack preset to show a refusal, or the honest V2 then V3 upgrade. Inspect the source contract, the deployed implementation and the exact initializer, then confirm. You supply your authorized NEAR account, a key-file path and a fresh evidence directory; an existing directory is never overwritten.",
+    honesty:
+      "An attack succeeds as a demonstration only when the gate records a rejection, there is no signing record and the proxy is unchanged. It never relays. An honest upgrade relays only after Signed and succeeds only on a successful Base receipt plus a matching implementation-slot readback. No button or AI answer overrides this.",
+  },
+  {
+    key: "4",
+    name: "Audit",
+    shows:
+      "The public-state authority audit for the selected profile. It compares the observed gate, rule hash, registered verifiers and the executor, ProxyAdmin and proxy binding with the deployment record and your local executor artifact, including the expected governance delay.",
+    honesty:
+      "FAIL exits nonzero in headless mode. WARN exits zero but is not a clean bill of health. Read the named failed precondition and its recovery instead of dismissing it as a display problem.",
+  },
+  {
+    key: "5",
+    name: "Receipt",
+    shows:
+      "A proposal's canonical evidence: its inputs, the accepted certificate or the rejection, rule and AI outcomes when available, and the observed NEAR transaction and EVM inclusion and implementation data. Gate-only reads need no verifier.",
+    honesty:
+      "Missing or unavailable accepted-certificate evidence is incomplete, not a verified receipt. Files under deployments/demo-receipts/ are historical evidence, not current network status.",
+  },
+];
+
+export interface TuiKey {
+  /** Alternatives that do the same thing; the page joins them with "or". */
+  keys: readonly string[];
+  action: string;
+}
+
+export interface TuiKeyGroup {
+  scope: string;
+  keys: readonly TuiKey[];
+}
+
+/**
+ * The one keymap, as final on 2026-11-12 (GUIDE keyboard reference; crates/cli/src/tui/mod.rs). The
+ * page renders it from this array only, so a new key is one entry in the right group.
+ */
+export const tuiKeymap: readonly TuiKeyGroup[] = [
+  {
+    scope: "Everywhere",
+    keys: [
+      { keys: ["1"], action: "Overview" },
+      { keys: ["2"], action: "Proposals" },
+      { keys: ["3"], action: "Run" },
+      { keys: ["4"], action: "Audit" },
+      { keys: ["5"], action: "Receipt" },
+      { keys: ["Tab"], action: "Cycle through the screens" },
+      { keys: ["p"], action: "Switch profile between Demo gate and Final gate (read-only)" },
+      { keys: ["r"], action: "Refresh" },
+      { keys: ["?"], action: "Help" },
+      { keys: ["q", "Esc"], action: "Back, or quit" },
+      { keys: ["Ctrl+C"], action: "Cancel" },
+    ],
+  },
+  {
+    scope: "Proposals",
+    keys: [
+      { keys: ["Up", "k"], action: "Previous proposal" },
+      { keys: ["Down", "j"], action: "Next proposal" },
+      { keys: ["Enter"], action: "Open the proposal's detail" },
+    ],
+  },
+  {
+    scope: "Run",
+    keys: [
+      { keys: ["Left"], action: "Previous preset" },
+      { keys: ["Right"], action: "Next preset" },
+      { keys: ["e"], action: "Edit the inputs" },
+      { keys: ["u"], action: "Toggle attack and upgrade" },
+      { keys: ["Enter"], action: "Open the confirm screen. Nothing is written yet." },
+      { keys: ["y"], action: "Authorize the write you reviewed" },
+    ],
+  },
+  {
+    scope: "Audit",
+    keys: [{ keys: ["Enter"], action: "Run the audit" }],
+  },
+  {
+    scope: "Receipt",
+    keys: [
+      { keys: ["i"], action: "Set the proposal id" },
+      { keys: ["Enter"], action: "Fetch the receipt" },
+      { keys: ["s"], action: "Save it to a path" },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------------------------------
+// Refusal codes
+// ---------------------------------------------------------------------------------------------------
+
+export interface RefusalCode {
+  /** `R2/20`, or `0/2` for the pre-check, as the gallery and the verifier write it. */
+  code: string;
+  rule: string;
+  text: string;
+}
+
+/**
+ * Every numeric rule/reason pair this page knows, in order. Rule names and texts come from
+ * `lib/reasons.ts`; the rule of a reason is its tens digit, and codes below 10 belong to the pre-check.
+ * The complete table, including the gate's E-prefixed panics and recovery steps, is the skill's
+ * `references/refusals.md`.
+ */
+export const refusalCodes: readonly RefusalCode[] = [1, 2, 3, 4, 10, 11, 20, 21, 22, 23, 30, 31, 40, 41, 50, 51].map(
+  (reason) => {
+    const text = reasonText(reason);
+    if (text === null) throw new Error(`docs: no reason text for code ${reason}`);
+    const rule = reason < 10 ? 0 : Math.floor(reason / 10);
+    return { code: rule === 0 ? `0/${reason}` : `R${rule}/${reason}`, rule: ruleLabel(rule), text };
+  },
+);
+
+// ---------------------------------------------------------------------------------------------------
+// AI skill (web/public/skills/constitution, copied byte for byte from skills/constitution)
+// ---------------------------------------------------------------------------------------------------
+
+export interface SkillFile {
+  /** Path inside the skill folder. */
+  path: string;
+  href: string;
+  purpose: string;
+}
+
+export const skillFiles: readonly SkillFile[] = [
+  {
+    path: "SKILL.md",
+    href: "/skills/constitution/SKILL.md",
+    purpose: "The workflow: establish the target, write against R1 to R5, check locally, propose once, read the verdict.",
+  },
+  {
+    path: "references/refusals.md",
+    href: "/skills/constitution/references/refusals.md",
+    purpose: "Every numeric rule and reason, every gate error prefix and every operational refusal, each with its recovery.",
   },
 ];

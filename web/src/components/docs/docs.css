@@ -468,6 +468,152 @@
   }
 }
 
+/* Keyboard keys */
+.docs-key {
+  font-family: var(--font-mono);
+}
+
+.docs-key {
+  display: inline-block;
+  min-width: 2rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.docs-keys,
+.docs-codes {
+  display: grid;
+  margin: 0;
+}
+
+.docs-keys > div,
+.docs-codes > div {
+  display: grid;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.docs-keys > div:last-child,
+.docs-codes > div:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.docs-keys dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.docs-keys__or {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.docs-keys dd,
+.docs-codes dd {
+  margin: 0;
+  max-width: 60ch;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.docs-codes dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.docs-codes__code {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+@media (min-width: 40rem) {
+  .docs-keys > div {
+    grid-template-columns: minmax(9rem, 13rem) minmax(0, 1fr);
+  }
+
+  .docs-codes > div {
+    grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  }
+}
+
+/* Skill downloads and path block */
+.docs-prose ul.docs-downloads {
+  padding: 0;
+  list-style: none;
+}
+
+.docs-downloads__link {
+  display: grid;
+  gap: var(--space-1);
+  min-height: 2.75rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color var(--dur-base) ease;
+}
+
+.docs-downloads__link:hover {
+  border-color: var(--ink);
+}
+
+.docs-downloads__name {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.docs-downloads__use {
+  max-width: 60ch;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.docs-paths {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.docs-prose .docs-paths ul {
+  padding: 0;
+  list-style: none;
+}
+
+.docs-paths li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-height: 2.75rem;
+}
+
+.docs-paths code {
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
 /* Closing band */
 .docs-band {
   margin-top: var(--space-8);
