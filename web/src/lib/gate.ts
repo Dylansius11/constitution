@@ -20,7 +20,7 @@ import { asArray, asSafeUint, asString, asU128String, isAccountId, Obj } from ".
 export const MAX_LIST_LIMIT = 50;
 
 export interface GateClientOptions extends HttpOptions {
-  /** NEAR JSON-RPC endpoint, for example `https://test.rpc.fastnear.com`. */
+  /** NEAR JSON-RPC endpoint, for example `https://near-testnet.drpc.org`. */
   rpcUrl: string;
   /** The gate account id. */
   gate: string;

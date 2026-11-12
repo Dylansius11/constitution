@@ -35,7 +35,7 @@ const etaText = `${eta.slice(0, 10)} ${eta.slice(11, 19)} UTC`;
           R1 passed and R2 failed. The verifier signed a Reject, the gate recorded Rejected and no
           signature was requested. The proxy implementation stayed the original VaultV1.
         </p>
-        <dl>
+        <dl class="live-cols">
           <div class="live-row">
             <dt>Rule results</dt>
             <dd>R1 Pass, R2 Fail (reason {drain.reasonCode}). Verifier run {drain.verifierSeconds} s.</dd>
@@ -80,7 +80,7 @@ const etaText = `${eta.slice(0, 10)} ${eta.slice(11, 19)} UTC`;
           <span class="mono">{governance.refusedCode}</span>. No role can shorten the delay.
           <a href="#timelock">Read the live queue</a>.
         </p>
-        <dl>
+        <dl class="live-cols">
           <div class="live-row">
             <dt>Schedule transaction</dt>
             <dd>
@@ -120,7 +120,7 @@ const etaText = `${eta.slice(0, 10)} ${eta.slice(11, 19)} UTC`;
           reproduced. The verifier signed a Pass certificate, the gate requested a NEAR MPC
           signature, and the signed transaction executed through the executor.
         </p>
-        <dl>
+        <dl class="live-cols">
           <div class="live-row">
             <dt>Rule results</dt>
             <dd>R1 to R5 Pass</dd>

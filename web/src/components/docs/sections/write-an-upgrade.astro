@@ -1,0 +1,245 @@
+---
+import { demoGate, demoManifest, honestUpgradesObserved, precheck, refusalCodes, rules, skillFiles } from "../../../data/docs.ts";
+import type { CodeTab } from "../../ui/code-types.ts";
+import Card from "../../ui/Card.astro";
+import CodeBlock from "../../ui/CodeBlock.astro";
+
+/**
+ * Write an upgrade that passes. Every number is read from `rules/demo/manifest.json` at build time
+ * (see data/docs.ts); the rule names and reason texts come from lib/reasons.ts, and the attacks each
+ * rule refuses from deployments/demo-gallery.json.
+ */
+const m = demoManifest;
+const f = m.facts;
+const lineage = m.lineage.join(" \u2192 ");
+const refusals = skillFiles.find((file) => file.path === "references/refusals.md");
+if (refusals === undefined) throw new Error("docs: data/docs.ts lists no references/refusals.md skill file");
+
+const localChecks: CodeTab[] = [
+  {
+    id: "local",
+    label: "Local checks",
+    lines: [
+      { note: "Linux or WSL, repository root, pinned Rust and Foundry." },
+      { cmd: "forge build --root contracts" },
+      { cmd: "constitution rules hash rules/demo/manifest.json" },
+      { note: "Existing tests exercise the supplied implementations, not a contract you just wrote." },
+      { cmd: "forge test --root contracts --match-contract VaultTest" },
+      { cmd: "forge test --root contracts --match-contract VaultV3Test" },
+    ],
+  },
+];
+---
+
+<div class="docs-prose">
+  <p>
+    The demo gate protects one vault proxy, so your candidate has to be a Vault variant: it keeps
+    VaultV1's storage layout and its deposit and withdraw interface. The verifier compiles your
+    source, then runs the rules below in order. A candidate is certified only if every one of them
+    passes.
+  </p>
+
+  <h3>What the verifier does with your source</h3>
+  <ol>
+    <li>
+      <strong>Compile.</strong> With the pinned toolchain: solc <code>{f.solc}</code>, EVM {" "}
+      <code>{f.evm_version}</code>. The runtime code hash must equal the one in your proposal.
+    </li>
+    <li>
+      <strong>Pre-check, called rule 0.</strong> The candidate is refused for any of these reasons:
+      <ul>
+        {precheck.map((text) => <li>{text}</li>)}
+      </ul>
+    </li>
+    <li><strong>R1 to R5,</strong> described below.</li>
+    <li>
+      <strong>A private AI review,</strong> which can only refuse. It runs after R1 to R5 pass.
+    </li>
+    <li>
+      <strong>A certificate,</strong> valid for at most {f.max_cert_ttl_s} seconds. The gate then
+      asks the NEAR MPC network to sign the exact upgrade, and anyone can relay it.
+    </li>
+  </ol>
+  <p class="muted">
+    The pre-check recognises {lineage} as the current implementation, so an attack can be checked
+    after an honest upgrade.
+  </p>
+
+  <h3>The five rules</h3>
+  <p>
+    Each rule shows what it checks, what your code needs, the numbers the demo gate committed, what
+    the rule does not prove, and the attack on the <a href="/app">live demo</a> it refuses.
+  </p>
+  <ol class="docs-rules">
+    {
+      rules.map((rule) => (
+        <Card as="li">
+          <article class="docs-rule" aria-labelledby={`rule-${rule.id}`}>
+            <h4 class="docs-rule__title" id={`rule-${rule.id}`}>
+              <span class="docs-rule__id mono">{rule.id}</span>
+              <span>{rule.name}</span>
+            </h4>
+            <div class="docs-field">
+              <p class="docs-label">What it checks</p>
+              <p>{rule.checks}</p>
+            </div>
+            <div class="docs-field">
+              <p class="docs-label">What your code needs</p>
+              <p>{rule.yourCode}</p>
+            </div>
+            <div class="docs-field">
+              <p class="docs-label">Committed numbers</p>
+              <dl class="docs-facts">
+                {
+                  rule.numbers.map((entry) => (
+                    <div>
+                      <dt>{entry.term}</dt>
+                      <dd>{entry.value}</dd>
+                    </div>
+                  ))
+                }
+              </dl>
+            </div>
+            <div class="docs-field">
+              <p class="docs-label">What it does not prove</p>
+              <p>{rule.limit}</p>
+            </div>
+            {
+              rule.refuses === null ? (
+                <p class="docs-note docs-note--plain">
+                  <strong>On the live demo:</strong> no gallery attack targets {rule.id}. It is
+                  the rule an honest upgrade has to survive.
+                </p>
+              ) : (
+                <p class="docs-note docs-note--refuse">
+                  <strong>Refused on the live demo:</strong>{" "}
+                  <a href="/app#attacks">{rule.refuses.title}</a>, reason {rule.refuses.reason}. {" "}
+                  {rule.refuses.reasonText !== null && <> {rule.refuses.reasonText}</>}
+                </p>
+              )
+            }
+          </article>
+        </Card>
+      ))
+    }
+  </ol>
+
+  <h3>A checklist before you propose</h3>
+  <p>
+    The five rules, as an authoring routine. The <a href="#skill">AI skill</a> carries the same
+    list with worked honest and violating examples.
+  </p>
+  <ol>
+    <li>
+      <strong>Use a new source path.</strong> Observe the current implementation and the committed
+      rule set first. Do not edit the pinned VaultV1, MockToken or honest reference sources: that
+      fails the pre-check, not a rule.
+    </li>
+    <li>
+      <strong>R1.</strong> Preserve existing storage and append only. Keep the field order, types
+      and namespace, and disable implementation initializers in the constructor as the honest
+      examples do.
+    </li>
+    <li>
+      <strong>R2.</strong> Keep total deposits at or below the vault's token balance, and keep the
+      implementation slot, along bounded deposit and withdraw sequences. Debit only the withdrawing
+      user, and reduce the aggregate before you transfer.
+    </li>
+    <li>
+      <strong>R3.</strong> Remove the forbidden opcodes and every proxy-slot and cheatcode literal.
+      Hiding such a constant behind a computation is not a fix.
+    </li>
+    <li>
+      <strong>R4.</strong> Use an empty initializer, or <code>initializeV2(uint256)</code> with one
+      32-byte word no larger than 2<sup>128</sup> &minus; 1. The honest V1 to V2 upgrade uses the cap {" "}
+      <strong>1000</strong>, built with <code>cast calldata 'initializeV2(uint256)' 1000</code>. The
+      honest V2 to V3 upgrade uses an empty <code>0x</code>.
+    </li>
+    <li>
+      <strong>R5.</strong> Preserve the committed corpus's exact behavior, state and logs, then pass
+      the completed AI review. The AI can only veto: it cannot turn a failure into a pass. A cap so
+      low that the replayed deposit reverts still fails R5, because R4 accepting it is not behavioral
+      compatibility.
+    </li>
+    <li>
+      <strong>Test your own contract.</strong> Add tests for it, using the executor and proxy
+      pattern in <code>contracts/test/VaultV3.t.sol</code>, before you deploy anything.
+    </li>
+  </ol>
+
+  <h3>Then the private review</h3>
+  <p>
+    {f.ai.required ? "The gate requires" : "The gate allows"} a private review by {" "}
+    <code>{f.ai.model}</code> on NEAR AI Cloud, with a verified <code>{f.ai.signature_kind}</code> {" "}
+    response. It may propose up to {f.ai.max_candidates} counterexamples within {f.ai.timeout_s} seconds.
+    The verifier replays each one deterministically, and a reproduced counterexample is a
+    refusal. The model's word alone can never approve an upgrade. It is nondeterministic, so no
+    find rate is promised.
+  </p>
+
+  <h3>Check locally first</h3>
+  <p>
+    Compile with the pinned toolchain and run the repository's tests. These commands are instructions,
+    not a recorded pass, and a green preset test does not cover a new contract: add tests that seed
+    balances, run your exact initializer, compare storage, returns and logs, and exercise withdrawals,
+    an overdraw and a repeated initialization. Never deploy a candidate only because the unchanged
+    preset tests pass.
+  </p>
+  <CodeBlock id="docs-local" label="Local checks" tabs={localChecks} title="repository root" />
+  <p class="muted">
+    The deterministic end-to-end check of the supplied lineage needs Docker, a NEAR sandbox and the
+    pinned tool image, and it runs with the AI review deliberately unavailable, so it issues no
+    certificate. There is no generic <code>check</code> command for a new candidate. Deploying it,
+    and proposing it, each need explicit authorization.
+  </p>
+
+  <h3>When your proposal is refused</h3>
+  <p>
+    Read the stage detail and the accepted certificate, not only the headline: the first failure wins,
+    and later stages can be <em>not run</em>, so a candidate that also breaks storage can stop at R1.
+    These are the numeric pairs this page knows. The {" "}
+    <a href={refusals.href}>refusal reference</a> adds every gate error prefix and every operational
+    state, each with its recovery.
+  </p>
+  <dl class="docs-codes">
+    {
+      refusalCodes.map((entry) => (
+        <div>
+          <dt>
+            <span class="docs-codes__code">{entry.code}</span>
+            <span>{entry.rule}</span>
+          </dt>
+          <dd>{entry.text}</dd>
+        </div>
+      ))
+    }
+  </dl>
+  <ul>
+    <li>
+      <strong>A refusal about your code</strong> needs a fix, a new deployment, a new source
+      commitment and a new proposal. Never overwrite history.
+    </li>
+    <li>
+      <strong>A recoverable service failure</strong> normally leaves the same proposal Pending. Retry
+      it with <code>verifier run</code>, with the original source, after any Retry-After wait.
+    </li>
+    <li>
+      <strong>An incomplete required AI review</strong> is neither a rejection nor an approval. No
+      certificate is issued and the proposal stays Pending.
+    </li>
+  </ul>
+
+  <h3>A realistic starting point</h3>
+  <p>
+    The honest examples live in <code>contracts/src/demo/</code>, and the manifest pins them by
+    source hash. {" "}
+    {
+      honestUpgradesObserved
+        ? " The gallery records an observed run for each honest upgrade."
+        : " The gallery does not record an observed run for every honest upgrade, so treat them as references rather than proof that the demo gate has executed them."
+    } {" "}
+    Then propose your own with the <a href="#commands">headless commands</a>, or from the {" "}
+    <a href="#tui">terminal UI</a>. The demo gate is {" "}
+    <span class="mono">{demoGate.account}</span>.
+  </p>
+</div>

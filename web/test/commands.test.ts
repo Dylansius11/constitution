@@ -5,10 +5,17 @@ import { buildLlmsText } from "../src/data/llms.ts";
 const tabLines = cliTabs.flatMap((tab) => tab.lines);
 
 describe("check-it-yourself command tabs", () => {
-  it("has the four read-only tabs in order, each with at least one command", () => {
-    expect(cliTabs.map((tab) => tab.id)).toEqual(["audit", "status", "receipt", "appraise"]);
+  it("has the terminal UI first and the four read-only tabs after it, each with at least one command", () => {
+    expect(cliTabs.map((tab) => tab.id)).toEqual(["tui", "audit", "status", "receipt", "appraise"]);
     for (const tab of cliTabs) {
       expect(tab.lines.some((line) => line.cmd)).toBe(true);
+    }
+  });
+
+  it("uses the working RPC and never an unlisted network flag", () => {
+    for (const line of tabLines) {
+      if (line.cmd?.includes(" audit ")) expect(line.cmd).not.toContain("--network");
+      if (line.cmd?.includes(" --near-rpc ")) expect(line.cmd).toContain("https://near-testnet.drpc.org");
     }
   });
 
@@ -16,7 +23,7 @@ describe("check-it-yourself command tabs", () => {
     for (const line of tabLines) {
       if (line.cmd) {
         expect(line.cmd).toMatch(
-          /^\.\/target\/debug\/constitution (audit|status|receipt|verifier appraise) /,
+          /^constitution( (audit|status|receipt|verifier appraise) .+)?$/,
         );
       }
     }
@@ -36,6 +43,9 @@ describe("agent guide", () => {
     expect(text).toContain("the final gate's only access key was deleted");
     expect(text).toContain("refused at rule 0 (current source runtime mismatch)");
     expect(text).toContain("appraisal passed");
+    expect(text).toContain("Retired 2026-11-12");
+    expect(text).toContain("https://near-testnet.drpc.org");
+    expect(text).toContain("/docs");
     expect(text).not.toMatch(
       /not deployed|does not exist yet|awaiting activation|after activation/i,
     );

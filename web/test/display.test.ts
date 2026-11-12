@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { remaining, shortValue, spokenValue, utcDate, utcStamp } from "../src/lib/display.ts";
+import { pendingSummary, remaining, shortValue, spokenValue, utcDate, utcStamp } from "../src/lib/display.ts";
 
 describe("readable chain data", () => {
   const hash = "0xc232188629763bec4eb9a72be7fd08f66ab5690a2ad997ac6ed20697ff0729d8";
@@ -41,5 +41,31 @@ describe("UTC and quiet remaining time", () => {
     [603660000, "6 d 23 h 41 m"],
   ] as const)("formats %i ms without seconds", (ms, expected) => {
     expect(remaining(ms)).toBe(expected);
+  });
+});
+
+describe("pending change summary", () => {
+  const change = (id: number, status: string, etaMs: number) => ({
+    id,
+    kind: { kind: "SetRuleSet" },
+    eta_ns: BigInt(etaMs) * 1_000_000n,
+    status,
+  });
+  it("names the change and its observed eta", () => {
+    expect(pendingSummary([change(3, "Pending", Date.UTC(2026, 10, 14, 18))])).toBe(
+      "1 change pending: Rule-set change #3, applicable from 2026-11-14 18:00:00 UTC.",
+    );
+  });
+  it("ignores applied and cancelled entries and orders by id", () => {
+    const text = pendingSummary([
+      change(5, "Pending", Date.UTC(2026, 10, 15)),
+      change(2, "Applied", 0),
+      change(4, "Pending", Date.UTC(2026, 10, 14)),
+    ]);
+    expect(text.startsWith("2 changes pending: Rule-set change #4,")).toBe(true);
+    expect(text).toContain("#5, applicable from 2026-11-15 00:00:00 UTC.");
+  });
+  it("says so when nothing is pending", () => {
+    expect(pendingSummary([change(1, "Applied", 0)])).toBe("No change pending.");
   });
 });
