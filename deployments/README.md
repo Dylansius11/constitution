@@ -77,7 +77,7 @@ immutable **1-day** delay. [`demo.json`](demo.json) is the observed audit record
 [`demo-gallery.json`](demo-gallery.json) contains real candidate addresses,
 four rejection observations and evidence roots; [`demo-receipts/`](demo-receipts/)
 retains the attack receipts. Both honest upgrade observations remain null.
-The [README comparison](../README.md#live-demo-gate) holds addresses, commitments
+The [README evidence table](../README.md#proof-not-promises) holds addresses, commitments
 and result details; do not duplicate or confuse them with final-gate evidence.
 
 [V, identity fetched and appraised 2026-11-11] Demo verifier endpoint:
