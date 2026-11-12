@@ -1,5 +1,5 @@
 import type { ProxyRead } from "../../lib/base.ts";
-import { accessKeyState } from "../../lib/display.ts";
+import { accessKeyState, pendingSummary } from "../../lib/display.ts";
 import type { View } from "../../lib/gate.ts";
 import type { Config, Constitution, ListedVerifier, PendingChange } from "../../lib/gate-types.ts";
 import type { Source } from "../../lib/state.ts";
@@ -154,12 +154,21 @@ async function initializeLedger(
         (v) => {
           if (v.value.length === 0) return "No verifier allowlisted.";
           const list = document.createElement("ul");
+          list.className = "ledger-verifiers";
           for (const verifier of v.value) {
             const li = document.createElement("li");
-            li.append(
-              hashValue(verifier.pubkey_b64, "Allowlisted verifier key"),
-              hashValue(verifier.record.release_hash, "Verifier release hash"),
-            );
+            for (const [label, value, spoken] of [
+              ["Key", verifier.pubkey_b64, "Allowlisted verifier key"],
+              ["Release", verifier.record.release_hash, "Verifier release hash"],
+            ] as const) {
+              const line = document.createElement("div");
+              line.className = "ledger-verifiers__line";
+              const name = document.createElement("span");
+              name.className = "ledger-verifiers__label";
+              name.textContent = label;
+              line.append(name, hashValue(value, spoken));
+              li.append(line);
+            }
             list.append(li);
           }
           return list;
@@ -170,8 +179,7 @@ async function initializeLedger(
         "changes",
         changes,
         "NEAR testnet list_changes",
-        (v) =>
-          `${v.value.filter((c) => c.status === "Pending").length} pending in the first ${v.value.length} returned changes.`,
+        (v) => pendingSummary(v.value, v.value.length < 50),
         (v) => `NEAR block ${v.blockHeight}`,
       );
       row(

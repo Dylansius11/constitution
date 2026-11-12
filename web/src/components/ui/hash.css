@@ -87,3 +87,11 @@
 .hash--dark .hash__link {
   color: var(--lav);
 }
+
+/*
+ * A closed disclosure must not lay out its full value. Some engines keep the slotted child in flow
+ * (an out-of-row ghost over the next row); `display: none` makes that impossible.
+ */
+.hash__details:not([open]) .hash__full {
+  display: none;
+}
