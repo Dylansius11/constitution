@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" width="1000" height="760" role="img" aria-labelledby="t d" font-family="Inter, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif">
+  <title id="t">CONSTITUTION system map</title>
+  <desc id="d">A developer proposes an upgrade to a keyless NEAR gate and seals the source to an Intel TDX verifier. The verifier checks rules R1 to R5, asks a private AI on NEAR AI Cloud for veto-only counterexamples, and posts a signed certificate. The gate asks NEAR Chain Signatures to sign one exact transaction, which anyone relays to the executor on Base Sepolia.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10z" fill="#b794f6"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="760" rx="20" fill="#17151f"/>
+  <rect x="1" y="1" width="998" height="758" rx="19" fill="none" stroke="#3a3748" stroke-width="2"/>
+  <text x="28" y="42" font-size="20" font-weight="700" fill="#ede9f7">CONSTITUTION · system map</text>
+  <text x="972" y="42" font-size="13" text-anchor="end" fill="#a9a5b8">each dashed box is its own trust zone</text>
+
+  <!-- zones -->
+  <g fill="none" stroke-width="1.5" stroke-dasharray="6 5">
+    <rect x="20" y="70" width="210" height="240" rx="14" stroke="#6f6b82"/>
+    <rect x="270" y="70" width="370" height="170" rx="14" stroke="#b794f6"/>
+    <rect x="680" y="70" width="300" height="240" rx="14" stroke="#5fd39a"/>
+    <rect x="270" y="340" width="370" height="240" rx="14" stroke="#5fd39a"/>
+    <rect x="680" y="340" width="300" height="240" rx="14" stroke="#b794f6"/>
+  </g>
+  <g font-size="12" font-weight="600" text-anchor="end" letter-spacing="1">
+    <text x="218" y="92" fill="#a9a5b8">DEVELOPER OR AGENT</text>
+    <text x="628" y="92" fill="#b794f6">NEAR</text>
+    <text x="968" y="92" fill="#5fd39a">BASE SEPOLIA</text>
+    <text x="628" y="362" fill="#5fd39a">VERIFIER · INTEL TDX ON PHALA</text>
+    <text x="968" y="362" fill="#b794f6">NEAR AI CLOUD · TEE</text>
+  </g>
+
+  <!-- developer -->
+  <rect x="40" y="115" width="170" height="90" rx="10" fill="#1f1c2b" stroke="#3a3748"/>
+  <text x="125" y="146" font-size="16" font-weight="700" text-anchor="middle" fill="#ede9f7">Developer or</text>
+  <text x="125" y="167" font-size="16" font-weight="700" text-anchor="middle" fill="#ede9f7">AI coding agent</text>
+  <text x="125" y="190" font-size="12" text-anchor="middle" fill="#a9a5b8">web · TUI · CLI · skill</text>
+
+  <!-- gate -->
+  <rect x="290" y="105" width="150" height="110" rx="10" fill="#1f1c2b" stroke="#b794f6" stroke-width="1.5"/>
+  <text x="365" y="132" font-size="16" font-weight="700" text-anchor="middle" fill="#ede9f7">Gate contract</text>
+  <text x="365" y="155" font-size="13" font-weight="600" text-anchor="middle" fill="#5fd39a">keyless</text>
+  <text x="365" y="175" font-size="12" text-anchor="middle" fill="#a9a5b8">0 access keys</text>
+  <text x="365" y="195" font-size="12" text-anchor="middle" fill="#a9a5b8">timelocked rules</text>
+
+  <!-- mpc -->
+  <rect x="480" y="105" width="140" height="110" rx="10" fill="#1f1c2b" stroke="#3a3748"/>
+  <text x="550" y="132" font-size="15" font-weight="700" text-anchor="middle" fill="#ede9f7">Chain Signatures</text>
+  <text x="550" y="154" font-size="12" text-anchor="middle" fill="#a9a5b8">NEAR MPC network</text>
+  <text x="550" y="175" font-size="12" text-anchor="middle" fill="#a9a5b8">signs one exact</text>
+  <text x="550" y="193" font-size="12" text-anchor="middle" fill="#a9a5b8">transaction only</text>
+
+  <!-- base -->
+  <rect x="700" y="115" width="260" height="70" rx="10" fill="#1f1c2b" stroke="#3a3748"/>
+  <text x="830" y="143" font-size="16" font-weight="700" text-anchor="middle" fill="#ede9f7">Executor contract</text>
+  <text x="830" y="166" font-size="12" text-anchor="middle" fill="#a9a5b8">deadline · code hash · current impl · replay</text>
+  <rect x="700" y="235" width="260" height="55" rx="10" fill="#1f1c2b" stroke="#3a3748"/>
+  <text x="830" y="259" font-size="15" font-weight="700" text-anchor="middle" fill="#ede9f7">ProxyAdmin → vault proxy</text>
+  <text x="830" y="278" font-size="12" text-anchor="middle" fill="#a9a5b8">V1 → V2 → V3 through upgradeAndCall</text>
+
+  <!-- verifier -->
+  <rect x="290" y="385" width="330" height="85" rx="10" fill="#1f1c2b" stroke="#5fd39a" stroke-width="1.5"/>
+  <text x="455" y="414" font-size="16" font-weight="700" text-anchor="middle" fill="#ede9f7">Rules R1 to R5</text>
+  <text x="455" y="436" font-size="12" text-anchor="middle" fill="#a9a5b8">layout · solvency · opcodes · initializer · replay</text>
+  <text x="455" y="457" font-size="12" text-anchor="middle" fill="#f0b446">a failed rule is a signed Reject: nothing is signed</text>
+  <rect x="290" y="490" width="330" height="72" rx="10" fill="#1f1c2b" stroke="#3a3748"/>
+  <text x="455" y="514" font-size="13" font-weight="600" text-anchor="middle" fill="#ede9f7">Attested before any source is sealed to it</text>
+  <text x="455" y="534" font-size="12" text-anchor="middle" fill="#a9a5b8">ephemeral key bound to the TDX quote</text>
+  <text x="455" y="552" font-size="12" text-anchor="middle" fill="#a9a5b8">source and AI chat stay inside the TEE</text>
+
+  <!-- ai -->
+  <rect x="700" y="385" width="260" height="85" rx="10" fill="#1f1c2b" stroke="#b794f6" stroke-width="1.5"/>
+  <text x="830" y="414" font-size="16" font-weight="700" text-anchor="middle" fill="#ede9f7">Private AI review</text>
+  <text x="830" y="436" font-size="12" text-anchor="middle" fill="#a9a5b8">end-to-end encrypted, response attested</text>
+  <text x="830" y="457" font-size="12" text-anchor="middle" fill="#f0b446">can only veto, and only if it reproduces</text>
+  <text x="830" y="508" font-size="12" text-anchor="middle" fill="#a9a5b8">AI output can never produce a Pass</text>
+
+  <!-- arrows -->
+  <g stroke="#b794f6" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M210 160 H290"/>
+    <path d="M125 205 V427 H290"/>
+    <path d="M620 427 H700"/>
+    <path d="M365 385 V215"/>
+    <path d="M440 160 H480"/>
+    <path d="M620 150 H700"/>
+    <path d="M830 185 V235"/>
+  </g>
+  <g font-size="12" font-weight="700" text-anchor="middle" fill="#17151f">
+    <circle cx="250" cy="160" r="11" fill="#b794f6"/><text x="250" y="164">1</text>
+    <circle cx="125" cy="320" r="11" fill="#b794f6"/><text x="125" y="324">2</text>
+    <circle cx="660" cy="427" r="11" fill="#b794f6"/><text x="660" y="431">3</text>
+    <circle cx="365" cy="300" r="11" fill="#b794f6"/><text x="365" y="304">4</text>
+    <circle cx="460" cy="160" r="11" fill="#b794f6"/><text x="460" y="164">5</text>
+    <circle cx="660" cy="150" r="11" fill="#b794f6"/><text x="660" y="154">6</text>
+    <circle cx="830" cy="210" r="11" fill="#b794f6"/><text x="830" y="214">7</text>
+  </g>
+
+  <!-- legend -->
+  <line x1="28" y1="610" x2="972" y2="610" stroke="#3a3748"/>
+  <g font-size="13" fill="#ede9f7">
+    <text x="28" y="640"><tspan font-weight="700" fill="#b794f6">1</tspan>  Propose the upgrade: code hash, source commitment, prepaid credit.</text>
+    <text x="28" y="668"><tspan font-weight="700" fill="#b794f6">2</tspan>  Seal the source to the verifier's attested key.</text>
+    <text x="28" y="696"><tspan font-weight="700" fill="#b794f6">3</tspan>  After R1 to R5 pass, ask the private AI for counterexamples.</text>
+    <text x="28" y="724"><tspan font-weight="700" fill="#b794f6">4</tspan>  The verifier posts a signed certificate: Pass, or Reject with rule and reason.</text>
+    <text x="520" y="640"><tspan font-weight="700" fill="#b794f6">5</tspan>  Only after a valid Pass, the gate has one exact transaction signed.</text>
+    <text x="520" y="668"><tspan font-weight="700" fill="#b794f6">6</tspan>  The gate stores the signed transaction; anyone can relay it.</text>
+    <text x="520" y="696"><tspan font-weight="700" fill="#b794f6">7</tspan>  The executor re-checks deadline, code hash and current implementation,</text>
+    <text x="544" y="716">then runs upgradeAndCall. Each certificate works once.</text>
+  </g>
+</svg>
