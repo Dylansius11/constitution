@@ -1,33 +1,50 @@
 import type { CodeLine, CodeTab } from "../components/ui/code-types.ts";
-import { finalRuns, finalVerifier } from "./final-evidence.ts";
+import { demoGate, demoVerifier } from "./demo-evidence.ts";
+import { finalRuns, RECORDED_ON } from "./final-evidence.ts";
 
 /**
- * The read-only CLI checks shown in "Check it yourself", one tab each. Every flag was read from the
- * clap definitions in crates/cli/src/main.rs and the documented invocations in README.md ("Verify
- * it yourself", "Read public state without a signing key"). Run from the repository root with the
- * CLI built as in the README's local quickstart. Nothing here signs, spends or writes to a chain.
+ * The CLI checks shown in "Check it yourself", one tab each: the terminal UI first, then the
+ * read-only commands with the live demo gate as the primary example. Every flag was read from the
+ * clap definitions in crates/cli/src/main.rs (`audit` takes --deployment and --manifest and has no
+ * --network flag). Run from the repository root with the CLI built as in the README's local
+ * quickstart. Nothing here signs, spends or writes to a chain. The public NEAR RPC default in the
+ * CLI answers 429 under load, so reads pass the dRPC endpoint the page itself uses.
  */
 const CLI = "./target/debug/constitution";
-const GATE = "constitution-gate.testnet";
-// README.md, line 32: the single verifier instance of the final run. It may not stay online.
-const VERIFIER_URL =
-  "https://d72d204232fe1d3a56c6b4a1b1f83d33cc867168-8787.dstack-pha1-prod9.phala.network";
+const FINAL_GATE = "constitution-gate.testnet";
+const NEAR_RPC = "https://near-testnet.drpc.org";
 
 const { keylessAudit } = finalRuns;
 
 export const cliTabs: CodeTab[] = [
   {
+    id: "tui",
+    label: "terminal UI",
+    lines: [
+      {
+        note: "One command opens the terminal UI: Overview, Proposals, Run, Audit and Receipt, with a Demo and a Final profile.",
+      },
+      { cmd: CLI },
+      {
+        note: "Every screen has a script-friendly subcommand: the tabs beside this one are those subcommands.",
+      },
+    ],
+  },
+  {
     id: "audit",
     label: "audit",
     lines: [
       {
-        note: "Reads the final gate and compares it with the committed deployment record and rules.",
+        note: "Reads the live demo gate and compares it with the committed deployment record and the demo rules. Needs the executor artifact from the quickstart build.",
       },
-      // crates/cli/src/main.rs:95-122 (--deployment and --manifest; no --network flag).
-      { cmd: `${CLI} audit --deployment deployments/testnet.json --manifest rules/manifest.json` },
+      // crates/cli/src/main.rs:95-122 (--deployment, --manifest, --near-rpc; no --network flag).
       {
-        note: `Recorded 2026-11-10: exit ${keylessAudit.exitCode}, ${keylessAudit.lines} lines, ${keylessAudit.check} ${keylessAudit.result}. State can change: read every check.`,
+        cmd: `${CLI} audit --deployment deployments/demo.json --manifest rules/demo/manifest.json --near-rpc ${NEAR_RPC}`,
       },
+      {
+        note: `Final gate, recorded ${RECORDED_ON}: exit ${keylessAudit.exitCode}, ${keylessAudit.lines} lines, ${keylessAudit.check} ${keylessAudit.result}. Re-run it; state can change.`,
+      },
+      { cmd: `${CLI} audit --deployment deployments/testnet.json --manifest rules/manifest.json --near-rpc ${NEAR_RPC}` },
     ],
   },
   {
@@ -35,11 +52,11 @@ export const cliTabs: CodeTab[] = [
     label: "status",
     lines: [
       {
-        note: "Reads a proposal from the gate. Id 0 is the refused drain, id 1 the executed upgrade.",
+        note: "Reads a proposal from a gate. On the demo gate, proposal 0 is the refused drain; on the final gate, id 1 is the executed upgrade.",
       },
       // crates/cli/src/main.rs:60-69,211-235 (id and --gate required; --network defaults to testnet).
-      { cmd: `${CLI} status 0 --gate ${GATE}` },
-      { cmd: `${CLI} status 1 --gate ${GATE}` },
+      { cmd: `${CLI} status 0 --gate ${demoGate.account} --near-rpc ${NEAR_RPC}` },
+      { cmd: `${CLI} status 1 --gate ${FINAL_GATE} --near-rpc ${NEAR_RPC}` },
     ],
   },
   {
@@ -48,8 +65,8 @@ export const cliTabs: CodeTab[] = [
     lines: [
       { note: "Assembles the receipt for a proposal from public state and prints it as JSON." },
       // crates/cli/src/main.rs:70-79,211-235 (read-only; --json prints constitution.receipt/1).
-      { cmd: `${CLI} receipt 0 --gate ${GATE} --json` },
-      { cmd: `${CLI} receipt 1 --gate ${GATE} --json` },
+      { cmd: `${CLI} receipt 0 --gate ${demoGate.account} --near-rpc ${NEAR_RPC} --json` },
+      { cmd: `${CLI} receipt 1 --gate ${FINAL_GATE} --near-rpc ${NEAR_RPC} --json` },
     ],
   },
   {
@@ -57,11 +74,11 @@ export const cliTabs: CodeTab[] = [
     label: "appraise",
     lines: [
       {
-        note: "Checks the verifier's Intel TDX attestation against its recorded compose hash. The endpoint may not stay online.",
+        note: "Checks the demo verifier's Intel TDX attestation against its recorded compose hash. The endpoint may not stay online; the final verifier was retired on 2026-11-12.",
       },
-      // crates/cli/src/main.rs:85-89,175-186 (url and --expect-compose-hash; README.md:218).
+      // crates/cli/src/main.rs:85-89,175-186 (url and --expect-compose-hash; README.md demo table).
       {
-        cmd: `${CLI} verifier appraise ${VERIFIER_URL} --expect-compose-hash ${finalVerifier.composeHash}`,
+        cmd: `${CLI} verifier appraise ${demoVerifier.url} --expect-compose-hash ${demoVerifier.composeHash}`,
       },
     ],
   },
