@@ -1,0 +1,127 @@
+---
+import { DEMO_RECORDED_ON } from "../../../data/demo-evidence.ts";
+import { CLI, demoGate, NEAR_RPC_DEFAULT } from "../../../data/docs.ts";
+import { site } from "../../../data/site.ts";
+import type { CodeLine, CodeTab } from "../../ui/code-types.ts";
+import CodeBlock from "../../ui/CodeBlock.astro";
+
+/**
+ * Quickstart. Prerequisites and build steps are those of README.md "Local quickstart" (Linux or
+ * Ubuntu WSL2). The audit flags are from `crates/cli/src/main.rs:95-122`; its defaults point at the
+ * final gate, so the demo gate needs both --deployment and --manifest.
+ */
+const directory = site.repoUrl === null ? "constitution" : (site.repoUrl.split("/").pop() ?? "constitution");
+const clone: CodeLine[] =
+  site.repoUrl === null
+    ? [
+        {
+          note: "Clone the project repository with its submodules: git clone --recurse-submodules <repository URL>",
+        },
+      ]
+    : [{ cmd: `git clone --recurse-submodules ${site.repoUrl}.git` }];
+
+const prerequisites: CodeTab[] = [
+  {
+    id: "ubuntu",
+    label: "Ubuntu",
+    lines: [
+      { note: "System packages. Needs an administrator account." },
+      { cmd: "sudo apt-get update" },
+      {
+        cmd: "sudo apt-get install -y build-essential pkg-config libssl-dev ca-certificates git curl make python3",
+      },
+      { note: "Toolchains, as the user who will build." },
+      {
+        cmd: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none",
+      },
+      { cmd: 'export PATH="$HOME/.cargo/bin:$HOME/.foundry/bin:$PATH"' },
+      { cmd: "curl -L https://foundry.paradigm.xyz | bash" },
+      { cmd: "foundryup --install 1.8.6" },
+    ],
+  },
+];
+
+const build: CodeTab[] = [
+  {
+    id: "build",
+    label: "Build",
+    lines: [
+      ...clone,
+      { cmd: `cd ${directory}` },
+      { cmd: 'export PATH="$HOME/.cargo/bin:$HOME/.foundry/bin:$PATH"' },
+      { cmd: "cargo build -p constitution-cli --locked -j 1" },
+      { cmd: "forge build --root contracts" },
+      { note: "Prints the subcommands." },
+      { cmd: `${CLI} --help` },
+    ],
+  },
+];
+
+const audit: CodeTab[] = [
+  {
+    id: "audit",
+    label: "Audit",
+    lines: [
+      { note: `Reads ${demoGate.account} and compares it with the committed deployment record and rules.` },
+      {
+        cmd: `${CLI} audit --deployment deployments/demo.json --manifest rules/demo/manifest.json --near-rpc ${site.nearRpc}`,
+      },
+    ],
+  },
+];
+---
+
+<div class="docs-prose">
+  <p>
+    You need Linux or Ubuntu on WSL2, not a native Windows shell. These steps build the CLI and
+    read public state. They do not need Docker, a wallet, an AI key or a signing key, and they
+    send no transaction.
+  </p>
+
+  <h3>Before you build</h3>
+  <ul>
+    <li>Git, GNU Make and Rustup. The repository pins its Rust toolchain and installs it on the first Cargo run.</li>
+    <li>Foundry <strong>1.8.6</strong>, which provides <code>forge</code> and <code>anvil</code>.</li>
+    <li>A C toolchain, <code>pkg-config</code> and the OpenSSL development headers.</li>
+  </ul>
+  <details class="docs-details">
+    <summary>Install them on Ubuntu or WSL2</summary>
+    <CodeBlock id="docs-prereq" label="Prerequisites" tabs={prerequisites} title="shell" />
+  </details>
+
+  <h3>Build the CLI</h3>
+  <p>
+    The first build downloads the submodules and compiles every dependency, so it needs a network
+    connection, disk space and time. <code>-j 1</code> keeps memory use low.
+  </p>
+  <CodeBlock id="docs-build" label="Build" tabs={build} title={`${directory}/`} />
+  <p class="muted">
+    If <code>CARGO_TARGET_DIR</code> is set, use its <code>debug/constitution</code> binary in place
+    of <code>./target/debug/constitution</code>.
+  </p>
+
+  <h3>Audit the demo gate</h3>
+  <p>
+    <code>audit</code> reads the gate and the Base Sepolia proxy, then checks them against the
+    deployment record and the committed rule set. It changes nothing, and it exits 1 if any check
+    fails.
+  </p>
+  <CodeBlock id="docs-audit" label="Audit" tabs={audit} title={`${directory}/`} />
+  <p class="muted">
+    The CLI's built-in NEAR endpoint, <code>{NEAR_RPC_DEFAULT}</code>, may rate-limit (HTTP 429)
+    under load. So every example on this page passes <code>--near-rpc {site.nearRpc}</code>
+    explicitly, the endpoint this page itself reads through.
+  </p>
+  <p class="docs-note">
+    <strong>Read every line, not only the exit code.</strong> The README recorded this audit on
+    {DEMO_RECORDED_ON}: it failed only <code>gate_has_no_access_keys</code>, because the demo gate's
+    access key was still present. That key was scheduled for deletion on 2026-11-12. State changes,
+    so read every line of your own run instead of relying on this record.
+  </p>
+
+  <h3>Where to next</h3>
+  <p>
+    To write an upgrade the rules accept, read the next section. To run a ready-made attack without
+    installing anything, open the <a href="/app">live demo</a>.
+  </p>
+</div>

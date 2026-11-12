@@ -1,0 +1,124 @@
+---
+import { gateComparison, rules } from "../../../data/docs.ts";
+
+/**
+ * Limits, in plain words. Grounded in docs/PRD.md "Risks and guarantees", README.md ("Live demo gate",
+ * "Verifier deployment and trust limits"), crates/verifier/src/LOCAL.md ("One worker runs at a time")
+ * and docs/technical/ARCHITECTURE.md (admission and cool-down table). Per-rule limits come from the
+ * same data as the rules section, so the two cannot drift.
+ */
+---
+
+<div class="docs-prose">
+  <h3>What this is</h3>
+  <ul>
+    <li>
+      <strong>Testnet only.</strong> Everything runs on NEAR testnet and Base Sepolia. Nothing
+      here holds real value.
+    </li>
+    <li>
+      <strong>Not audited.</strong> The project's security reviews are internal. None of them is an
+      independent audit, and no production security claim follows from its tests.
+    </li>
+    <li>
+      <strong>The result of a run is an observation.</strong> A refusal leaves the proxy unchanged.
+      An outage of the verifier, the AI or the MPC network only delays an upgrade; it never
+      produces a signature without a certificate.
+    </li>
+  </ul>
+
+  <h3>The verifier</h3>
+  <ul>
+    <li>
+      <strong>One job at a time.</strong> Each gate has a single verifier machine with one worker. A
+      request that arrives while it is busy is refused with a retry delay, so you may have to
+      try again after someone else's run finishes.
+    </li>
+    <li>
+      <strong>Anyone can take the worker.</strong> Admission is permissionless: anyone holding a valid
+      sealed bundle for a Pending proposal can start its run.
+    </li>
+    <li>
+      <strong>Cool-down after a failed run.</strong> A failed or withheld run delays the next one for
+      that proposal: 10, 20, then 40 minutes, capped at one hour. Faults of the verifier itself do not count.
+    </li>
+    <li>
+      <strong>Speed is historical.</strong> The four demo attacks took 35 to 117 seconds on a warm
+      machine, and the final gate's honest upgrade with AI review took 515.8 seconds. Neither is a
+      promise.
+    </li>
+    <li>
+      <strong>Availability is not promised.</strong> An endpoint may go offline. A restart changes the
+      certificate key, and registering a replacement needs a timelocked change. Check the machine
+      with <code>verifier appraise</code> before you seal private source to it.
+    </li>
+  </ul>
+
+  <h3>What the rules do not prove</h3>
+  <p>
+    Rules protect only what they declare. A flaw outside R1 to R5, or beyond their bounds, can pass.
+    The limits of each rule are:
+  </p>
+  <ul>
+    {
+      rules.map((rule) => (
+        <li>
+          <strong>
+            {rule.id} {rule.name}.
+          </strong>{" "}
+          {rule.limit}
+        </li>
+      ))
+    }
+    <li>
+      <strong>Block environment.</strong> R2 runs under one fixed block environment, and R3 does not
+      forbid block-environment opcodes. A candidate whose drain depends on a later time or block
+      value can pass.
+    </li>
+    <li>
+      <strong>Your initializer.</strong> R2 starts from a fixed initializer and fixed actors, not
+      from your exact initializer.
+    </li>
+    <li>
+      <strong>The AI review.</strong> It is nondeterministic. It can refuse with a counterexample the
+      verifier reproduces, and it can never approve.
+    </li>
+    <li>
+      <strong>Attestation.</strong> It shows which code ran on which input. It does not show that the
+      conclusion is right.
+    </li>
+  </ul>
+
+  <h3>One vault, one rule set</h3>
+  <ul>
+    <li>
+      The only active rule set is the Vault pack, and it guards one vault proxy. A candidate with
+      constructor arguments, immutables or unresolved library links may fail runtime matching.
+    </li>
+    <li>Rule-pack presets and a rule-pack builder are planned. They do not exist yet.</li>
+  </ul>
+
+  <h3>Demo gate and final gate</h3>
+  <p>
+    They run identical gate code with different rule sets. The final gate holds the permanent
+    recorded evidence. The demo gate exists so you can run attacks yourself, and what you run there
+    never appears in the final gate's evidence.
+  </p>
+  <dl class="docs-compare">
+    {
+      gateComparison.map((row) => (
+        <div class="docs-compare__row">
+          <dt>{row.term}</dt>
+          <dd>
+            <span>Final gate</span>
+            <span>{row.final}</span>
+          </dd>
+          <dd>
+            <span>Demo gate</span>
+            <span>{row.demo}</span>
+          </dd>
+        </div>
+      ))
+    }
+  </dl>
+</div>

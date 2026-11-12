@@ -1,0 +1,126 @@
+---
+import { demoGate, demoManifest, precheck, rules } from "../../../data/docs.ts";
+import Card from "../../ui/Card.astro";
+
+/**
+ * Write an upgrade that passes. Every number is read from `rules/demo/manifest.json` at build time
+ * (see data/docs.ts); the rule names and reason texts come from lib/reasons.ts, and the attacks each
+ * rule refuses from deployments/demo-gallery.json.
+ */
+const m = demoManifest;
+const f = m.facts;
+const lineage = m.lineage.join(" \u2192 ");
+---
+
+<div class="docs-prose">
+  <p>
+    The demo gate protects one vault proxy, so your candidate has to be a Vault variant: it keeps
+    VaultV1's storage layout and its deposit and withdraw interface. The verifier compiles your
+    source, then runs the rules below in order. A candidate is certified only if every one of them
+    passes.
+  </p>
+
+  <h3>What the verifier does with your source</h3>
+  <ol>
+    <li>
+      <strong>Compile.</strong> With the pinned toolchain: solc <code>{f.solc}</code>, EVM
+      <code>{f.evm_version}</code>. The runtime code hash must equal the one in your proposal.
+    </li>
+    <li>
+      <strong>Pre-check, called rule 0.</strong> The candidate is refused for any of these reasons:
+      <ul>
+        {precheck.map((text) => <li>{text}</li>)}
+      </ul>
+    </li>
+    <li><strong>R1 to R5,</strong> described below.</li>
+    <li>
+      <strong>A private AI review,</strong> which can only refuse. It runs after R1 to R5 pass.
+    </li>
+    <li>
+      <strong>A certificate,</strong> valid for at most {f.max_cert_ttl_s} seconds. The gate then
+      asks the NEAR MPC network to sign the exact upgrade, and anyone can relay it.
+    </li>
+  </ol>
+  <p class="muted">
+    The pre-check recognises {lineage} as the current implementation, so an attack can be checked
+    after an honest upgrade.
+  </p>
+
+  <h3>The five rules</h3>
+  <p>
+    Each rule shows what it checks, what your code needs, the numbers the demo gate committed, what
+    the rule does not prove, and the attack on the <a href="/app">live demo</a> it refuses.
+  </p>
+  <ol class="docs-rules">
+    {
+      rules.map((rule) => (
+        <Card as="li">
+          <article class="docs-rule" aria-labelledby={`rule-${rule.id}`}>
+            <h4 class="docs-rule__title" id={`rule-${rule.id}`}>
+              <span class="docs-rule__id mono">{rule.id}</span>
+              <span>{rule.name}</span>
+            </h4>
+            <div class="docs-field">
+              <p class="docs-label">What it checks</p>
+              <p>{rule.checks}</p>
+            </div>
+            <div class="docs-field">
+              <p class="docs-label">What your code needs</p>
+              <p>{rule.yourCode}</p>
+            </div>
+            <div class="docs-field">
+              <p class="docs-label">Committed numbers</p>
+              <dl class="docs-facts">
+                {
+                  rule.numbers.map((entry) => (
+                    <div>
+                      <dt>{entry.term}</dt>
+                      <dd>{entry.value}</dd>
+                    </div>
+                  ))
+                }
+              </dl>
+            </div>
+            <div class="docs-field">
+              <p class="docs-label">What it does not prove</p>
+              <p>{rule.limit}</p>
+            </div>
+            {
+              rule.refuses === null ? (
+                <p class="docs-note docs-note--plain">
+                  <strong>On the live demo:</strong> no gallery attack targets {rule.id}. It is
+                  the rule an honest upgrade has to survive.
+                </p>
+              ) : (
+                <p class="docs-note docs-note--refuse">
+                  <strong>Refused on the live demo:</strong>{" "}
+                  <a href="/app#attacks">{rule.refuses.title}</a>, reason {rule.refuses.reason}.
+                  {rule.refuses.reasonText !== null && <> {rule.refuses.reasonText}</>}
+                </p>
+              )
+            }
+          </article>
+        </Card>
+      ))
+    }
+  </ol>
+
+  <h3>Then the private review</h3>
+  <p>
+    {f.ai.required ? "The gate requires" : "The gate allows"} a private review by
+    <code>{f.ai.model}</code> on NEAR AI Cloud, with a verified <code>{f.ai.signature_kind}</code>
+    response. It may propose up to {f.ai.max_candidates} counterexamples within {f.ai.timeout_s} seconds.
+    The verifier replays each one deterministically, and a reproduced counterexample is a
+    refusal. The model's word alone can never approve an upgrade. It is nondeterministic, so no
+    find rate is promised.
+  </p>
+
+  <h3>A realistic starting point</h3>
+  <p>
+    The honest examples live in <code>contracts/src/demo/</code>, and the manifest pins them by
+    source hash. As of 2026-11-11 the README records that the honest upgrade has been checked
+    locally, but it has not yet run on <span class="mono">{demoGate.account}</span>, so treat it as a
+    reference rather than a guarantee. Then propose your own with the
+    <a href="#commands">headless commands</a>.
+  </p>
+</div>

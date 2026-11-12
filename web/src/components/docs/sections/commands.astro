@@ -1,0 +1,70 @@
+---
+import { commandGroups, demoVerifier } from "../../../data/docs.ts";
+import Card from "../../ui/Card.astro";
+import CodeBlock from "../../ui/CodeBlock.astro";
+
+/**
+ * Headless commands. Subcommands and flags are those the clap definitions in crates/cli/src/main.rs
+ * (and demo.rs) declare; see data/docs.ts for the line ranges each command was read from.
+ */
+---
+
+<div class="docs-prose">
+  <p>
+    Every command runs from the repository root after the quickstart build, as
+    <code>./target/debug/constitution</code>. A flag marked <em>also read from</em> falls back to that
+    environment variable, so you can set it once per shell.
+  </p>
+  <p class="docs-note">
+    <strong>Set the demo verifier once.</strong> The examples below use <code>$VERIFIER_URL</code>.
+    {
+      demoVerifier.fromBuild
+        ? " This build was configured with the live demo's verifier address:"
+        : " The README recorded the demo verifier at this address on 2026-11-11, and it may not stay online:"
+    }
+    <code>export VERIFIER_URL={demoVerifier.url}</code>. Appraise a verifier before you seal private
+    source to it.
+  </p>
+
+  {
+    commandGroups.map((group) => (
+      <section class="docs-group" aria-labelledby={`group-${group.id}`}>
+        <h3 id={`group-${group.id}`}>{group.title}</h3>
+        <p class="muted">{group.summary}</p>
+        <ul class="docs-commands">
+          {group.commands.map((command) => (
+            <Card as="li">
+              <article class="docs-command" aria-labelledby={`cmd-${command.id}`}>
+                <h4 class="docs-command__title" id={`cmd-${command.id}`}>
+                  <code>{command.usage}</code>
+                  <span class="docs-access">{command.access}</span>
+                </h4>
+                <p>{command.purpose}</p>
+                <CodeBlock
+                  id={`docs-cmd-${command.id}`}
+                  label="Command"
+                  tabs={[command.tab]}
+                  title="repository root"
+                />
+                {command.note !== undefined && <p class="docs-note">{command.note}</p>}
+                <details class="docs-flags">
+                  <summary>Arguments and flags</summary>
+                  <dl>
+                    {command.flags.map((flag) => (
+                      <div>
+                        <dt>
+                          <code>{flag.flag}</code>
+                        </dt>
+                        <dd>{flag.note}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+              </article>
+            </Card>
+          ))}
+        </ul>
+      </section>
+    ))
+  }
+</div>

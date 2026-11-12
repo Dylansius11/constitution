@@ -1,0 +1,86 @@
+---
+import DocsSection from "../components/docs/DocsSection.astro";
+import DocsToc from "../components/docs/DocsToc.astro";
+import Footer from "../components/layout/Footer.astro";
+import Header from "../components/layout/Header.astro";
+import Button from "../components/ui/Button.astro";
+import { sections } from "../data/docs.ts";
+import { site } from "../data/site.ts";
+import Base from "../layouts/Base.astro";
+import "../components/docs/docs.css";
+
+/**
+ * /docs: how to test your own upgrade. `sections` (data/docs.ts) is the single ordered list behind
+ * the table of contents and the page. A section body is the component in
+ * `components/docs/sections/<id>.astro`, so adding a section is one entry plus one file.
+ */
+const modules = import.meta.glob("../components/docs/sections/*.astro", {
+  eager: true,
+  import: "default",
+});
+const bodies = new Map(
+  Object.entries(modules).map(([path, component]) => [path.slice(path.lastIndexOf("/") + 1, -".astro".length), component]),
+);
+const resolved = sections.map((section) => {
+  const Body = bodies.get(section.id);
+  if (Body === undefined) {
+    throw new Error(`docs: section "${section.id}" has no component at components/docs/sections/${section.id}.astro`);
+  }
+  return { ...section, Body };
+});
+const orphans = [...bodies.keys()].filter((id) => !sections.some((section) => section.id === id));
+if (orphans.length > 0) {
+  throw new Error(`docs: components without a sections entry: ${orphans.join(", ")}`);
+}
+---
+
+<Base
+  title="Docs: test your own upgrade"
+  description="Build the Constitution CLI, write a vault upgrade the five rules accept, and send it through the demo gate on NEAR testnet."
+>
+  <Header slot="header" page="docs" />
+  <div class="docs container" id="top">
+    <header class="docs-head">
+      <p class="docs-eyebrow">Docs · Testnet · Not audited</p>
+      <h1>Test your own upgrade.</h1>
+      <p class="lede">
+        Build the CLI, audit the demo gate from public state, learn what the five rules accept, and
+        send an upgrade of your own through the same verifier the live attacks hit.
+      </p>
+    </header>
+
+    <div class="docs-layout">
+      <DocsToc sections={sections} />
+      <div class="docs-content">
+        {
+          resolved.map(({ Body, ...section }, index) => (
+            <DocsSection id={section.id} title={section.title} summary={section.summary} number={index + 1}>
+              <Body />
+            </DocsSection>
+          ))
+        }
+      </div>
+    </div>
+
+    <section class="docs-band" aria-labelledby="docs-band-title">
+      <div class="docs-band__inner">
+        <h2 id="docs-band-title">Rather watch the attacks first?</h2>
+        <p>
+          Open the live demo, connect a NEAR testnet wallet and send malicious upgrades to the demo
+          gate. Each one is refused by a different rule.
+        </p>
+        <div class="docs-band__actions">
+          <Button href="/app" variant="ink" size="lg">Open the live demo</Button>
+          {
+            site.repoUrl !== null && (
+              <a class="docs-band__link" href={`${site.repoUrl}#readme`}>
+                Read the README on GitHub
+              </a>
+            )
+          }
+        </div>
+      </div>
+    </section>
+  </div>
+  <Footer slot="footer" />
+</Base>
