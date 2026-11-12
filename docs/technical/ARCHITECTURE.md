@@ -357,6 +357,13 @@ rendered deployment inputs before quote appraisal. [V, exercised on testnet 2026
 
 [I, implemented] Audit Enter runs the existing F7 evaluation and displays each PASS/FAIL/WARN plus its exit result. Receipt `i` edits the proposal id, Enter fetches `constitution.receipt/1`, and `s` enters a new JSON path (Enter saves, create-only). These surfaces never manufacture certificate facts absent from observed evidence.
 
+[I, implemented] Typed presentation contract: `Snapshot.proposals` and `App.detail` expose `ProposalView` (canonical `ProposalState`, plain proposer, UTC creation/expiry, implementation/code/source/certificate/evidence fields and explorer URLs). `Refusal` uses the single numeric rule/reason meaning table copied from the guide's `skills/constitution/references/refusals.md`; unknown pairs remain explicitly unknown. `v` toggles retained raw observations rather than removing access to original JSON. `PendingChangeView` carries the change kind/status, exact `eta_ns`, `eta_utc`, saturated remaining nanoseconds and ceiling-rounded seconds. This is a **local-clock ETA countdown**, not proof that every governance-application precondition holds.
+
+[I, implemented] Overview `a` explicitly appraises the Demo verifier in a background worker using the existing seven named appraisal checks, pinned compose hash and optional `PCCS_URL`; it does not sign or start AI. `App.appraisal` retains each named result and the observation time, while `appraising` identifies pending work. Final reads `deployments/final-verifier-retired/{identity,appraisal,cvm}.json` and labels that identity/appraisal **recorded**, never probing the retired URL. Only absent files use the same recorded bindings/checks as constants; malformed or unreadable files report errors. The retained appraisal has no exact capture timestamp, so the UI says so rather than substituting the CVM/identity timestamp.
+
+[I, implemented] `Step.started_at` / `finished_at` and `App.run_started_at` / `run_finished_at` are client-observed transition times, not backfilled remote or chain execution times. Verifier-reported elapsed milliseconds remain separate. Presets expose `previous_run` only when gallery `observed.duration_ms` or `observed.duration_s` is present (with optional `observed_at`); absent timing evidence is `None`, never a latency estimate. `App.last_action_result` supplies an info/success/error message and observed time for a view-owned toast.
+
+
 
 #### Demo runner operation
 

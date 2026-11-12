@@ -72,11 +72,13 @@ pub fn run() -> Result<(), Failure> {
         Terminal::new(CrosstermBackend::new(io::stdout())).map_err(terminal_error)?;
     let (tx, rx) = mpsc::channel();
     let mut workers = data::Workers::default();
+    app::update(&mut app, Event::Clock(data::unix_ns()));
     for action in app::update(&mut app, Event::Refresh) {
         workers.dispatch(action, &tx);
     }
     let mut refreshed = Instant::now();
     while !app.quit {
+        app::update(&mut app, Event::Clock(data::unix_ns()));
         while let Ok(event) = rx.try_recv() {
             for action in app::update(&mut app, event) {
                 workers.dispatch(action, &tx);
@@ -190,6 +192,8 @@ fn key_event(app: &mut App, key: KeyEvent) -> Vec<Action> {
         KeyCode::Char(c @ '1'..='5') => Event::Navigate(Screen::ALL[(c as u8 - b'1') as usize]),
         KeyCode::Char('p') => Event::SwitchProfile,
         KeyCode::Char('r') => Event::Refresh,
+        KeyCode::Char('a') if app.screen == Screen::Overview => Event::Appraise,
+        KeyCode::Char('v') => Event::ToggleRawJson,
         KeyCode::Up | KeyCode::Char('k') if app.screen == Screen::Proposals => {
             Event::SelectProposal(-1)
         }

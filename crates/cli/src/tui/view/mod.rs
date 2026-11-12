@@ -69,10 +69,26 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 .wrap(Wrap { trim: false }),
             chunks[3],
         );
+    } else if let Some(result) = &app.last_action_result {
+        let style = match result.level {
+            crate::tui::app::ToastLevel::Info => theme::ACTIVE,
+            crate::tui::app::ToastLevel::Success => theme::GOOD,
+            crate::tui::app::ToastLevel::Error => theme::BAD,
+        };
+        f.render_widget(
+            Paragraph::new(format!(
+                "{} · {}",
+                result.message,
+                result.observed_at.as_deref().unwrap_or("time unavailable")
+            ))
+            .style(style)
+            .wrap(Wrap { trim: false }),
+            chunks[3],
+        );
     }
     f.render_widget(
         Paragraph::new(
-            "? help · Tab / 1–5 screens · p profile · r refresh · q / Esc back · Ctrl+C cancel",
+            "? help · Tab / 1–5 screens · p profile · r refresh · a appraise (Overview) · v raw · q / Esc back · Ctrl+C cancel",
         )
         .style(theme::MUTED),
         chunks[4],
@@ -89,7 +105,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let text = if app.confirm_cancel {
             "A NEAR write MAY already have been sent. This confirmation is conservative from process launch, including while appraisal is still in progress.\n\nStopping the local process cannot undo credit funding, a registered proposal, verifier work, an MPC request, or a Base transaction already broadcast. The remote verifier may continue after cancellation.\n\nInspect submission.json, status and receipt before any retry. Never create a duplicate proposal to recover.\n\ny: stop local worker / n or Esc: keep watching"
         } else {
-            "GLOBAL\nTab or 1–5: switch screens • p: Demo / Final profile\nr: refresh observed public state (also every 30s)\nq / Esc: close overlay, leave editor, back to Overview, then quit\nCtrl+C: cancel a run; confirmation after a possible NEAR write\nj/k or arrows: scroll (Proposals: choose row)\n\nRUN\n←/→: presets • e: edit fields • u: attack / upgrade (custom)\nEditor: Tab/Shift+Tab next/previous field; Enter finish editing\nEnter: validate paths + read funding/signing confirmation\ny: confirm signing/spending (only on confirmation screen)\n\nAUDIT: Enter runs read-only checks\nPROPOSALS: Enter reads selected receipt detail\nRECEIPT: i edits proposal id; Enter fetches; s edits new JSON path\nEnter in a receipt input submits; existing files are not overwritten\n\nFinal profile is evidence-only: all write actions disabled."
+            "GLOBAL\nTab or 1–5: switch screens • p: Demo / Final profile\nr: refresh observed public state (also every 30s)\na: appraise pinned Demo verifier (Overview; Final never probes)\nv: toggle raw JSON (Proposals / governance queue)\nq / Esc: close overlay, leave editor, back to Overview, then quit\nCtrl+C: cancel a run; confirmation after a possible NEAR write\nj/k or arrows: scroll (Proposals: choose row)\n\nRUN\n←/→: presets • e: edit fields • u: attack / upgrade (custom)\nEditor: Tab/Shift+Tab next/previous field; Enter finish editing\nEnter: validate paths + read funding/signing confirmation\ny: confirm signing/spending (only on confirmation screen)\n\nAUDIT: Enter runs read-only checks\nPROPOSALS: Enter reads selected receipt detail\nRECEIPT: i edits proposal id; Enter fetches; s edits new JSON path\nEnter in a receipt input submits; existing files are not overwritten\n\nFinal profile is evidence-only: all write actions disabled."
         };
         f.render_widget(Clear, popup);
         f.render_widget(

@@ -107,6 +107,7 @@ fn tui_applied_upgrade_unavailable() {
         rule: None,
         upgrade: true,
         requires_impl: None,
+        previous_run: None,
     };
     assert_eq!(
         preset.availability(Some(&preset.implementation)),
@@ -203,4 +204,191 @@ fn tui_live_read_only_render() {
         assert!(text.contains("constitution-demo.testnet") || screen == Screen::Proposals);
         assert!(text.contains("Observed at"));
     }
+}
+
+#[test]
+fn tui_appraisal_success_records_checks_and_toast() {
+    let mut app = App::default();
+    assert!(matches!(
+        update(&mut app, Event::Appraise).as_slice(),
+        [Action::Appraise(Profile::Demo)]
+    ));
+    assert!(app.appraising);
+    update(
+        &mut app,
+        Event::Appraised(
+            Profile::Demo,
+            AppraisalResult {
+                checks: vec![AppraisalCheck {
+                    name: "identity".into(),
+                    ok: true,
+                    detail: "observed".into(),
+                }],
+                observed_at: Some("2026-11-12T04:00:00Z".into()),
+                recorded: false,
+                recorded_date: None,
+            },
+        ),
+    );
+    assert!(!app.appraising);
+    assert!(app.appraisal.as_ref().unwrap().ok());
+    assert_eq!(
+        app.last_action_result.as_ref().unwrap().level,
+        ToastLevel::Success
+    );
+}
+
+#[test]
+fn tui_appraisal_failure_is_not_a_pass() {
+    let mut app = App::default();
+    update(
+        &mut app,
+        Event::Appraised(
+            Profile::Demo,
+            AppraisalResult {
+                checks: vec![AppraisalCheck {
+                    name: "compose_hash".into(),
+                    ok: false,
+                    detail: "mismatch".into(),
+                }],
+                observed_at: Some("2026-11-12T04:00:00Z".into()),
+                recorded: false,
+                recorded_date: None,
+            },
+        ),
+    );
+    assert!(!app.appraisal.as_ref().unwrap().ok());
+    assert_eq!(
+        app.last_action_result.as_ref().unwrap().level,
+        ToastLevel::Error
+    );
+    assert!(app.error.as_ref().unwrap().contains("mismatch"));
+}
+
+#[test]
+fn tui_final_appraisal_never_dispatches_a_probe() {
+    let mut app = App {
+        profile: Profile::Final,
+        ..App::default()
+    };
+    assert!(update(&mut app, Event::Appraise).is_empty());
+    assert!(!app.appraising);
+}
+
+#[test]
+fn tui_eta_countdown_matures_at_exact_boundary() {
+    let change = PendingChangeView {
+        id: 0,
+        kind: "SetParams".into(),
+        status: "Pending".into(),
+        eta_ns: 2_000_000_001,
+        eta_utc: utc_from_ns(2_000_000_001),
+        remaining_ns: 0,
+        remaining_seconds: 0,
+        matured: false,
+        raw: serde_json::Value::Null,
+    };
+    let mut app = App {
+        snapshot: Some(Snapshot {
+            changes: vec![change],
+            ..Snapshot::default()
+        }),
+        ..App::default()
+    };
+    update(&mut app, Event::Clock(2_000_000_000));
+    assert_eq!(app.snapshot.as_ref().unwrap().changes[0].remaining_ns, 1);
+    assert_eq!(
+        app.snapshot.as_ref().unwrap().changes[0].remaining_seconds,
+        1
+    );
+    assert!(!app.snapshot.as_ref().unwrap().changes[0].matured);
+    update(&mut app, Event::Clock(2_000_000_001));
+    assert_eq!(
+        app.snapshot.as_ref().unwrap().changes[0].remaining_seconds,
+        0
+    );
+    assert!(app.snapshot.as_ref().unwrap().changes[0].matured);
+    update(&mut app, Event::Clock(3_000_000_000));
+    assert_eq!(app.snapshot.as_ref().unwrap().changes[0].remaining_ns, 0);
+}
+
+#[test]
+fn tui_raw_json_toggle_round_trips() {
+    let mut app = App::default();
+    update(&mut app, Event::ToggleRawJson);
+    assert!(app.show_raw_json);
+    update(&mut app, Event::ToggleRawJson);
+    assert!(!app.show_raw_json);
+}
+
+#[test]
+fn tui_stage_observation_timestamps_do_not_move_on_repeated_results() {
+    let mut app = App::default();
+    update(&mut app, Event::Clock(1_000_000_000));
+    update(
+        &mut app,
+        Event::Stage {
+            index: 0,
+            state: StepState::Active,
+            detail: "observed".into(),
+            elapsed_ms: 0,
+        },
+    );
+    update(&mut app, Event::Clock(3_000_000_000));
+    update(
+        &mut app,
+        Event::Stage {
+            index: 0,
+            state: StepState::Pass,
+            detail: "registered".into(),
+            elapsed_ms: 2000,
+        },
+    );
+    update(&mut app, Event::Clock(5_000_000_000));
+    update(
+        &mut app,
+        Event::Stage {
+            index: 0,
+            state: StepState::Pass,
+            detail: "registered".into(),
+            elapsed_ms: 2000,
+        },
+    );
+    assert_eq!(
+        app.steps[0].started_at.as_deref(),
+        Some("1970-01-01T00:00:01Z")
+    );
+    assert_eq!(
+        app.steps[0].finished_at.as_deref(),
+        Some("1970-01-01T00:00:03Z")
+    );
+}
+
+#[test]
+#[ignore = "explicit read-only Intel collateral / pinned demo verifier appraisal"]
+fn tui_live_pinned_appraisal_read_only() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut workers = super::data::Workers::default();
+    let mut app = App::default();
+    update(&mut app, Event::Clock(super::data::unix_ns()));
+    for action in update(&mut app, Event::Appraise) {
+        workers.dispatch(action, &tx);
+    }
+    let event = rx
+        .recv_timeout(std::time::Duration::from_secs(180))
+        .expect("bounded live appraisal reply");
+    update(&mut app, event);
+    let result = app.appraisal.as_ref().expect("structured appraisal result");
+    for check in &result.checks {
+        println!(
+            "{} {}: {}",
+            if check.ok { "PASS" } else { "FAIL" },
+            check.name,
+            check.detail
+        );
+    }
+    println!("Appraisal observed at {:?}", result.observed_at);
+    assert_eq!(result.checks.len(), 7);
+    assert!(result.ok(), "live appraisal failed: {:?}", result.checks);
+    assert!(!result.recorded);
 }

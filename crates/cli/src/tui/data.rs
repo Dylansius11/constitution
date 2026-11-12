@@ -1,5 +1,6 @@
 //! Background boundary: existing read modules and the unchanged demo command own protocol work.
 //! A child of this same binary isolates demo stdout and gives cancellation a process boundary.
+mod models;
 use super::app::*;
 use crate::{
     audit, executor_build,
@@ -9,6 +10,7 @@ use crate::{
     rules,
 };
 use constitution_types::{Config, Constitution, Hex20, U128Str};
+use models::*;
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
@@ -77,28 +79,35 @@ fn artifact(path: &Path, tx: &Sender<Event>) -> Option<Value> {
 fn failure(error: Failure) -> String {
     format!("{}; recovery: {}", error.cause, error.next)
 }
-pub fn now() -> String {
-    let seconds = SystemTime::now()
+pub fn unix_ns() -> u64 {
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs();
-    // Gregorian civil date from days since Unix epoch, independent of locale/timezone.
-    let z = (seconds / 86400) as i64 + 719468;
-    let era = z / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = mp + if mp < 10 { 3 } else { -9 };
-    let year = y + i64::from(m <= 2);
-    format!(
-        "{year:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
-        seconds / 3600 % 24,
-        seconds / 60 % 60,
-        seconds % 60
-    )
+        .as_nanos()
+        .min(u64::MAX as u128) as u64
+}
+pub fn now() -> String {
+    utc_from_ns(unix_ns())
+}
+fn appraise_demo() -> AppraisalResult {
+    let pccs =
+        std::env::var("PCCS_URL").unwrap_or_else(|_| crate::appraise::DEFAULT_PCCS_URL.into());
+    let expected =
+        crate::appraise::parse_compose_hash(DEMO_COMPOSE).expect("pinned demo compose is 32 bytes");
+    let checks = crate::appraise::collect(DEMO_VERIFIER, &pccs, Some(expected))
+        .into_iter()
+        .map(|c| AppraisalCheck {
+            name: c.name.into(),
+            ok: c.ok,
+            detail: c.detail,
+        })
+        .collect();
+    AppraisalResult {
+        checks,
+        observed_at: Some(now()),
+        recorded: false,
+        recorded_date: None,
+    }
 }
 pub fn presets() -> Result<Vec<Preset>, String> {
     let gallery = read_json(Path::new("deployments/demo-gallery.json"))?;
@@ -122,6 +131,7 @@ pub fn presets() -> Result<Vec<Preset>, String> {
             rule: p["expected_rule"].as_u64(),
             upgrade: false,
             requires_impl: None,
+            previous_run: recorded_duration(&p["observed"])?,
         });
     }
     let mut previous = None;
@@ -152,6 +162,7 @@ pub fn presets() -> Result<Vec<Preset>, String> {
             rule: None,
             upgrade: true,
             requires_impl: previous.clone(),
+            previous_run: recorded_duration(&p["observed"])?,
         });
         previous = Some(implementation);
     }
@@ -190,6 +201,11 @@ pub fn snapshot(profile: Profile) -> Result<Snapshot, String> {
     let evm = Evm::with_timeout(&evm_url(), Duration::from_secs(15))?;
     let mut s = Snapshot {
         gate: gate.into(),
+        gate_url: format!("https://testnet.nearblocks.io/address/{gate}"),
+        proxy_url: format!(
+            "https://sepolia.basescan.org/address/0x{}",
+            hex::encode(d.proxy.0)
+        ),
         ..Snapshot::default()
     };
     macro_rules! observe {
@@ -225,16 +241,28 @@ pub fn snapshot(profile: Profile) -> Result<Snapshot, String> {
             ));
         }
     }
-    s.proposals = observe!(page(&near, gate, "list_proposals")).unwrap_or_default();
-    s.changes = observe!(page(&near, gate, "list_changes")).unwrap_or_default();
+    s.proposals = observe!(page(&near, gate, "list_proposals").and_then(|items| {
+        items
+            .into_iter()
+            .map(|raw| proposal_view(raw, gate))
+            .collect()
+    }))
+    .unwrap_or_default();
+    s.changes = observe!(
+        page(&near, gate, "list_changes")
+            .and_then(|items| items.into_iter().map(change_view).collect())
+    )
+    .unwrap_or_default();
     if profile == Profile::Final {
         s.verifier = "retired — final CVM deleted; no probe attempted (recorded 2026-11-12)".into();
+        s.identity = observe!(retired_identity());
+        s.recorded_appraisal = observe!(retired_appraisal());
     } else {
         match Verifier::new(DEMO_VERIFIER).and_then(|v| v.identity()) {
             Ok(identity) => {
                 s.verifier =
                     "online — identity endpoint observed, NOT an attestation appraisal".into();
-                s.identity = Some(identity);
+                s.identity = Some(identity_view(&identity, false, Some(now())));
             }
             Err(e) => {
                 s.verifier = format!("offline / identity unavailable: {}", failure(e));
@@ -244,9 +272,9 @@ pub fn snapshot(profile: Profile) -> Result<Snapshot, String> {
     s.observed_at = now();
     Ok(s)
 }
-fn collect(profile: Profile, id: u64) -> Result<Value, String> {
+fn collect(profile: Profile, id: u64) -> Result<(Value, constitution_types::AccountId), String> {
     let d = audit::read_deployment(Path::new(paths(profile).0)).map_err(failure)?;
-    receipt::collect(
+    let value = receipt::collect(
         &Near::with_timeout(&near_url(), Duration::from_secs(15))?,
         d.gate.as_str(),
         id,
@@ -254,7 +282,8 @@ fn collect(profile: Profile, id: u64) -> Result<Value, String> {
         "testnet",
         None,
     )
-    .map_err(failure)
+    .map_err(failure)?;
+    Ok((value, d.gate))
 }
 fn audit_profile(profile: Profile) -> Result<AuditResult, String> {
     let (deployment, manifest) = paths(profile);
@@ -390,13 +419,15 @@ impl Workers {
         thread::spawn(move || {
             let result: Result<Event, String> = match action {
                 Action::Refresh(p) => snapshot(p).map(|s| Event::Snapshot(p, s)),
+                Action::Appraise(Profile::Demo) => Ok(Event::Appraised(Profile::Demo,appraise_demo())),
+                Action::Appraise(Profile::Final) => retired_appraisal().map(|result|Event::Appraised(Profile::Final,result)),
                 Action::Audit(p) => Ok(Event::Audited(p, audit_profile(p).unwrap_or_else(|detail| AuditResult {
                     checks: vec![AuditCheck { name: "read_failed".into(), ok: false, warning: false, detail: format!("{detail}; fix the artifact/RPC configuration and run the audit again") }],
                     exit: 1,
                     observed_at: now(),
                 }))),
-                Action::Detail(p, id) => collect(p, id).map(|v| Event::Detail(p, v)),
-                Action::Receipt(p, id) => collect(p, id).map(|v| Event::Receipt(p, v)),
+                Action::Detail(p, id) => collect(p,id).and_then(|(raw,gate)|proposal_view(raw,gate.as_str())).map(|v|Event::Detail(p,v)),
+                Action::Receipt(p, id) => collect(p,id).map(|(value,_)|Event::Receipt(p,value)),
                 Action::Prepare(w) => prepare(&w).map(|text| Event::Prepared(w, text)),
                 Action::Run(w) => {
                     let result = run_demo(w, &tx, &cancel, &process);

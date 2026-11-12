@@ -77,9 +77,20 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 theme::MUTED,
             ),
         ];
+        lines.push(Line::from(format!(
+            "Run observed start: {} · finish: {}",
+            app.run_started_at.as_deref().unwrap_or("not observed"),
+            app.run_finished_at.as_deref().unwrap_or("not observed")
+        )));
         for s in &app.steps {
             if !s.detail.is_empty() {
-                lines.push(Line::from(format!("{}: {}", s.name, s.detail)));
+                lines.push(Line::from(format!(
+                    "{} · observed start {} / finish {} · {}",
+                    s.name,
+                    s.started_at.as_deref().unwrap_or("not observed"),
+                    s.finished_at.as_deref().unwrap_or("not observed"),
+                    s.detail
+                )));
             }
         }
         lines.push(Line::styled("Observed CLI log", theme::TITLE));
@@ -139,6 +150,16 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             ),
             theme::TITLE,
         ));
+        if let Some(previous) = &p.previous_run {
+            lines.push(Line::from(format!(
+                "Previous recorded run took {:.3} s · observed {} (not an estimate)",
+                previous.elapsed_ms as f64 / 1000.0,
+                previous
+                    .observed_at
+                    .as_deref()
+                    .unwrap_or("capture time not recorded")
+            )));
+        }
     }
     lines.push(Line::from(format!(
         "Mode: {} (u toggles for custom bundle)",

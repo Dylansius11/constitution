@@ -21,6 +21,8 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             theme::MUTED,
         ),
         Line::from(format!("Gate: {}", s.gate)),
+        Line::from(format!("Gate explorer: {}", s.gate_url)),
+        Line::from(format!("Proxy explorer: {}", s.proxy_url)),
         Line::from(match s.access_keys {
             Some(0) => "Access keys: 0 — KEYLESS".into(),
             Some(n) => format!("Access keys: {n} — NOT KEYLESS"),
@@ -60,14 +62,69 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         Line::from(format!("Verifier: {}", s.verifier)),
     ]);
     if let Some(identity) = &s.identity {
-        for (field, label) in [
-            ("verifier_pubkey", "Certificate public key"),
-            ("release_hash", "Release hash"),
-            ("compose_hash", "Compose hash"),
+        lines.push(Line::styled(
+            format!(
+                "Identity source: {} · {}",
+                if identity.recorded {
+                    "RECORDED (retired)"
+                } else {
+                    "live endpoint; not an appraisal"
+                },
+                identity
+                    .observed_at
+                    .as_deref()
+                    .unwrap_or("capture time not recorded")
+            ),
+            theme::MUTED,
+        ));
+        for (value, label) in [
+            (&identity.verifier_pubkey, "Certificate public key"),
+            (&identity.release_hash, "Release hash"),
+            (&identity.compose_hash, "Compose hash"),
         ] {
             lines.push(Line::from(format!(
-                "{label} (observed, unappraised): {}",
-                identity[field].as_str().unwrap_or("unavailable")
+                "{label}: {}",
+                value.as_deref().unwrap_or("unavailable")
+            )));
+        }
+    }
+    if app.appraising {
+        lines.push(Line::styled(
+            "Appraising pinned demo identity… no pass assumed",
+            theme::ACTIVE,
+        ));
+    } else {
+        lines.push(Line::from(
+            "a: explicitly appraise Demo verifier (Final never probes)",
+        ));
+    }
+    if let Some(result) = &app.appraisal {
+        let label = if result.recorded {
+            "RECORDED appraisal"
+        } else if result.ok() {
+            "Appraised"
+        } else {
+            "APPRAISAL FAILED"
+        };
+        lines.push(Line::styled(
+            format!(
+                "{label} {}/{} · {} · recorded date {}",
+                result.passed(),
+                result.checks.len(),
+                result
+                    .observed_at
+                    .as_deref()
+                    .unwrap_or("appraisal capture time not recorded"),
+                result.recorded_date.as_deref().unwrap_or("live")
+            ),
+            if result.ok() { theme::GOOD } else { theme::BAD },
+        ));
+        for check in &result.checks {
+            lines.push(Line::from(format!(
+                "{} {}: {}",
+                if check.ok { "PASS" } else { "FAIL" },
+                check.name,
+                check.detail
             )));
         }
     }
@@ -76,10 +133,11 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         theme::TITLE,
     ));
     for change in &s.changes {
-        lines.push(Line::from(format!(
-            "Change {} · {:?} · eta_ns {} · {}",
-            change["id"], change["status"], change["eta_ns"], change["kind"]
-        )));
+        if app.show_raw_json {
+            lines.push(Line::from(change.raw.to_string()));
+        } else {
+            lines.push(Line::from(format!("Change {} · {} · {} · ETA {} · {} seconds remaining{} (local-clock countdown, not execution authorization)",change.id,change.kind,change.status,change.eta_utc,change.remaining_seconds,if change.matured {" · ETA reached"}else{""})));
+        }
     }
     for error in &s.errors {
         lines.push(Line::styled(
