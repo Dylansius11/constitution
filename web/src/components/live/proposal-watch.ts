@@ -98,6 +98,8 @@ for (const root of document.querySelectorAll<HTMLElement>("[data-watch]")) {
     const waiting = surfaceView({ kind: "idle" });
     root.dataset["tone"] = "neutral";
     record.dataset["stale"] = "false";
+    // The record stays hidden until a proposal is watched: an idle ladder of "Pending" rows says nothing.
+    record.hidden = false;
     text(root, "[data-watch-title]", `Watching proposal ${id}`);
     text(
       root,

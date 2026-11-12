@@ -1,0 +1,26 @@
+---
+/**
+ * One section of /docs. The heading, number and summary come from the `sections` entry, so the
+ * table of contents and the page cannot disagree; the slot is the section's body component.
+ */
+interface Props {
+  id: string;
+  title: string;
+  summary: string;
+  /** 1-based position in the ordered list. */
+  number: number;
+}
+
+const { id, title, summary, number } = Astro.props;
+---
+
+<section class="docs-section" id={id} aria-labelledby={`${id}-title`}>
+  <header class="docs-section__head">
+    <p class="docs-section__n" aria-hidden="true">{String(number).padStart(2, "0")}</p>
+    <h2 id={`${id}-title`}>{title}</h2>
+    <p class="lede">{summary}</p>
+  </header>
+  <div class="docs-section__body">
+    <slot />
+  </div>
+</section>

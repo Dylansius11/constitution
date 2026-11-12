@@ -7,6 +7,7 @@ import {
   finalVerifier,
   nearTxUrl,
   RECORDED_ON,
+  VERIFIER_RETIRED_ON,
 } from "../../data/final-evidence.ts";
 import { site } from "../../data/site.ts";
 import "../live/live.css";
@@ -73,7 +74,7 @@ const keyDeletedAt = `${keyDeletion.timeUtc.slice(0, 10)} ${keyDeletion.timeUtc.
     not read them; the live ledger above is the observed source.
   </p>
 
-  <dl aria-label="Recorded deployment facts">
+  <dl aria-label="Recorded deployment facts" class="live-cols">
     {
       deployment.map((row) => (
         <div class="live-row">
@@ -107,9 +108,22 @@ const keyDeletedAt = `${keyDeletion.timeUtc.slice(0, 10)} ${keyDeletion.timeUtc.
       <dd>{finalGate.governanceDelayDays} days, fixed at initialization</dd>
     </div>
     <div class="live-row">
-      <dt>Verifier host</dt>
+      <dt>Verifier status</dt>
+      <dd>
+        <StatusBadge tone="recorded">
+          Retired <time datetime={VERIFIER_RETIRED_ON}>{VERIFIER_RETIRED_ON}</time>
+        </StatusBadge>
+        <span class="live-meta">
+          Its confidential VM was deleted to stop the cost. The gate, its keyless state and every
+          receipt on this page stay; none of them needs the verifier to be read or audited.
+        </span>
+      </dd>
+    </div>
+    <div class="live-row">
+      <dt>Verifier host, as recorded</dt>
       <dd>
         {finalVerifier.platform} confidential VM. Appraisal passed: {appraisal}.
+        <span class="live-meta">Recorded {RECORDED_ON}, before the VM was deleted.</span>
       </dd>
     </div>
     {

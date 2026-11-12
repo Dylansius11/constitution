@@ -1,0 +1,98 @@
+---
+import { site } from "../../data/site.ts";
+import Button from "../ui/Button.astro";
+
+/**
+ * The way out of /app for a visitor who has seen the four attacks: write an upgrade of their own
+ * and test it from the command line. The docs page owns the how; this band only points there.
+ */
+const readme = site.repoUrl ? `${site.repoUrl}#readme` : null;
+---
+
+<aside class="app-cta" aria-labelledby="app-cta-title">
+  <div class="app-cta__text">
+    <h2 id="app-cta-title">Test your own upgrade.</h2>
+    <p>
+      The four attacks are fixed. Write a vault upgrade of your own, run the same rules on it from
+      your terminal, and see whether it passes before it ever reaches a gate.
+    </p>
+  </div>
+  <div class="app-cta__actions">
+    <Button href="/docs" variant="ink" size="lg">Read the docs <span aria-hidden="true">→</span></Button>
+    {
+      readme !== null && (
+        <a class="app-cta__link" href={readme} rel="noopener">
+          Or start from the README
+        </a>
+      )
+    }
+  </div>
+</aside>
+
+<style>
+  .app-cta {
+    display: grid;
+    gap: var(--space-5);
+    margin-top: var(--space-9);
+    padding: var(--space-6) var(--space-5);
+    border-radius: var(--radius-md);
+    background: var(--lav);
+    color: var(--ink-on-lav);
+  }
+
+  .app-cta__text {
+    display: grid;
+    gap: var(--space-3);
+    max-width: 52ch;
+  }
+
+  h2 {
+    font-size: var(--text-2xl);
+    letter-spacing: var(--tracking-display);
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .app-cta__text p {
+    font-size: var(--text-base);
+    line-height: 1.5;
+  }
+
+  .app-cta__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3) var(--space-5);
+  }
+
+  .app-cta__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--ink);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 0.25em;
+  }
+
+  /* The ink button and the link sit on lavender: keep the focus ring visible against both grounds. */
+  .app-cta :global(.btn):focus-visible,
+  .app-cta__link:focus-visible {
+    outline-color: var(--ink);
+  }
+
+  @media (min-width: 62rem) {
+    .app-cta {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--space-8);
+      padding: var(--space-8) var(--space-8);
+    }
+  }
+
+  @media (max-width: 36rem) {
+    .app-cta :global(.btn) {
+      width: 100%;
+    }
+  }
+</style>

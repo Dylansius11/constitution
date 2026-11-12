@@ -1,0 +1,151 @@
+---
+import { demoKeyless } from "../../../data/demo-evidence.ts";
+import { attacks, honestUpgradesObserved, tuiKeymap, tuiProfiles, tuiScreens } from "../../../data/docs.ts";
+import { VERIFIER_RETIRED_ON } from "../../../data/final-evidence.ts";
+import type { CodeTab } from "../../ui/code-types.ts";
+import Card from "../../ui/Card.astro";
+import CodeBlock from "../../ui/CodeBlock.astro";
+
+/**
+ * TUI tour. Content is docs/GUIDE.md "TUI tour" in short form; the data lives in data/docs.ts
+ * (`tuiProfiles`, `tuiScreens`, and the single `tuiKeymap` array the keyboard table renders from).
+ */
+const launch: CodeTab[] = [
+  {
+    id: "launch",
+    label: "Launch",
+    lines: [
+      { note: "Interactive terminal, repository root, after the quickstart build." },
+      { cmd: "constitution" },
+    ],
+  },
+];
+const refused = attacks.map((attack) => `${attack.title}, R${attack.expectedRule}/${attack.expectedReason}`);
+---
+
+<div class="docs-prose">
+  <p>
+    The CLI is one product. With no arguments, <code>constitution</code> opens a terminal UI. The
+    subcommands in <a href="#commands">Headless commands</a> stay for scripts and agents. The
+    terminal shows observed chain and verifier state, not a simulated dashboard: data that is
+    unreadable or still pending stays <em>unknown</em> or <em>pending</em>. It never displays an
+    invented success, transaction hash or progress percentage.
+  </p>
+  <CodeBlock id="docs-tui-launch" label="Launch" tabs={launch} title="repository root" />
+
+  <h3>Choose a profile first</h3>
+  <p>
+    The two profiles are separate deployments with separate proxies, not two views of one vault.
+    Press <kbd class="docs-key">p</kbd> to switch.
+  </p>
+  <div class="docs-rules">
+    {
+      tuiProfiles.map((profile) => (
+        <Card as="article">
+          <div class="docs-rule">
+            <h4 class="docs-rule__title">
+              <span>{profile.name}</span>
+              <span class="docs-access">{profile.writes ? "Can run attacks and upgrades" : "No write path"}</span>
+            </h4>
+            <p>{profile.use}</p>
+            <dl class="docs-facts">
+              <div>
+                <dt>Gate</dt>
+                <dd>{profile.account}</dd>
+              </div>
+              <div>
+                <dt>Deployment record</dt>
+                <dd>{profile.record}</dd>
+              </div>
+              <div>
+                <dt>Rule set</dt>
+                <dd>{profile.manifest}</dd>
+              </div>
+              <div>
+                <dt>Proxy</dt>
+                <dd>{profile.proxy}</dd>
+              </div>
+              <div>
+                <dt>Governance delay</dt>
+                <dd>{profile.delay}, immutable</dd>
+              </div>
+            </dl>
+          </div>
+        </Card>
+      ))
+    }
+  </div>
+  <p class="docs-note">
+    <strong>Recorded facts, not live reads.</strong> The final verifier was retired on {" "}
+    {VERIFIER_RETIRED_ON}. The terminal shows its recorded identity and never probes it, so
+    final-gate audits and receipts need no verifier. The demo gate is keyless: its only access key
+    was deleted on {demoKeyless.date} and the demo audit exited {demoKeyless.auditExitCode}. These
+    are recorded results, so read your own audit before you rely on them.
+  </p>
+
+  <h3>The five screens</h3>
+  <p>
+    Press <kbd class="docs-key">1</kbd> to <kbd class="docs-key">5</kbd> to jump to a screen, or {" "}
+    <kbd class="docs-key">Tab</kbd> to cycle. Each screen below says what it reads and what it will
+    not pretend.
+  </p>
+  <ol class="docs-rules">
+    {
+      tuiScreens.map((screen) => (
+        <Card as="li">
+          <article class="docs-rule" aria-labelledby={`tui-${screen.name.toLowerCase()}`}>
+            <h4 class="docs-rule__title" id={`tui-${screen.name.toLowerCase()}`}>
+              <kbd class="docs-rule__id">{screen.key}</kbd>
+              <span>{screen.name}</span>
+            </h4>
+            <div class="docs-field">
+              <p class="docs-label">What it shows</p>
+              <p>{screen.shows}</p>
+            </div>
+            <div class="docs-field">
+              <p class="docs-label">What it will not pretend</p>
+              <p>{screen.honesty}</p>
+            </div>
+          </article>
+        </Card>
+      ))
+    }
+  </ol>
+  <p>
+    <strong>Run</strong> launches the same <code>demo</code> subcommand that the headless section
+    documents, so every check there still applies. The recorded gallery holds {attacks.length} attack
+    refusals: {refused.join("; ")}. {" "}
+    {
+      honestUpgradesObserved
+        ? " Each honest upgrade preset also has a recorded observation."
+        : " It does not record an observed run for every honest upgrade preset, so a preset is a reference, not proof that the demo gate already executed it."
+    }
+  </p>
+
+  <h3>Keyboard reference</h3>
+  <p>Keys work on every screen unless a group says otherwise.</p>
+  {
+    tuiKeymap.map((group) => (
+      <section class="docs-group" aria-labelledby={`keys-${group.scope.toLowerCase()}`}>
+        <h4 id={`keys-${group.scope.toLowerCase()}`}>{group.scope}</h4>
+        <dl class="docs-keys">
+          {
+            group.keys.map((key) => (
+              <div>
+                <dt>
+                  {key.keys.map((name, index) => (
+                    <>
+                      {index > 0 && <span class="docs-keys__or"> or </span>}
+                      <kbd class="docs-key">{name}</kbd>
+                    </>
+                  ))}
+                </dt>
+                <dd>{key.action}</dd>
+              </div>
+            ))
+          }
+        </dl>
+      </section>
+    ))
+  }
+</div>
