@@ -184,6 +184,7 @@ fn tui_live_read_only_render() {
     );
     let mut app = App {
         snapshot: Some(snapshot),
+        presets: super::data::presets().expect("committed demo gallery presets"),
         ..App::default()
     };
     let mut terminal = Terminal::new(TestBackend::new(160, 55)).unwrap();
@@ -202,7 +203,11 @@ fn tui_live_read_only_render() {
             .join("\n");
         println!("=== LIVE {} ===\n{}", screen.title(), text);
         assert!(text.contains("constitution-demo.testnet") || screen == Screen::Proposals);
-        assert!(text.contains("Observed at"));
+        assert!(text.contains("● KEYLESS"), "demo gate must render keyless");
+        assert!(
+            text.contains("observed "),
+            "header must show the observation time"
+        );
     }
 }
 
