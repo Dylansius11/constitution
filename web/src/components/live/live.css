@@ -147,7 +147,8 @@
   }
 }
 @media (max-width: 39.999rem) {
-  .live-surface .live-row {
+  .live-surface .live-row,
+  .live-surface dl.live-cols .live-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }

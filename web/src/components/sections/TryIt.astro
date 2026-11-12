@@ -131,6 +131,13 @@ const checks = [
     top: calc(var(--header-h) + var(--space-5));
   }
 
+  /* Tabs hold different amounts of text; one height keeps the block from jumping as they change. */
+  @media (min-width: 62.0625rem) {
+    .try__block :global(pre) {
+      min-height: 16rem;
+    }
+  }
+
   .try__note {
     max-width: 52ch;
     font-size: var(--text-sm);
