@@ -42,7 +42,7 @@
 
 .docs-content {
   min-width: 0;
-  max-width: 60rem;
+  max-width: none;
 }
 
 /* Table of contents */
@@ -214,7 +214,7 @@
 
 .docs-prose p,
 .docs-prose li:not(.card) {
-  max-width: var(--measure);
+  max-width: 76ch;
 }
 
 .docs-prose ul:not(.docs-commands),
