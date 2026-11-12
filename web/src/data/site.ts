@@ -24,10 +24,11 @@ export const site = {
   title: "Constitution: upgrades only through the rules",
   description:
     "A keyless NEAR gate holds the upgrade authority of one Base Sepolia proxy and signs an upgrade only when an attested verifier certifies it against owner-committed rules.",
+  /** Gate account of the live demo deployment that /app attacks. `null` when the build has none. */
+  demoGateAccount: optional(env.PUBLIC_DEMO_GATE_ACCOUNT),
   /** Gate account of the activated production deployment. `null` until activation. */
   gateAccount: optional(env.PUBLIC_GATE_ACCOUNT),
-  nearRpc: optionalUrl("PUBLIC_NEAR_RPC", env.PUBLIC_NEAR_RPC) ?? "https://test.rpc.fastnear.com",
-  verifierUrl: optionalUrl("PUBLIC_VERIFIER_URL", env.PUBLIC_VERIFIER_URL),
+  nearRpc: optionalUrl("PUBLIC_NEAR_RPC", env.PUBLIC_NEAR_RPC) ?? "https://near-testnet.drpc.org",
   baseRpc: optionalUrl("PUBLIC_BASE_RPC", env.PUBLIC_BASE_RPC) ?? "https://sepolia.base.org",
   baseExplorer: "https://sepolia.basescan.org",
   nearExplorer: "https://testnet.nearblocks.io",
