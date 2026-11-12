@@ -23,7 +23,7 @@ describe("check-it-yourself command tabs", () => {
     for (const line of tabLines) {
       if (line.cmd) {
         expect(line.cmd).toMatch(
-          /^\.\/target\/debug\/constitution( (audit|status|receipt|verifier appraise) .+)?$/,
+          /^constitution( (audit|status|receipt|verifier appraise) .+)?$/,
         );
       }
     }

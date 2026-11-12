@@ -6,11 +6,11 @@ import { finalRuns, RECORDED_ON } from "./final-evidence.ts";
  * The CLI checks shown in "Check it yourself", one tab each: the terminal UI first, then the
  * read-only commands with the live demo gate as the primary example. Every flag was read from the
  * clap definitions in crates/cli/src/main.rs (`audit` takes --deployment and --manifest and has no
- * --network flag). Run from the repository root with the CLI built as in the README's local
- * quickstart. Nothing here signs, spends or writes to a chain. The public NEAR RPC default in the
+ * --network flag). Run from the repository root with the CLI built and on PATH as in docs/GUIDE.md
+ * (`cargo build --locked --release -p constitution-cli`, then PATH to target/release). Nothing here signs, spends or writes to a chain. The public NEAR RPC default in the
  * CLI answers 429 under load, so reads pass the dRPC endpoint the page itself uses.
  */
-const CLI = "./target/debug/constitution";
+const CLI = "constitution";
 const FINAL_GATE = "constitution-gate.testnet";
 const NEAR_RPC = "https://near-testnet.drpc.org";
 
@@ -25,6 +25,9 @@ export const cliTabs: CodeTab[] = [
         note: "One command opens the terminal UI: Overview, Proposals, Run, Audit and Receipt, with a Demo and a Final profile.",
       },
       { cmd: CLI },
+      {
+        note: "Keys: 1 to 5 jump between the screens, Tab cycles them, p switches profile, ? shows help, q quits.",
+      },
       {
         note: "Every screen has a script-friendly subcommand: the tabs beside this one are those subcommands.",
       },
